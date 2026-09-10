@@ -1,11 +1,29 @@
 import Foundation
 
 public struct KubernetesStatus: Codable, Equatable, Sendable {
-    public let apiVersion: String
-    public let kind: String
+    // The streaming remote-command encoder may omit TypeMeta and code.
+    public let apiVersion: String?
+    public let kind: String?
+    public let status: String?
     public let reason: String?
     public let message: String?
     public let code: Int?
+    public let details: KubernetesStatusDetails?
+}
+
+public struct KubernetesStatusDetails: Codable, Equatable, Sendable {
+    public let name: String?
+    public let group: String?
+    public let kind: String?
+    public let uid: String?
+    public let causes: [KubernetesStatusCause]?
+    public let retryAfterSeconds: Int?
+}
+
+public struct KubernetesStatusCause: Codable, Equatable, Sendable {
+    public let reason: String?
+    public let message: String?
+    public let field: String?
 }
 
 public enum TransportFailure: String, Sendable {
@@ -39,8 +57,8 @@ public enum APIError: Error, Equatable, Sendable, LocalizedError, CustomStringCo
                 }
             }
             let status = KubernetesStatus(
-                apiVersion: "v1", kind: "Status", reason: safe(decoded.reason),
-                message: safe(decoded.message), code: decoded.code
+                apiVersion: "v1", kind: "Status", status: safe(decoded.status), reason: safe(decoded.reason),
+                message: safe(decoded.message), code: decoded.code, details: nil
             )
             return .status(status, httpCode: code, resource: resource)
         }
@@ -64,7 +82,7 @@ public enum APIError: Error, Equatable, Sendable, LocalizedError, CustomStringCo
             "WebSocket upgrade failed. Foundation did not expose an HTTP response; no authentication retry was attempted."
         case .transport(let failure): "Transport failure: \(failure.rawValue)"
         case .unsupportedProtocol: "Exec requires negotiated v5.channel.k8s.io. Check server and intermediary support."
-        case .invalidRequest: "Invalid Kubernetes server URL or resource path."
+        case .invalidRequest: "Invalid Kubernetes server URL, resource path, or request options."
         }
     }
 

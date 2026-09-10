@@ -1,0 +1,11 @@
+{
+  "metadata": {},
+  "status": "Failure",
+  "message": "command terminated with non-zero exit code: 42",
+  "reason": "NonZeroExitCode",
+  "details": {
+    "causes": [
+      {"reason": "ExitCode", "message": "42"}
+    ]
+  }
+}

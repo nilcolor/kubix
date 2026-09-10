@@ -84,3 +84,37 @@ func nonStatusBodiesAreNotRetained(_ body: String) {
     #expect(APIError.response(code: 500, body: Data(repeating: 65, count: 65_537), resource: "pods") == .http(code: 500, resource: "pods"))
     #expect(APIError.tls(.trustEvaluationFailed) != .transport(.connection))
 }
+
+@Test func expandedStatusModelKeepsHTTPErrorRedactionAndTypeChecks() throws {
+    let body = Data("""
+    {"apiVersion":"v1","kind":"Status","status":"Failure","reason":"Forbidden",
+     "message":"synthetic-token","details":{"causes":[{"reason":"synthetic-token","message":"synthetic-token"}]},"code":403}
+    """.utf8)
+    let error = APIError.response(code: 403, body: body, resource: "pods/exec", redacting: "synthetic-token")
+    guard case .status(let status, _, _) = error else { Issue.record("Expected Status"); return }
+    #expect(status.status == "Failure")
+    #expect(status.message == "[redacted]")
+    #expect(status.details == nil)
+    #expect(!String(reflecting: error).contains("synthetic-token"))
+    // HTTP error detection still requires TypeMeta; exec status decoding does not.
+    let untyped = Data(#"{"status":"Failure","reason":"Forbidden","message":"denied"}"#.utf8)
+    #expect(APIError.response(code: 403, body: untyped, resource: "pods") == .http(code: 403, resource: "pods"))
+    let decoded = try JSONDecoder().decode(KubernetesStatus.self, from: untyped)
+    #expect(decoded.status == "Failure" && decoded.apiVersion == nil && decoded.kind == nil)
+}
+
+@Test func sharedStatusDetailsAndCausesRoundTrip() throws {
+    let body = Data("""
+    {"status":"Failure","reason":"Forbidden","message":"denied",
+     "details":{"name":"pod","group":"","kind":"pods","uid":"synthetic","retryAfterSeconds":2,
+                "causes":[{"reason":"FieldValueInvalid","message":"invalid field","field":"spec.command"}]}}
+    """.utf8)
+    let status = try JSONDecoder().decode(KubernetesStatus.self, from: body)
+    let details = try #require(status.details)
+    #expect(details.name == "pod" && details.group == "" && details.kind == "pods")
+    #expect(details.uid == "synthetic" && details.retryAfterSeconds == 2)
+    #expect(details.causes?.first?.reason == "FieldValueInvalid")
+    #expect(details.causes?.first?.message == "invalid field")
+    #expect(details.causes?.first?.field == "spec.command")
+    #expect(try JSONDecoder().decode(KubernetesStatus.self, from: JSONEncoder().encode(status)) == status)
+}

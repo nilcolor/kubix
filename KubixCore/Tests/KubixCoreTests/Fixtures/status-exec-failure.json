@@ -1,0 +1,12 @@
+{
+  "metadata": {},
+  "status": "Failure",
+  "message": "Internal error occurred: synthetic container could not be started",
+  "reason": "InternalError",
+  "details": {
+    "causes": [
+      {"message": "synthetic container could not be started"}
+    ]
+  },
+  "code": 500
+}
