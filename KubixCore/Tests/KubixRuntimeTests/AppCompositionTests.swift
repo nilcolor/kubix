@@ -92,6 +92,22 @@ private actor RegistryFactory {
     #expect(presentation.diagnostic?.contains("Configure Plugin Path") == true)
 }
 
+@Test func awsVaultContextCannotSilentlySubstituteDirectAWSLogin() async throws {
+    let process = FakeProcess()
+    let resolver = testResolver(files: Executables(paths: ["/tools/aws-vault", "/tools/aws"]))
+    let (auth, _) = orchestration(process: process, resolver: resolver)
+    let context = try runtimeContext(user: KubeconfigUser(exec: runtimeExec(command: "aws-vault", args: [
+        "exec", "synthetic-role", "--duration=1h", "--", "aws", "--region", "eu-synthetic-1",
+        "eks", "get-token", "--cluster-name", "synthetic"
+    ])))
+    let presentation = await auth.presentation(for: context)
+    #expect(presentation.executable == "/tools/aws-vault")
+    #expect(!presentation.canSignIn && presentation.profile == nil)
+    #expect(presentation.diagnostic == AuthenticationError.unsupportedAWSInvocation.errorDescription)
+    await #expect(throws: AuthenticationError.unsupportedAWSInvocation) { try await auth.signIn(for: context) }
+    #expect(await process.requests().isEmpty)
+}
+
 @Test func bridgeQuotedCommandIsParsedByAnActualNoninteractiveShell() async throws {
     let workspace = try StubWorkspace()
     let executable = workspace.root.appendingPathComponent("Kubix 'quoted' \"$HOME\".sh")

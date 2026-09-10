@@ -17,6 +17,9 @@ struct ContentView: View {
         }
         .task {
             if !store.hasLoadedConfiguration { await actions.loadConfiguration() }
+            #if DEBUG
+            await AuthLoginValidation.run(composition: composition)
+            #endif
         }
     }
 }
