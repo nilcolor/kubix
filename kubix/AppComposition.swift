@@ -60,10 +60,18 @@ final class AppComposition {
             store: store, exec: exec, authentication: authentication, surfaces: factory, browser: BrowserLauncher(),
             configurations: AppConfigurationLoader(
                 loader: KubeconfigLoader(environment: environment, homeDirectory: home), settings: settings
-            )
+            ), pods: Self.podWatcher(transports: transports)
         )
         factory.closeSession = { [weak actions] id in actions?.closeShell(id) }
         Self.active = self
+    }
+
+    private static func podWatcher(transports: @escaping ExecService.TransportFactory) -> (any PodWatching)? {
+        #if DEBUG
+        // Existing constrained exec/auth validation must never grow a discovery request implicitly.
+        if ExecLiveValidation.isEnabled || AWSVaultIsolationValidation.root != nil { return nil }
+        #endif
+        return WatchService(transports: transports)
     }
 
     func shutdown() async {

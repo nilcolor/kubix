@@ -48,7 +48,7 @@ public final class URLSessionTransport: Transport, Sendable {
 
     public func data(for request: APIRequest) async throws -> Data {
         try Self.gate(context.cluster)
-        return try await authenticated { acquired in
+        return try await authenticated(managed: request.managesCredentialRefresh) { acquired in
             let outgoing = try self.authorize(request, purpose: .request, acquired: acquired)
             let response: HTTPDataResponse
             do {
@@ -66,7 +66,7 @@ public final class URLSessionTransport: Transport, Sendable {
     public func stream(for request: APIRequest, purpose: TransportPurpose) async throws -> any HTTPByteStream {
         try Self.gate(context.cluster)
         guard purpose != .webSocket else { throw APIError.invalidRequest }
-        return try await authenticated { acquired in
+        return try await authenticated(managed: request.managesCredentialRefresh) { acquired in
             let outgoing = try self.authorize(request, purpose: purpose, acquired: acquired)
             let policy = TransportPolicy.policy(for: purpose)
             let started = self.clock.now
@@ -91,7 +91,7 @@ public final class URLSessionTransport: Transport, Sendable {
                 throw self.responseError(response.statusCode, body, request, acquired, retryAfter: response.retryAfter)
             }
             if Task.isCancelled { stream.cancel(); throw CancellationError() }
-            return stream
+            return CredentialByteStream(underlying: stream, identity: acquired.identity, generation: acquired.entry?.generation)
         }
     }
 
@@ -121,7 +121,18 @@ public final class URLSessionTransport: Transport, Sendable {
         return HeartbeatWebSocket(connection: connection, clock: clock)
     }
 
+    public func invalidateCredentials(after error: APIError) async throws {
+        try Task.checkCancellation()
+        guard case .credentialRejected(_, let identity, let generation) = error,
+              identity == (try CredentialIdentity(from: context)) else {
+            throw APIError.credentialsExhausted(error)
+        }
+        await credentials.invalidate(identity, failedGeneration: generation)
+        try Task.checkCancellation()
+    }
+
     private func authenticated<Value: Sendable>(
+        managed: Bool = false,
         _ operation: (AcquiredCredential) async throws -> Value
     ) async throws -> Value {
         for attempt in 0...1 {
@@ -130,6 +141,10 @@ public final class URLSessionTransport: Transport, Sendable {
             try Task.checkCancellation()
             do { return try await operation(acquired) } catch let error as APIError {
                 guard error.httpCode == 401 else { throw error }
+                if managed {
+                    guard let entry = acquired.entry else { throw APIError.credentialsExhausted(error) }
+                    throw APIError.credentialRejected(error, identity: acquired.identity, generation: entry.generation)
+                }
                 guard attempt == 0 else { throw APIError.credentialsExhausted(error) }
                 if let entry = acquired.entry {
                     await credentials.invalidate(acquired.identity, failedGeneration: entry.generation)

@@ -25,14 +25,17 @@ struct ExecConnectView: View {
                 Text("WARNING: TLS certificate verification is disabled for this context.").foregroundStyle(.red)
             }
             HStack {
-                TextField("Namespace", text: Binding(get: { store.selectedNamespace }, set: { actions.setNamespaceInput($0) }))
+                TextField("Namespace", text: Binding(get: { store.namespaceDraft }, set: { actions.setNamespaceInput($0) }))
+                    .onSubmit { actions.commitNamespaceInput() }
                 TextField("Pod", text: Binding(get: { store.podName }, set: { actions.setPodName($0) }))
                 TextField("Regular container", text: Binding(get: { store.containerName }, set: { actions.setContainerName($0) }))
                 Button("Open shell") { actions.connectShell() }
                     .disabled(store.selectedContext == nil || store.podName.isEmpty || store.containerName.isEmpty)
             }
-            Text("Temporary milestone form: explicitly choose a known running regular container. No namespace/pod discovery or resource mutation.")
+            Text("Temporary milestone form: commit a namespace with Return. Explicitly choose a known running regular container; no resource mutation.")
                 .font(.caption).foregroundStyle(.secondary)
+            if let diagnostic = store.namespaceDiagnostic { Text(diagnostic).foregroundStyle(.orange) }
+            if case .failed(let error) = store.connection { Text(error.description).foregroundStyle(.orange) }
             if let diagnostic = store.connectDiagnostic { Text(diagnostic).foregroundStyle(.orange) }
             AuthProgressView(store: store, actions: actions)
         }

@@ -43,6 +43,11 @@ public enum APIError: Error, Equatable, Sendable, LocalizedError, CustomStringCo
     case tls(TLSFailure)
     case unsupportedProtocol
     case invalidRequest
+    case podSnapshot(PodSnapshotFailure)
+    case podAuthentication
+    indirect case watch(WatchFailure)
+    /// Receipt only, never the credential itself; used by a long-lived watch's retry owner.
+    indirect case credentialRejected(APIError, identity: CredentialIdentity, generation: CredentialCache.Generation)
     indirect case retryAfter(APIError, delay: TimeInterval)
     /// The authenticated transport already retried this 401 with refreshed credentials.
     indirect case credentialsExhausted(APIError)
@@ -84,7 +89,7 @@ public enum APIError: Error, Equatable, Sendable, LocalizedError, CustomStringCo
     public var httpCode: Int? {
         switch self {
         case .status(_, let code, _), .http(let code, _): code
-        case .retryAfter(let error, _), .credentialsExhausted(let error): error.httpCode
+        case .retryAfter(let error, _), .credentialsExhausted(let error), .credentialRejected(let error, _, _): error.httpCode
         default: nil
         }
     }
@@ -92,7 +97,7 @@ public enum APIError: Error, Equatable, Sendable, LocalizedError, CustomStringCo
     public var kubernetesStatus: KubernetesStatus? {
         switch self {
         case .status(let status, _, _): status
-        case .retryAfter(let error, _), .credentialsExhausted(let error): error.kubernetesStatus
+        case .retryAfter(let error, _), .credentialsExhausted(let error), .credentialRejected(let error, _, _): error.kubernetesStatus
         default: nil
         }
     }
@@ -101,6 +106,7 @@ public enum APIError: Error, Equatable, Sendable, LocalizedError, CustomStringCo
         switch self {
         case .retryAfter(let error, let delay): max(delay, error.retryAfterDelay ?? 0)
         case .credentialsExhausted(let error): error.retryAfterDelay
+        case .credentialRejected(let error, _, _): error.retryAfterDelay
         case .status(let status, _, _): status.details?.retryAfterSeconds.flatMap { $0 >= 0 ? TimeInterval($0) : nil }
         default: nil
         }
@@ -110,6 +116,7 @@ public enum APIError: Error, Equatable, Sendable, LocalizedError, CustomStringCo
         switch self {
         case .credentialsExhausted: true
         case .retryAfter(let error, _): error.credentialRefreshExhausted
+        case .credentialRejected(let error, _, _): error.credentialRefreshExhausted
         default: false
         }
     }
@@ -125,6 +132,10 @@ public enum APIError: Error, Equatable, Sendable, LocalizedError, CustomStringCo
         case .transport(let failure): "Transport failure: \(failure.rawValue)"
         case .unsupportedProtocol: "Exec requires negotiated v5.channel.k8s.io. Check server and intermediary support."
         case .invalidRequest: "Invalid Kubernetes server URL, resource path, or request options."
+        case .podSnapshot(let failure): "Invalid pod list snapshot: \(failure.rawValue). Refresh to retry."
+        case .podAuthentication: "Pod authentication failed. Check authentication settings and explicitly retry."
+        case .watch(let failure): "Pod watch stopped: \(failure). Refresh to retry."
+        case .credentialRejected(let error, _, _): error.description
         case .retryAfter(let error, _): error.description
         case .credentialsExhausted(let error): error.description + " Credential refresh was exhausted."
         }

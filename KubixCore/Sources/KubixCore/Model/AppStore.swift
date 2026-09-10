@@ -8,6 +8,11 @@ public final class AppStore {
     public internal(set) var selectedContext: ResolvedContext?
     public internal(set) var namespaces: [String]
     public internal(set) var selectedNamespace: String
+    public internal(set) var namespaceDraft: String
+    public internal(set) var namespaceDiagnostic: String?
+    public internal(set) var rows: [PodRow] = []
+    public internal(set) var columns: [KubernetesTable.ColumnDefinition]?
+    public internal(set) var connection: PodConnection = .idle
     public internal(set) var execSessions: [ExecSession] = []
     public internal(set) var authenticationSessions: [UUID: AuthSession] = [:]
     var authenticationSessionOrder: [UUID] = []
@@ -38,8 +43,9 @@ public final class AppStore {
     public init(contexts: [ResolvedContext] = [], authSettings: AuthSettings = AuthSettings()) {
         self.contexts = contexts
         selectedContext = contexts.first
-        selectedNamespace = contexts.first?.namespace ?? "default"
-        namespaces = [contexts.first?.namespace ?? "default"]
+        selectedNamespace = NamespaceSelection.defaultNamespace(for: contexts.first)
+        namespaceDraft = NamespaceSelection.defaultNamespace(for: contexts.first)
+        namespaces = NamespaceSelection().suggestions(for: contexts.first)
         self.authSettings = authSettings
         settingsDraft = AuthSettingsDraft(settings: authSettings, context: contexts.first)
     }

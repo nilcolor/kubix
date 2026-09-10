@@ -13,8 +13,7 @@ public extension AppActions {
         store.configurationDiagnostics = snapshot.diagnostics
         let selectedName = store.selectedContext?.name ?? snapshot.preferredContext
         store.selectedContext = snapshot.contexts.first(where: { $0.name == selectedName }) ?? snapshot.contexts.first
-        store.selectedNamespace = store.selectedContext?.namespace ?? "default"
-        store.namespaces = [store.selectedNamespace]
+        resetNamespaceSelection()
         store.podName = ""
         store.containerName = ""
         if settingsVersion == settingsRevision, let settings = snapshot.settings { store.authSettings = settings }
@@ -26,7 +25,7 @@ public extension AppActions {
 
     func setPodName(_ value: String) { store.podName = value }
     func setContainerName(_ value: String) { store.containerName = value }
-    func setNamespaceInput(_ value: String) { store.selectedNamespace = value }
+    func setNamespaceInput(_ value: String) { store.namespaceDraft = value; store.namespaceDiagnostic = nil }
     func setShowingSettings(_ value: Bool) {
         store.showingSettings = value
         if value { resetSettingsDraft() }
@@ -43,6 +42,7 @@ public extension AppActions {
     func connectShell() -> UUID? {
         do {
             guard let context = store.selectedContext else { throw KubeconfigError.unknownContext }
+            guard commitNamespaceInput() else { return nil }
             let target = try ExecTarget(
                 context: context, namespace: store.selectedNamespace, pod: store.podName, container: store.containerName
             )

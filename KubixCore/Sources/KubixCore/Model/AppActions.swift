@@ -22,11 +22,17 @@ public final class AppActions {
     var settingsRevision = 0
     private var authenticationRevision = 0
     var stopped = false
+    let pods: (any PodWatching)?
+    var podTask: Task<Void, Never>?
+    var retiringPodTasks: [UUID: Task<Void, Never>] = [:]
+    var podGeneration = UUID()
+    var namespaceSelection = NamespaceSelection()
 
     public init(
         store: AppStore, exec: any ExecSessionControlling,
         authentication: any AuthenticationControlling, surfaces: any TerminalSurfaceCreating,
-        browser: (any BrowserOpening)? = nil, configurations: (any AppConfigurationLoading)? = nil
+        browser: (any BrowserOpening)? = nil, configurations: (any AppConfigurationLoading)? = nil,
+        pods: (any PodWatching)? = nil
     ) {
         self.store = store
         self.exec = exec
@@ -34,6 +40,7 @@ public final class AppActions {
         self.surfaces = surfaces
         self.browser = browser
         self.configurations = configurations
+        self.pods = pods
         progressTask = Task { [weak self, authentication] in
             let stream = await authentication.sessions()
             for await session in stream {
@@ -41,26 +48,6 @@ public final class AppActions {
                 self?.receive(session)
             }
         }
-    }
-
-    public func selectContext(named name: String) throws {
-        guard let context = store.contexts.first(where: { $0.name == name }) else {
-            throw KubeconfigError.unknownContext
-        }
-        store.selectedContext = context
-        store.selectedNamespace = context.namespace
-        store.namespaces = [context.namespace]
-        store.podName = ""
-        store.containerName = ""
-        resetSettingsDraft()
-        refreshPluginPresentation()
-    }
-
-    public func selectNamespace(_ namespace: String) throws {
-        guard !namespace.isEmpty, namespace != ".", namespace != "..",
-              !namespace.contains("/"), !namespace.utf8.contains(0) else { throw APIError.invalidRequest }
-        store.selectedNamespace = namespace
-        if !store.namespaces.contains(namespace) { store.namespaces.append(namespace) }
     }
 
     @discardableResult
@@ -178,6 +165,8 @@ public final class AppActions {
     public func shutdown() {
         guard !stopped else { return }
         stopped = true
+        cancelPods()
+        if store.connection != .idle { store.connection = .idle }
         for session in store.execSessions { closeShell(session.id) }
         progressTask?.cancel()
         progressTask = nil
@@ -274,6 +263,8 @@ public final class AppActions {
         for task in settingsTasks.values { task.cancel() }
         for task in authenticationTasks.values { task.cancel() }
         for task in tasks.values { task.cancel() }
+        podTask?.cancel()
+        for task in retiringPodTasks.values { task.cancel() }
     }
 }
 
@@ -291,12 +282,14 @@ extension AppActions {
         let settings = Array(settingsTasks.values)
         let progress = progressTask
         let presentation = presentationTask
+        let podWork = Array(retiringPodTasks.values) + (podTask.map { [$0] } ?? [])
         shutdown()
         for task in pending { await task.value }
         for task in auth { _ = await task.result }
         for task in settings { _ = await task.result }
         await progress?.value
         await presentation?.value
+        for task in podWork { await task.value }
     }
 
     static func authDiagnostic(_ error: any Error) -> String {

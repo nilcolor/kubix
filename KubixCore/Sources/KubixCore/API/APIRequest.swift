@@ -7,16 +7,18 @@ public struct APIRequest: Sendable, CustomStringConvertible {
     public let query: [URLQueryItem]
     public let accept: String
     public let resourceContext: String
+    public let managesCredentialRefresh: Bool
     public var description: String { "Kubernetes request: \(resourceContext)" }
 
     public init(
         resource: String, namespace: String? = nil, name: String? = nil,
         subresource: String? = nil, apiPath: [String] = ["api", "v1"],
-        query: [URLQueryItem] = [], table: Bool = false
+        query: [URLQueryItem] = [], table: Bool = false, managesCredentialRefresh: Bool = false
     ) {
         path = apiPath + (namespace.map { ["namespaces", $0] } ?? [])
             + [resource] + (name.map { [$0] } ?? []) + (subresource.map { [$0] } ?? [])
         self.query = query
+        self.managesCredentialRefresh = managesCredentialRefresh
         accept = table ? Self.tableAccept : "application/json"
         resourceContext = resource + (subresource.map { "/" + $0 } ?? "")
             + (namespace.map { " in namespace " + $0 } ?? "")

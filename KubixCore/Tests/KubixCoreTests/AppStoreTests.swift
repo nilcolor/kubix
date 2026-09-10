@@ -3,6 +3,48 @@ import KubixCore
 import Observation
 import Testing
 
+extension AppStoreTests {
+    @Test func podUpdatesEqualityGateObservationAndRejectLateCallbacksFromEveryGeneration() async throws {
+        let probe = PodActionProbe()
+        let store = AppStore(contexts: [try appContext(), try appContext("second")])
+        let actions = AppActions(
+            store: store, exec: AppTestExec(), authentication: AppTestAuth(), surfaces: AppTestSurfaces(), pods: probe
+        )
+        defer { actions.shutdown() }
+        actions.refreshPods()
+        try await appEventually { await probe.callbacks.count == 1 }
+        let table = try watchTable(columns: watchColumns)
+        let value = PodWatchUpdate(rows: try table.rows.map(PodRow.init), columns: table.columnDefinitions, connection: .live)
+        await probe.emit(value)
+        let changed = ObservationFlag()
+        withObservationTracking {
+            _ = store.rows
+            _ = store.columns
+            _ = store.connection
+        } onChange: { changed.mark() }
+        await probe.emit(value)
+        #expect(!changed.value)
+        #expect(store.rows == value.rows && store.columns == value.columns && store.connection == .live)
+        try actions.selectNamespace("new")
+        try await appEventually { await probe.callbacks.count == 2 }
+        #expect(changed.value && store.rows.isEmpty && store.connection == .connecting)
+        await probe.emit(value)
+        #expect(store.rows.isEmpty && store.connection == .connecting)
+        try actions.selectContext(named: "second")
+        try await appEventually { await probe.callbacks.count == 3 }
+        await probe.emit(value, call: 1)
+        #expect(store.rows.isEmpty)
+        actions.refreshPods()
+        try await appEventually { await probe.callbacks.count == 4 }
+        await probe.emit(value, call: 2)
+        #expect(store.rows.isEmpty)
+        await actions.shutdownAndWait()
+        await probe.emit(value, call: 3)
+        #expect(store.rows.isEmpty && store.connection != .live)
+        #expect(await probe.ended == 4)
+    }
+}
+
 @Suite @MainActor struct AppStoreTests {
     @Test func selectionIsObservableAndDoesNotRebindExistingTargets() async throws {
         let first = try appTarget()

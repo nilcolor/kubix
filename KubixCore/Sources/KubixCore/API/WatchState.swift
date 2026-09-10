@@ -23,7 +23,7 @@ public enum WatchEnd: Sendable {
 /// This performs no IO, sleeping, credential acquisition, pagination or automatic event replay.
 public struct WatchState: Sendable {
     public enum Phase: Equatable, Sendable {
-        case ready, watching, backingOff, refreshingCredentials, relisting, failed(WatchFailure), stopped
+        case ready, watching, listing, backingOff, refreshingCredentials, relisting, failed(WatchFailure), stopped
     }
 
     public private(set) var phase: Phase = .ready
@@ -33,9 +33,26 @@ public struct WatchState: Sendable {
     public private(set) var resourceVersion: String
     public private(set) var retryAttempts = 0
     public private(set) var credentialRefreshes = 0
+    public private(set) var relistAttempts = 0
     public var rows: [PodRow] { orderedUIDs.compactMap { rowsByUID[$0] } }
     public static let maximumRetries = 6
     public static let maximumCredentialRefreshes = 1
+
+    /// Initial list shares the same failure budgets as all subsequent watches and relists.
+    public init() {
+        rowsByUID = [:]
+        orderedUIDs = []
+        columns = nil
+        resourceVersion = ""
+        phase = .relisting
+    }
+
+    public mutating func resumeListing() -> WatchDecision {
+        if let terminal { return terminal }
+        guard [.relisting, .backingOff, .refreshingCredentials].contains(phase) else { return fail(.invalidTransition) }
+        phase = .listing
+        return .relist
+    }
 
     public init(rows: [PodRow], columns: [KubernetesTable.ColumnDefinition]?, resourceVersion: String) throws {
         try Self.validateSnapshot(rows, columns: columns, resourceVersion: resourceVersion)
@@ -72,7 +89,7 @@ public struct WatchState: Sendable {
     /// is mapped by receive(), where no HTTP response code exists.
     public mutating func failedRequest(_ error: APIError, jitter: Double = 0.5) -> WatchDecision {
         if let terminal { return terminal }
-        guard phase == .watching || phase == .refreshingCredentials else { return fail(.invalidTransition) }
+        guard phase == .watching || phase == .listing || phase == .refreshingCredentials else { return fail(.invalidTransition) }
         if error.httpCode == 410 { return expire() }
         if error.httpCode == 401 {
             guard !error.credentialRefreshExhausted,
@@ -99,6 +116,7 @@ public struct WatchState: Sendable {
             // Only a completed healthy lease resets budgets, never opening or a single data/bookmark.
             retryAttempts = 0
             credentialRefreshes = 0
+            relistAttempts = 0
             phase = .ready
             return .watch(resourceVersion: resourceVersion)
         }
@@ -110,7 +128,7 @@ public struct WatchState: Sendable {
         rows: [PodRow], columns: [KubernetesTable.ColumnDefinition]?, resourceVersion: String
     ) -> WatchDecision {
         if let terminal { return terminal }
-        guard phase == .relisting else { return fail(.invalidTransition) }
+        guard phase == .relisting || phase == .listing else { return fail(.invalidTransition) }
         do {
             try Self.validateSnapshot(rows, columns: columns, resourceVersion: resourceVersion)
         } catch { return decodingFailed(.invalidPayload) }
@@ -180,6 +198,8 @@ public struct WatchState: Sendable {
         orderedUIDs.removeAll()
         columns = nil
         resourceVersion = ""
+        guard relistAttempts < Self.maximumRetries else { return fail(.retryLimit) }
+        relistAttempts += 1
         phase = .relisting
         return .relist
     }
