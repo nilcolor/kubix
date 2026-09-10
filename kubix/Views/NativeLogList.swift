@@ -49,8 +49,45 @@ struct NativeLogList: NSViewRepresentable {
             updating = true
             defer { updating = false }
             let next = session.buffer.filtered(session.filter)
-            if lines != next { lines = next; table.reloadData() }
-            if session.autoscroll, !lines.isEmpty { table.scrollRowToVisible(lines.count - 1) }
+            if lines != next {
+                let anchor = session.autoscroll ? nil : topAnchor(in: table)
+                lines = next
+                table.reloadData()
+                if !session.autoscroll { restore(anchor, in: table) }
+            }
+            if session.autoscroll, let last = lines.indices.last,
+               table.rect(ofRow: last).maxY > table.visibleRect.maxY {
+                table.scrollRowToVisible(last)
+            }
+        }
+
+        private func topAnchor(in table: NSTableView) -> (id: UInt64, offset: CGFloat)? {
+            let row = table.rows(in: table.visibleRect).location
+            guard lines.indices.contains(row) else { return nil }
+            return (lines[row].id, table.visibleRect.minY - table.rect(ofRow: row).minY)
+        }
+
+        private func restore(_ anchor: (id: UInt64, offset: CGFloat)?, in table: NSTableView) {
+            guard let scroll = table.enclosingScrollView else { return }
+            // reloadData defers document sizing; clamp against the new extent, not the old one.
+            scroll.layoutSubtreeIfNeeded()
+            let clip = scroll.contentView
+            var y: CGFloat = 0
+            if !lines.isEmpty {
+                if let anchor, let row = lines.firstIndex(where: { $0.id == anchor.id }) {
+                    y = table.rect(ofRow: row).minY + anchor.offset
+                } else {
+                    // Removed by eviction or filtering: start at the oldest visible line, fully shown.
+                    y = table.rect(ofRow: 0).minY
+                }
+            }
+            var bounds = clip.bounds
+            bounds.origin.y = table.convert(NSPoint(x: 0, y: y), to: clip).y
+            // Shorter/empty results cannot retain an offset beyond their scrollable extent.
+            let origin = clip.constrainBoundsRect(bounds).origin
+            guard origin != clip.bounds.origin else { return }
+            clip.scroll(to: origin)
+            scroll.reflectScrolledClipView(clip)
         }
 
         @objc func scrolled(_ notification: Notification) {

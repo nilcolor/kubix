@@ -32,6 +32,8 @@ import KubixCore
             evidence["shellRequests"] = String(await fixture.transport.requests.filter { $0.accept == "application/json" }.count)
             evidence["attachedSheet"] = String(NSApp.windows.contains { $0.attachedSheet != nil })
         }
+        evidence["logViewportStage"] = PodLogViewportValidation.stage
+        for (scenario, value) in PodLogViewportValidation.evidence { evidence["logViewport-\(scenario)"] = value }
         for view in fixture.surfaces.created {
             if let surface = view.surface {
                 let pid = pid_t(ghostty_surface_foreground_pid(surface))

@@ -26,8 +26,9 @@ import KubixCore
         try await PodBrowsingValidation.until { session.state == .interrupted(.transport) }
         let before = session.buffer.count
         actions.resumeLog(session.id)
-        try await PodBrowsingValidation.until { session.segment == 2 && session.state == .following && session.buffer.count > before }
+        try await PodBrowsingValidation.until { session.segment == 2 && session.state == .following && session.buffer.count == before + 401 }
         guard session.buffer.lines.filter(\.isBoundary).count == 2 else { throw Failure.assertion }
+        try await PodLogViewportValidation.check(fixture, session: session, table: logTable)
         actions.pauseLog(session.id)
         try await PodBrowsingValidation.until { await fixture.transport.logStreams.allSatisfy(\.cancelled) }
         actions.switchLogContainer(session.id, name: "setup")
@@ -47,6 +48,7 @@ import KubixCore
               await fixture.transport.logStreams.allSatisfy(\.cancelled),
               views.allSatisfy({ $0.freeCount == 0 }) else { throw Failure.assertion }
         return "native Logs menu; real bounded virtual table and filter field; scroll-up disables autoscroll; interruption/Resume boundary; "
+            + "full count/byte rings retain viewport ID and pixel offset; filter/eviction fallbacks and Latest verified; "
             + "fresh init-container switch distinct UUID; close joins streams; two existing exec UUIDs/targets/surfaces preserved with zero frees; "
             + "synthetic only; counts/state evidence, no log text or screenshots"
     }
