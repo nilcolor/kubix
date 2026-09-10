@@ -20,6 +20,9 @@ public final class AppActions {
     private var settingsTasks: [UUID: Task<Void, any Error>] = [:]
     private var authenticationTasks: [UUID: Task<AcquiredCredential, any Error>] = [:]
     var settingsRevision = 0
+    var committedSettingsRevision = 0
+    var settingsDraftRevision = 0
+    var settingsSaveRevision = 0
     private var authenticationRevision = 0
     var stopped = false
     let pods: (any PodWatching)?
@@ -111,6 +114,7 @@ public final class AppActions {
         try settings.validate()
         settingsRevision += 1
         let revision = settingsRevision
+        let draftRevision = settingsDraftRevision
         let id = UUID()
         let previous = settingsTask
         let work = Task { [authentication] in
@@ -122,30 +126,32 @@ public final class AppActions {
         settingsTasks[id] = work
         defer { settingsTasks.removeValue(forKey: id) }
         try await work.value
-        guard !stopped, revision == settingsRevision else { return }
-        settingsTask = nil
+        guard !stopped, revision > committedSettingsRevision else { return }
+        committedSettingsRevision = revision
+        if revision == settingsRevision { settingsTask = nil }
         store.authSettings = settings
-        resetSettingsDraft()
+        if revision == settingsRevision, draftRevision == settingsDraftRevision { resetSettingsDraft(afterCommit: true) }
         refreshPluginPresentation()
     }
 
     public func signIn(context: ResolvedContext, useDeviceCode: Bool = false) async throws {
-        try await authenticate { [authentication] in
+        let generation = podGeneration
+        let credential = try await authenticate { [authentication] in
             try await authentication.signIn(for: context, useDeviceCode: useDeviceCode)
         }
         for session in store.execSessions where session.target.context == context { retryShell(session.id) }
-        retryPodsAfterAuthentication(for: try CredentialIdentity(from: context))
+        retryPodsAfterAuthentication(for: credential.identity, generation: generation)
     }
 
     public func retryAuthentication(operationID: UUID) async throws {
-        let identity = store.authenticationSessions[operationID]?.credentialIdentity
-        try await authenticate { [authentication] in
+        let generation = podGeneration
+        let credential = try await authenticate { [authentication] in
             try await authentication.retry(operationID: operationID)
         }
-        if let identity { retryPodsAfterAuthentication(for: identity) }
+        retryPodsAfterAuthentication(for: credential.identity, generation: generation)
     }
 
-    private func authenticate(_ operation: @escaping @Sendable () async throws -> AcquiredCredential) async throws {
+    private func authenticate(_ operation: @escaping @Sendable () async throws -> AcquiredCredential) async throws -> AcquiredCredential {
         guard !stopped else { throw CancellationError() }
         authenticationRevision += 1
         let revision = authenticationRevision
@@ -154,8 +160,9 @@ public final class AppActions {
         authenticationTasks[id] = work
         defer { authenticationTasks.removeValue(forKey: id) }
         do {
-            _ = try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
+            let credential = try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
             if !stopped, revision == authenticationRevision { store.authenticationDiagnostic = nil }
+            return credential
         } catch {
             if !stopped, revision == authenticationRevision { store.authenticationDiagnostic = Self.authDiagnostic(error) }
             throw error
@@ -295,10 +302,11 @@ extension AppActions {
     public func surface(for id: UUID) -> (any TerminalSurface)? { lifetimes[id]?.surface }
 
     public func acquireCredentials(context: ResolvedContext) async throws {
-        try await authenticate { [authentication] in
+        let generation = podGeneration
+        let credential = try await authenticate { [authentication] in
             try await authentication.acquire(for: context)
         }
-        retryPodsAfterAuthentication(for: try CredentialIdentity(from: context))
+        retryPodsAfterAuthentication(for: credential.identity, generation: generation)
     }
 
     /// A native termination delegate must await owned work before allowing the process to exit.

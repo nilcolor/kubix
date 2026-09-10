@@ -53,6 +53,13 @@ actor AppTestGate {
     private func cancel(_ id: UUID) { waiters.removeValue(forKey: id)?.resume(throwing: CancellationError()) }
 }
 
+actor AppTestCleanupGate {
+    private var continuation: CheckedContinuation<Void, Never>?
+    var waiting: Bool { continuation != nil }
+    func wait() async { await withCheckedContinuation { continuation = $0 } }
+    func open() { continuation?.resume(); continuation = nil }
+}
+
 actor AppTestAuth: AuthenticationControlling {
     let gate = AppTestGate()
     private(set) var acquisitions: [ResolvedContext] = []
@@ -65,14 +72,22 @@ actor AppTestAuth: AuthenticationControlling {
     private var signInGates: [String: AppTestGate] = [:]
     private var signInFailures: [String: AuthenticationError] = [:]
     let settingsGate: AppTestGate?
+    let cleanupGate: AppTestCleanupGate?
+    private let settingsFailures: Set<Int>
+    private(set) var cleanupFinished = false
     var subscriberCount: Int { continuations.count }
 
-    init(settingsGate: AppTestGate? = nil) { self.settingsGate = settingsGate }
+    init(settingsGate: AppTestGate? = nil, settingsFailures: Set<Int> = [], cleanupGate: AppTestCleanupGate? = nil) {
+        self.settingsGate = settingsGate
+        self.settingsFailures = settingsFailures
+        self.cleanupGate = cleanupGate
+    }
     func fail(_ error: (any Error)?) { failure = error }
     func update(settings: AuthSettings) async throws {
         try settings.validate()
         self.settings.append(settings)
         if self.settings.count == 1 { try await settingsGate?.wait() }
+        if settingsFailures.contains(self.settings.count) { throw AppTestError.injected }
     }
 
     func configureSignIn(_ name: String, gate: AppTestGate, failure: AuthenticationError? = nil) {
@@ -82,7 +97,10 @@ actor AppTestAuth: AuthenticationControlling {
 
     func acquire(for context: ResolvedContext) async throws -> AcquiredCredential {
         acquisitions.append(context)
-        try await gate.wait()
+        do { try await gate.wait() } catch {
+            if let cleanupGate { await cleanupGate.wait(); cleanupFinished = true }
+            throw error
+        }
         if let failure { throw failure }
         return try AcquiredCredential(identity: CredentialIdentity(from: context), entry: nil)
     }

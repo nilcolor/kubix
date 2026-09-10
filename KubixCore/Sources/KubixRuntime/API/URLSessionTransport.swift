@@ -10,6 +10,7 @@ public final class URLSessionTransport: Transport, Sendable {
     private let credentials: any CredentialProviding
     private let sessions: [TransportPurpose: any TransportSession]
     private let clock: any TransportClock
+    private let receiptOwner = UUID()
 
     /// The required warning sink prevents silently enabling insecure TLS in app composition.
     public init(
@@ -91,7 +92,9 @@ public final class URLSessionTransport: Transport, Sendable {
                 throw self.responseError(response.statusCode, body, request, acquired, retryAfter: response.retryAfter)
             }
             if Task.isCancelled { stream.cancel(); throw CancellationError() }
-            return CredentialByteStream(underlying: stream, identity: acquired.identity, generation: acquired.entry?.generation)
+            return CredentialByteStream(
+                underlying: stream, identity: acquired.identity, generation: acquired.entry?.generation, owner: self.receiptOwner
+            )
         }
     }
 
@@ -123,8 +126,8 @@ public final class URLSessionTransport: Transport, Sendable {
 
     public func invalidateCredentials(after error: APIError) async throws {
         try Task.checkCancellation()
-        guard case .credentialRejected(_, let identity, let generation) = error,
-              identity == (try CredentialIdentity(from: context)) else {
+        guard case .credentialRejected(_, let identity, let generation, let owner) = error,
+              owner == receiptOwner, error.httpCode == 401, !error.credentialRefreshExhausted else {
             throw APIError.credentialsExhausted(error)
         }
         await credentials.invalidate(identity, failedGeneration: generation)
@@ -143,7 +146,7 @@ public final class URLSessionTransport: Transport, Sendable {
                 guard error.httpCode == 401 else { throw error }
                 if managed {
                     guard let entry = acquired.entry else { throw APIError.credentialsExhausted(error) }
-                    throw APIError.credentialRejected(error, identity: acquired.identity, generation: entry.generation)
+                    throw APIError.credentialRejected(error, identity: acquired.identity, generation: entry.generation, owner: receiptOwner)
                 }
                 guard attempt == 0 else { throw APIError.credentialsExhausted(error) }
                 if let entry = acquired.entry {

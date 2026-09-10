@@ -10,6 +10,7 @@ final class LoopbackTransportServer: @unchecked Sendable {
         case http(Int, String, retryAfter: String? = nil)
         case websocket
         case quiet
+        case quietBody(TimeInterval)
     }
     enum Failure: Error { case socket, request, frame }
 
@@ -22,6 +23,8 @@ final class LoopbackTransportServer: @unchecked Sendable {
     private var binary: Data?
     private var pingReceived = false
     private var framePrefixes: [[UInt8]] = []
+    private var quietStart: ContinuousClock.Instant?
+    var quietStarted: ContinuousClock.Instant? { lock.withLock { quietStart } }
     private let completion = TransportPromise<Void>()
     var request: String { lock.withLock { captured } }
     var receivedBinary: Data? { lock.withLock { binary } }
@@ -96,7 +99,22 @@ final class LoopbackTransportServer: @unchecked Sendable {
             // Caller cancellation closes the TCP connection. The socket timeout bounds failures.
             var byte: UInt8 = 0
             _ = Darwin.recv(socket, &byte, 1, 0)
+        case .quietBody(let seconds):
+            try quietBody(socket, seconds: seconds)
         }
+    }
+
+    private func quietBody(_ socket: Int32, seconds: TimeInterval) throws {
+        try write(socket, Data("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n".utf8))
+        let start = ContinuousClock.now
+        lock.withLock { quietStart = start }
+        let deadline = start.advanced(by: .seconds(seconds))
+        while ContinuousClock.now < deadline {
+            var peerEvent = pollfd(fd: socket, events: Int16(POLLIN), revents: 0)
+            if Darwin.poll(&peerEvent, 1, 50) > 0 || lock.withLock({ stopped }) { return }
+        }
+        let marker = "synthetic post-quiet marker\n"
+        try write(socket, Data("\(String(marker.utf8.count, radix: 16))\r\n\(marker)\r\n0\r\n\r\n".utf8))
     }
 
     private func upgrade(_ socket: Int32, request: String) throws {

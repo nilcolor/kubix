@@ -3,6 +3,65 @@ import KubixCore
 import Testing
 
 @Suite @MainActor struct AppActionsRaceTests {
+    @Test func successfulSaveSurvivesQueuedFailureWithoutOverwritingNewerDraft() async throws {
+        let gate = AppTestGate()
+        let auth = AppTestAuth(settingsGate: gate, settingsFailures: [2])
+        let store = AppStore()
+        let actions = AppActions(store: store, exec: AppTestExec(), authentication: auth, surfaces: AppTestSurfaces())
+        defer { actions.shutdown() }
+        let good = AuthSettings(searchDirectories: ["/working"])
+        let first = Task { try await actions.updateAuthSettings(good) }
+        try await appEventually { await auth.settings.count == 1 }
+        let second = Task { try await actions.updateAuthSettings(AuthSettings(searchDirectories: ["/failing"])) }
+        var draft = store.settingsDraft
+        draft.searchDirectories = "/unsaved-draft"
+        actions.setSettingsDraft(draft)
+        await gate.open()
+        try await first.value
+        await #expect(throws: AppTestError.injected) { try await second.value }
+        #expect(store.authSettings == good)
+        #expect(store.settingsDraft == draft)
+        let later = AuthSettings(searchDirectories: ["/later"])
+        try await actions.updateAuthSettings(later)
+        #expect(store.authSettings == later && store.settingsDraft.searchDirectories == "/later")
+    }
+
+    @Test func successfulSaveCannotDiscardDraftEditedWhilePersistenceIsPending() async throws {
+        let gate = AppTestGate()
+        let auth = AppTestAuth(settingsGate: gate)
+        let store = AppStore()
+        let actions = AppActions(store: store, exec: AppTestExec(), authentication: auth, surfaces: AppTestSurfaces())
+        defer { actions.shutdown() }
+        let settings = AuthSettings(searchDirectories: ["/persisted"])
+        let work = Task { try await actions.updateAuthSettings(settings) }
+        try await appEventually { await gate.count == 1 }
+        var draft = store.settingsDraft
+        draft.searchDirectories = "/newer-draft"
+        actions.setSettingsDraft(draft)
+        await gate.open()
+        try await work.value
+        #expect(store.authSettings == settings && store.settingsDraft == draft)
+    }
+
+    @Test func saveCompletionCannotReplaceNewContextsDraftOrDiagnostic() async throws {
+        let gate = AppTestGate()
+        let auth = AppTestAuth(settingsGate: gate)
+        let store = AppStore(contexts: [try appContext(), try appContext("second")])
+        let actions = AppActions(store: store, exec: AppTestExec(), authentication: auth, surfaces: AppTestSurfaces())
+        defer { actions.shutdown() }
+        var original = store.settingsDraft
+        original.searchDirectories = "/persisted"
+        actions.setSettingsDraft(original)
+        let work = Task { await actions.saveAuthSettings() }
+        try await appEventually { await gate.count == 1 }
+        try actions.selectContext(named: "second")
+        let newDraft = store.settingsDraft
+        await gate.open()
+        await work.value
+        #expect(store.authSettings.searchDirectories == ["/persisted"])
+        #expect(store.settingsDraft == newDraft && store.settingsDiagnostic == nil)
+    }
+
     @Test func settingsSavesAreSerializedAndOnlyLatestSnapshotBecomesCurrent() async throws {
         let gate = AppTestGate()
         let auth = AppTestAuth(settingsGate: gate)

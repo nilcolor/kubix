@@ -8,6 +8,7 @@ public extension AppActions {
         configurationRevision += 1
         let revision = configurationRevision
         let settingsVersion = settingsRevision
+        let committedSettingsVersion = committedSettingsRevision
         store.isLoadingConfiguration = true
         let snapshot = await configurations.load()
         guard !stopped, revision == configurationRevision else { return }
@@ -16,7 +17,8 @@ public extension AppActions {
         let selectedName = store.selectedContext?.name ?? snapshot.preferredContext
         store.selectedContext = snapshot.contexts.first(where: { $0.name == selectedName }) ?? snapshot.contexts.first
         resetNamespaceSelection()
-        if settingsVersion == settingsRevision, let settings = snapshot.settings { store.authSettings = settings }
+        if settingsVersion == settingsRevision, committedSettingsVersion == committedSettingsRevision,
+           let settings = snapshot.settings { store.authSettings = settings }
         store.isLoadingConfiguration = false
         store.hasLoadedConfiguration = true
         resetSettingsDraft()
@@ -29,7 +31,7 @@ public extension AppActions {
         if value { resetSettingsDraft() }
     }
     func setUseDeviceCode(_ value: Bool) { store.useDeviceCode = value }
-    func setSettingsDraft(_ value: AuthSettingsDraft) { store.settingsDraft = value }
+    func setSettingsDraft(_ value: AuthSettingsDraft) { settingsDraftRevision += 1; store.settingsDraft = value }
 
     func selectShell(_ id: UUID) {
         guard store.execSessions.contains(where: { $0.id == id && !$0.isClosed }) else { return }
@@ -38,12 +40,19 @@ public extension AppActions {
     }
 
     func saveAuthSettings() async {
+        let draftRevision = settingsDraftRevision
+        settingsSaveRevision += 1
+        let revision = settingsSaveRevision
         do {
             let settings = try store.settingsDraft.applying(to: store.authSettings, context: store.selectedContext)
             try await updateAuthSettings(settings)
-            if !stopped { store.settingsDiagnostic = "Settings saved. Existing sessions retain their original targets." }
+            if !stopped, revision == settingsSaveRevision, draftRevision == settingsDraftRevision {
+                store.settingsDiagnostic = "Settings saved. Existing sessions retain their original targets."
+            }
         } catch {
-            if !stopped { store.settingsDiagnostic = Self.authDiagnostic(error) }
+            if !stopped, revision == settingsSaveRevision, draftRevision == settingsDraftRevision {
+                store.settingsDiagnostic = Self.authDiagnostic(error)
+            }
         }
     }
 
@@ -69,7 +78,8 @@ public extension AppActions {
 }
 
 extension AppActions {
-    func resetSettingsDraft() {
+    func resetSettingsDraft(afterCommit: Bool = false) {
+        if !afterCommit { settingsDraftRevision += 1 }
         store.settingsDraft = AuthSettingsDraft(settings: store.authSettings, context: store.selectedContext)
         store.settingsDiagnostic = nil
     }

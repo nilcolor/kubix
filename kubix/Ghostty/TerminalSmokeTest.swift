@@ -35,6 +35,9 @@ enum TerminalSmokeTest {
             stage = "command wait policy and window close"
             try await TerminalSmokeLifecycle.check(configuration: configuration)
             evidence["additionalLifecycle"] = "command wait=false/true, initial_input, live window close, pre-attach close passed"
+            stage = "synthetic clipboard approval and teardown"
+            try await TerminalPasteSmoke.check(configuration: configuration)
+            evidence["paste"] = "synthetic Cmd-V safe/unsafe/bracketed approval/cancel, OSC52 read denial, keyboard/IME, pending destruction and child cleanup passed"
             evidence["result"] = "passed"
         } catch {
             evidence["result"] = "failed"

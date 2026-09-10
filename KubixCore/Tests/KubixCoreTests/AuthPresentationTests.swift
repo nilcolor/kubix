@@ -69,16 +69,25 @@ import Testing
 
     @Test func standalonePluginAuthenticationJoinsShutdown() async throws {
         let context = try appContext()
-        let auth = AppTestAuth()
+        let cleanup = AppTestCleanupGate()
+        let auth = AppTestAuth(cleanupGate: cleanup)
         let store = AppStore(contexts: [context])
         let actions = AppActions(store: store, exec: AppTestExec(), authentication: auth, surfaces: AppTestSurfaces())
         try actions.selectContext(named: context.name)
         let work = Task { await actions.authenticateSelectedContext() }
         try await appEventually { await auth.acquisitions.count == 1 }
-        await actions.shutdownAndWait()
-        await work.value
+        var shutdownReturned = false
+        let shutdown = Task { await actions.shutdownAndWait(); shutdownReturned = true }
+        try await appEventually { await cleanup.waiting }
+        #expect(!shutdownReturned)
+        #expect(await auth.cleanupFinished == false)
+        await cleanup.open()
+        await shutdown.value
+        #expect(shutdownReturned)
+        #expect(await auth.cleanupFinished)
         #expect(store.execSessions.isEmpty && store.authenticationSessions.isEmpty)
         #expect(store.authenticationDiagnostic == nil)
+        await work.value
     }
 
     @Test func browserIsExplicitSafeAndUnavailableAfterCancellation() async throws {

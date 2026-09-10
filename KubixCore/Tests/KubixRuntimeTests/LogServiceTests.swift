@@ -29,24 +29,48 @@ func logTestTarget() throws -> LogTarget {
 
 @Suite @MainActor struct LogServiceTests {
     @Test func realElapsedQuietFollowSurvivesMoreThanOneMinute() async throws {
-        let stream = MemoryByteStream()
-        let session = ScriptedTransportSession(stream: { _, _ in HTTPStreamResponse(statusCode: 200, body: stream) })
-        let transport = try await testTransport(session: session)
+        let server = try LoopbackTransportServer(reply: .quietBody(61))
+        defer { server.stop() }
+        let clock = ContinuousTransportClock()
+        let transport = try await URLSessionTransport(
+            context: runtimeContext(user: nil, server: "http://127.0.0.1:\(server.port)"),
+            credentials: CredentialProvider(resolver: testResolver()), clock: clock, warning: { _ in }
+        )
         let capture = LogCapture()
         let work = try runLog(transport, capture: capture)
         defer { work.cancel() }
-        try await watchEventually { stream.isWaiting && capture.opened }
-        let began = ContinuousClock.now
-        try await Task.sleep(for: .seconds(61))
+        try await watchEventually { server.quietStarted != nil }
+        let began = try #require(server.quietStarted)
+        let outcome = try await withTransportDeadline(
+            until: clock.now + 70, clock: clock, cancel: { work.cancel() }, operation: { await work.value }
+        )
         let elapsed = began.duration(to: .now)
         #expect(elapsed > .seconds(60))
-        #expect(!stream.cancelled && capture.opened && capture.lines.isEmpty)
-        stream.yield(Data("synthetic post-quiet marker\n".utf8))
-        try await watchEventually { capture.lines.count == 1 && stream.isWaiting }
-        work.cancel()
-        #expect(await work.value == .cancelled)
-        #expect(stream.cancelled)
-        print("CONTROLLED quiet follow: real elapsed \(elapsed); post-quiet delivery and cancellation passed")
+        #expect(outcome == .completed && capture.opened)
+        #expect(capture.lines.map(\.text) == ["synthetic post-quiet marker"])
+        try await server.wait()
+        print("CONTROLLED loopback URLSession quiet follow: elapsed \(elapsed); post-quiet marker and joined EOF passed")
+    }
+
+    @Test func continuousDeadlineRejectsQuietLoopbackNegativeControl() async throws {
+        let server = try LoopbackTransportServer(reply: .quietBody(2))
+        defer { server.stop() }
+        let clock = ContinuousTransportClock()
+        let transport = try await URLSessionTransport(
+            context: runtimeContext(user: nil, server: "http://127.0.0.1:\(server.port)"),
+            credentials: CredentialProvider(resolver: testResolver()), clock: clock, warning: { _ in }
+        )
+        let started = clock.now
+        await #expect(throws: APIError.transport(.timedOut)) {
+            try await withTransportDeadline(until: clock.now + 0.2, clock: clock) {
+                let stream = try await transport.stream(for: podsRequest, purpose: .logs)
+                defer { stream.cancel() }
+                _ = try await stream.read()
+            }
+        }
+        #expect(clock.now - started >= 0.2 && clock.now - started < 2)
+        server.stop()
+        try await server.wait()
     }
 
     @Test func authenticatedFollowUsesLongProfileAndSplitUTF8CleanEOF() async throws {

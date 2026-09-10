@@ -174,6 +174,7 @@ public enum KubeconfigError: Error, Equatable, Sendable, LocalizedError, CustomS
     case unknownUser
     case invalidServer
     case unsupportedProxy
+    case unsupportedAuthentication
 
     public var description: String {
         switch self {
@@ -201,6 +202,8 @@ public enum KubeconfigError: Error, Equatable, Sendable, LocalizedError, CustomS
             "The selected cluster requires an HTTP(S) server URL without embedded credentials."
         case .unsupportedProxy:
             "Kubeconfig proxy-url is unsupported. This context cannot be activated; no direct connection will be made."
+        case .unsupportedAuthentication:
+            "This context uses unsupported auth-provider, basic authentication or impersonation. Use a supported bearer-token configuration."
         }
     }
 

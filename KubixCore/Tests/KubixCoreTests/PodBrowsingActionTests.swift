@@ -142,6 +142,9 @@ import Testing
         }
         try await appEventually { await probe.callbacks.count == 1 }
         #expect(store.selectedNamespace == "first-namespace" && store.namespaceDraft == "unfinished-draft")
+        #expect(await probe.targets.count == 1)
+        #expect(await probe.targets.first?.context == context)
+        #expect(await probe.targets.first?.namespace == "first-namespace")
         #expect(store.connection == .connecting && store.execSessions.isEmpty)
         await actions.shutdownAndWait()
     }

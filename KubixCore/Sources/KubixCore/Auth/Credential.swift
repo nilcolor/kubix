@@ -44,6 +44,7 @@ public struct Credential: Equatable, Sendable, CustomStringConvertible, CustomRe
 /// including reflection. The cache owner must discard identities and credentials on process exit.
 public struct CredentialIdentity: Hashable, Sendable, CustomStringConvertible, CustomReflectable {
     private let configuration: Data
+    private let association: Data
 
     public var description: String { "CredentialIdentity (redacted)" }
     public var customMirror: Mirror { Mirror(self, children: ["contents": "redacted"]) }
@@ -65,9 +66,21 @@ public struct CredentialIdentity: Hashable, Sendable, CustomStringConvertible, C
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys]
             configuration = try encoder.encode(snapshot)
+            association = try encoder.encode(IdentityConfiguration(
+                clusterName: context.clusterName, cluster: context.cluster, clusterSource: context.clusterSourceFile,
+                userName: context.userName, user: context.user, userSource: context.userSourceFile,
+                settings: settings, executable: nil, environment: [:]
+            ))
         } catch {
             throw AuthError.invalidConfiguration
         }
+    }
+
+    /// Correlate a provider-resolved identity without discarding its immutable context/settings.
+    /// This is not cache equality: executable and effective environment still distinguish cache keys.
+    public func belongs(to context: ResolvedContext, settings: AuthSettings) -> Bool {
+        guard let expected = try? CredentialIdentity(from: context, settings: settings) else { return false }
+        return association == expected.association
     }
 }
 

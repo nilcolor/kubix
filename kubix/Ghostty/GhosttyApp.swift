@@ -32,8 +32,10 @@ final class GhosttyApp {
         runtime.wakeup_cb = { _ in GhosttyCallbacks.wakeup() }
         runtime.action_cb = { _, target, action in GhosttyCallbacks.action(target: target, action: action) }
         // AppKit Copy/Paste operates on the main actor. Terminal-initiated clipboard reads are denied.
-        runtime.read_clipboard_cb = { _, _, _ in false }
-        runtime.confirm_read_clipboard_cb = { _, _, _, _ in }
+        runtime.read_clipboard_cb = { userdata, _, state in GhosttyCallbacks.readClipboard(userdata, state: state) }
+        runtime.confirm_read_clipboard_cb = { userdata, _, state, kind in
+            GhosttyCallbacks.confirmClipboard(userdata, state: state, kind: kind)
+        }
         runtime.write_clipboard_cb = { _, _, content, count, confirm in
             GhosttyCallbacks.writeClipboard(content, count: count, requiresConfirmation: confirm)
         }

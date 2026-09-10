@@ -70,11 +70,13 @@ struct NamespaceSelectionTests {
 actor PodActionProbe: PodWatching {
     let gate = AppTestGate()
     private(set) var callbacks: [@MainActor @Sendable (PodWatchUpdate) -> Void] = []
+    private(set) var targets: [(context: ResolvedContext, namespace: String)] = []
     private(set) var ended = 0
     func run(
         context: ResolvedContext, namespace: String, update: @escaping @MainActor @Sendable (PodWatchUpdate) -> Void
     ) async {
         callbacks.append(update)
+        targets.append((context, namespace))
         do { try await gate.wait() } catch is CancellationError {
             // Deliberately retain callbacks to exercise the mutation seam's generation guard.
         } catch { Issue.record("Unexpected gate error.") }

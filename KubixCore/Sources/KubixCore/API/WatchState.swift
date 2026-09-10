@@ -79,9 +79,7 @@ public struct WatchState: Sendable {
         case .deleted(let table): return apply(table, deleting: true)
         case .bookmark(let bookmark): return apply(bookmark)
         case .error(let status):
-            return failedRequest(
-                .status(status, httpCode: status.code ?? Self.code(for: status.reason), resource: "pods watch"), jitter: jitter
-            )
+            return failedRequest(.watchStatus(status), jitter: jitter)
         }
     }
 
@@ -228,16 +226,4 @@ public struct WatchState: Sendable {
         }
     }
 
-    private static func code(for reason: String?) -> Int {
-        switch reason {
-        case "Expired", "Gone": 410
-        case "Unauthorized": 401
-        case "Forbidden": 403
-        case "TooManyRequests": 429
-        case "InternalError": 500
-        case "ServiceUnavailable": 503
-        case "Timeout", "ServerTimeout": 504
-        default: 0
-        }
-    }
 }

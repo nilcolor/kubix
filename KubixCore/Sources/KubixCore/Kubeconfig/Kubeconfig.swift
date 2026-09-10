@@ -68,6 +68,9 @@ public struct Kubeconfig: Codable, Equatable, Sendable, CustomStringConvertible 
             }
             user = match
         }
+        guard user?.user.unsupportedAuthenticationFields.isEmpty != false else {
+            throw KubeconfigError.unsupportedAuthentication
+        }
         let namespace = selected.context.namespace.flatMap { $0.isEmpty ? nil : $0 } ?? "default"
         return ResolvedContext(
             name: selected.name, namespace: namespace, cluster: cluster, user: user,
@@ -188,12 +191,14 @@ public struct KubeconfigUser: Codable, Equatable, Sendable, CustomStringConverti
     public var clientCertificateData: String?
     public var clientKey: String?
     public var clientKeyData: String?
+    public private(set) var unsupportedAuthenticationFields: Set<UnsupportedAuthenticationField>
     public var description: String { "KubeconfigUser (contents redacted)" }
 
     public init(
         token: String? = nil, tokenFile: String? = nil, exec: KubeconfigExec? = nil,
         clientCertificate: String? = nil, clientCertificateData: String? = nil,
-        clientKey: String? = nil, clientKeyData: String? = nil
+        clientKey: String? = nil, clientKeyData: String? = nil,
+        unsupportedAuthenticationFields: Set<UnsupportedAuthenticationField> = []
     ) {
         self.token = token
         self.tokenFile = tokenFile
@@ -202,6 +207,7 @@ public struct KubeconfigUser: Codable, Equatable, Sendable, CustomStringConverti
         self.clientCertificateData = clientCertificateData
         self.clientKey = clientKey
         self.clientKeyData = clientKeyData
+        self.unsupportedAuthenticationFields = unsupportedAuthenticationFields
     }
 
     enum CodingKeys: String, CodingKey {
@@ -211,6 +217,42 @@ public struct KubeconfigUser: Codable, Equatable, Sendable, CustomStringConverti
         case clientKey = "client-key"
         case clientKeyData = "client-key-data"
     }
+
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        token = try values.decodeIfPresent(String.self, forKey: .token)
+        tokenFile = try values.decodeIfPresent(String.self, forKey: .tokenFile)
+        exec = try values.decodeIfPresent(KubeconfigExec.self, forKey: .exec)
+        clientCertificate = try values.decodeIfPresent(String.self, forKey: .clientCertificate)
+        clientCertificateData = try values.decodeIfPresent(String.self, forKey: .clientCertificateData)
+        clientKey = try values.decodeIfPresent(String.self, forKey: .clientKey)
+        clientKeyData = try values.decodeIfPresent(String.self, forKey: .clientKeyData)
+        let unsupported = try decoder.container(keyedBy: UnsupportedAuthenticationField.self)
+        unsupportedAuthenticationFields = Set(unsupported.allKeys)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encodeIfPresent(token, forKey: .token)
+        try values.encodeIfPresent(tokenFile, forKey: .tokenFile)
+        try values.encodeIfPresent(exec, forKey: .exec)
+        try values.encodeIfPresent(clientCertificate, forKey: .clientCertificate)
+        try values.encodeIfPresent(clientCertificateData, forKey: .clientCertificateData)
+        try values.encodeIfPresent(clientKey, forKey: .clientKey)
+        try values.encodeIfPresent(clientKeyData, forKey: .clientKeyData)
+        // Preserve rejection through round trips, without retaining unsupported credential values.
+        var unsupported = encoder.container(keyedBy: UnsupportedAuthenticationField.self)
+        for field in unsupportedAuthenticationFields { try unsupported.encodeNil(forKey: field) }
+    }
+}
+
+public enum UnsupportedAuthenticationField: String, CodingKey, Sendable {
+    case authProvider = "auth-provider"
+    case username, password
+    case impersonate = "as"
+    case impersonateUID = "as-uid"
+    case impersonateGroups = "as-groups"
+    case impersonateExtra = "as-user-extra"
 }
 
 public struct KubeconfigExec: Codable, Equatable, Sendable, CustomStringConvertible {

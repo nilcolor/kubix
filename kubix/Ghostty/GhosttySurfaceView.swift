@@ -17,6 +17,9 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
     var onClose: (() -> Void)?
     var onFailure: (() -> Void)?
     var onWindowClose: (() -> Void)?
+    nonisolated let pasteRequest = GhosttyPasteRequest()
+    var clipboardText: () -> String? = { NSPasteboard.general.string(forType: .string) }
+    var pendingPaste: PendingGhosttyPaste?
 
     var interpretingKey = false
     var committedText: [String] = []
@@ -91,6 +94,7 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
     private func destroySurface() {
         guard !isDestroyed else { return }
         isDestroyed = true
+        finishPaste(approved: false)
         if let surface {
             self.surface = nil
             ghostty_surface_free(surface)
@@ -230,11 +234,6 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
         let copied = String(decoding: UnsafeRawBufferPointer(start: pointer, count: Int(text.text_len)), as: UTF8.self)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(copied, forType: .string)
-    }
-
-    @objc func paste(_ sender: Any?) {
-        guard let surface, let text = NSPasteboard.general.string(forType: .string) else { return }
-        text.withCString { ghostty_surface_text(surface, $0, UInt(text.utf8.count)) }
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {

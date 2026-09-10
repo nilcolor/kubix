@@ -102,3 +102,25 @@ func nativeOwnerShutdownWaitsForSessionAndAuthenticationCleanup(closeFirst: Bool
     #expect(store.authSettings == updated)
     #expect(store.settingsDraft.searchDirectories == "/new/tools")
 }
+
+@Test @MainActor func reloadStartedDuringPendingSaveCannotOverwriteItsLaterSuccessfulCommit() async throws {
+    let saveGate = AppTestGate()
+    let reloadGate = AppTestGate()
+    let loader = SnapshotLoader(AppConfiguration(configuration: nil, settings: AuthSettings()), gate: reloadGate)
+    let store = AppStore()
+    let auth = AppTestAuth(settingsGate: saveGate)
+    let actions = AppActions(
+        store: store, exec: AppTestExec(), authentication: auth, surfaces: AppTestSurfaces(), configurations: loader
+    )
+    defer { actions.shutdown() }
+    let updated = AuthSettings(searchDirectories: ["/working"])
+    let save = Task { try await actions.updateAuthSettings(updated) }
+    try await appEventually { await saveGate.count == 1 }
+    let reload = Task { await actions.loadConfiguration() }
+    try await appEventually { await reloadGate.count == 1 }
+    await saveGate.open()
+    try await save.value
+    await reloadGate.open()
+    await reload.value
+    #expect(store.authSettings == updated && store.settingsDraft.searchDirectories == "/working")
+}

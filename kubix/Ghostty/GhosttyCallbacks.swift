@@ -39,6 +39,16 @@ enum GhosttyCallbacks {
         DispatchQueue.main.async { view.requestClose() }
     }
 
+    static func readClipboard(_ userdata: UnsafeMutableRawPointer?, state: UnsafeMutableRawPointer?) -> Bool {
+        view(userdata)?.pasteRequest.read(state) ?? false
+    }
+
+    static func confirmClipboard(
+        _ userdata: UnsafeMutableRawPointer?, state: UnsafeMutableRawPointer?, kind: ghostty_clipboard_request_e
+    ) {
+        view(userdata)?.pasteRequest.confirm(state, kind: kind)
+    }
+
     static func writeClipboard(
         _ content: UnsafePointer<ghostty_clipboard_content_s>?,
         count: Int,

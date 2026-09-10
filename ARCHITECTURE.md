@@ -120,6 +120,11 @@ finish under it. Context/settings changes do not retarget a running shell or
 silently replace the configuration of an in-flight login. Credential identities
 separate old and new settings. Settings persist only nonsecret path/profile/
 timeout choices in the app's Application Support directory, not credentials.
+Requested-save, successful-commit and draft revisions are distinct: a failed queued
+save cannot discard an earlier success, and old completions cannot overwrite newer
+drafts or successes. Authentication recovery compares the acquired identity's
+immutable context/settings association and the captured pod generation, not an
+exec identity against a context-only cache key.
 
 ### Privacy boundary
 
@@ -135,6 +140,10 @@ Redacted descriptions are not a universal secret scrubber: structured request,
 Status, terminal, and log content must still be treated as sensitive. HTTP
 diagnostics discard arbitrary/oversized bodies, bound decoded Status fields,
 and redact the current bearer token; remote exec Status remains server content.
+In-stream watch Status errors instead retain only code, allowlisted reason and
+nonnegative retry delay, discarding free text/details before state or receipt storage.
+Unsupported kubeconfig auth-provider/basic-auth/impersonation markers reject only
+the selected context before credentials/IO and survive supported model round trips.
 Kubix's credentials are memory-only, while external plugins may maintain their
 own normal stores. The bridge is given socket/nonce configuration, not acquired
 Kubernetes credentials; it is a relay, not a credential broker or security sandbox.
@@ -154,7 +163,9 @@ Redirects are refused, even on the same host, to avoid forwarding bearer tokens.
 Credentials are acquired before the network deadline and attached only in
 transport. Ordinary requests/upgrade can make one refresh attempt on an exposed
 401; 403 is terminal. WatchService owns its separate bounded refresh/retry budget
-using credential-generation receipts. No transport entry point invents a browser
+using transport-owner-bound receipts carrying the **actual acquired** identity and
+generation. A different transport cannot consume the receipt, and stale generations
+cannot invalidate replacements. No transport entry point invents a browser
 login command, though configured credential plugins can initiate browser auth.
 
 | Operation | Current policy |
@@ -352,6 +363,10 @@ App shutdown frees surfaces before the Ghostty app/config handles.
 Keyboard/IME, paste/copy, mouse, focus, appearance, and backing-scale geometry
 are adapted in `kubix/Ghostty/`. Terminal-initiated clipboard reads are denied;
 clipboard writes requiring confirmation are not silently approved.
+Only explicit AppKit paste temporarily enables the synchronous read callback, with
+an injected clipboard source in native tests. Ghostty receives unconfirmed text and
+requests approval for unsafe pastes. Pending requests complete with empty text on
+Cancel/teardown before surface free; sheet completions are identity-guarded.
 `TerminalConfiguration.bridge` quotes the app executable because Ghostty parses
 an explicit command as shell text.
 

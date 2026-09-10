@@ -102,7 +102,10 @@ not bundle cloud CLIs or configure cloud accounts.
 Supported authentication is `token`, `tokenFile`, and **token-returning**
 ExecCredential `client.authentication.k8s.io/v1` or `v1beta1` plugins. Deliberately
 anonymous contexts are possible. A selected malformed credential does not fall
-back to anonymous. Plugins run with closed stdin; v1 requires `interactiveMode`
+back to anonymous. Legacy `auth-provider`, basic username/password authentication,
+and impersonation fields are explicitly unsupported: their selected contexts fail
+before credentials/networking, including token-plus-impersonation configurations.
+Plugins run with closed stdin; v1 requires `interactiveMode`
 set to `Never` or `IfAvailable`. Browser/device-code interaction is supported without
 terminal stdin; `Always` and terminal-input-only plugins are not supported.
 
@@ -117,8 +120,10 @@ The recovery model is Lens-style **manual Retry**: if the plugin starts browser
 approval but exits unsuccessfully, finish approval and choose **Retry
 authentication**. Kubix does not detect browser completion and run a login loop.
 Retry belongs to the original operation/context even if the picker has changed.
-If pod discovery remains failed after credentials are ready, use **Retry pods**
-or **Load pods** / **Refresh pods**. Shell authentication failures have a separate
+Successful Authenticate/Retry resumes authentication-failed discovery only for
+the matching context/settings and unchanged committed namespace. It does not
+commit a namespace draft, resume another context, or retry a 403. **Retry pods**
+also explicitly retries the committed target. Shell authentication failures have a separate
 **Retry shell** action; an already-started remote shell is never replayed.
 
 For `aws-vault` or another wrapper, preserve the **exact configured wrapper,
@@ -166,6 +171,8 @@ files are not edited. `AuthSettings.timeout` is persisted configuration (positiv
 at most one day), but the current settings sheet has no timeout field. Saving
 settings invalidates resolver settings/PATH caches for subsequent acquisitions;
 in-flight work and running shells retain their captured configuration.
+Overlapping saves retain the last successful persisted/runtime settings even if
+a queued save fails; later unsaved drafts are not overwritten by older completions.
 
 ## API permissions and compatibility
 

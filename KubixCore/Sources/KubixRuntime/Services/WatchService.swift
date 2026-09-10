@@ -151,7 +151,7 @@ private struct PodWatchRun {
                     try checkRowBudget(event)
                     decision = state.receive(event, jitter: jitter())
                     if case .error(let status) = event, decision == .refreshCredentials {
-                        rejection = stream.credentialRejection(.status(status, httpCode: 401, resource: "pods watch"))
+                        rejection = stream.credentialRejection(.watchStatus(status))
                     }
                 case .failure(let error): decision = state.decodingFailed(error)
                 }

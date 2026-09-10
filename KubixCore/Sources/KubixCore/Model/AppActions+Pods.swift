@@ -93,10 +93,11 @@ public extension AppActions {
 }
 
 extension AppActions {
-    func retryPodsAfterAuthentication(for identity: CredentialIdentity) {
-        guard !stopped, let context = store.selectedContext, (try? CredentialIdentity(from: context)) == identity,
+    func retryPodsAfterAuthentication(for identity: CredentialIdentity, generation: UUID) {
+        guard !stopped, podGeneration == generation, let context = store.selectedContext,
+              identity.belongs(to: context, settings: store.authSettings),
               case .failed(let error) = store.connection,
-              error == .podAuthentication || error.httpCode == 401 else { return }
+              error == .podAuthentication || error == .watch(.credentialRefreshLimit) || error.httpCode == 401 else { return }
         refreshPods()
     }
 

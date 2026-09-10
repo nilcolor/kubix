@@ -19,7 +19,7 @@ struct WatchRetryTests {
         #expect(http.failedRequest(error, jitter: 1) == expected)
         let streamed = stream.receive(.error(status), jitter: 1)
         if case .failed = expected {
-            #expect(streamed == .failed(.api(.status(status, httpCode: code, resource: "pods watch"))))
+            #expect(streamed == .failed(.api(.watchStatus(status))))
         } else { #expect(streamed == expected) }
         #expect(http.rows.isEmpty == (code == 410))
         #expect(stream.rows.isEmpty == (code == 410))
@@ -34,7 +34,8 @@ struct WatchRetryTests {
         var state = try watchState()
         let status = try watchStatus(reason: reason)
         var comparison = try watchState()
-        #expect(state.receive(.error(status)) == comparison.failedRequest(.status(status, httpCode: code, resource: "pods watch")))
+        #expect(APIError.watchStatus(status).httpCode == code)
+        #expect(state.receive(.error(status)) == comparison.failedRequest(.watchStatus(status)))
     }
 
     @Test func httpForbiddenOverridesMisleadingExpiredBodyAndDoesNotLoop() throws {
