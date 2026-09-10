@@ -14,6 +14,7 @@ public actor CredentialProvider: CredentialProviding {
     private let runner: CredentialRunner
     private let materials: any AuthMaterialReading
     private var cache: CredentialCache
+    private let owner = SharedOperationOwner<AcquiredCredential>()
     private var flights: [CredentialIdentity: SharedOperation<AcquiredCredential>] = [:]
     private var loginRefreshes: [CredentialIdentity: (id: UUID, work: SharedOperation<AcquiredCredential>)] = [:]
 
@@ -33,10 +34,12 @@ public actor CredentialProvider: CredentialProviding {
     }
 
     func update(settings: AuthSettings) async throws {
+        try owner.checkOpen()
         try await resolver.update(settings: settings)
     }
 
     func prepare(_ context: ResolvedContext) async throws -> CredentialPlan {
+        try owner.checkOpen()
         let method = try AuthMethod.resolve(from: context)
         let plugin: ResolvedPlugin?
         let settings: AuthSettings
@@ -48,6 +51,7 @@ public actor CredentialProvider: CredentialProviding {
             plugin = nil
             settings = try await resolver.settings()
         }
+        try owner.checkOpen()
         return CredentialPlan(
             context: context, method: method,
             identity: try CredentialIdentity(
@@ -57,14 +61,14 @@ public actor CredentialProvider: CredentialProviding {
     }
 
     func acquire(plan: CredentialPlan, progress: @escaping AuthProgress) async throws -> AcquiredCredential {
-        try Task.checkCancellation()
+        try owner.checkOpen()
         if case .fresh(let entry) = cache.lookup(for: plan.identity) {
             return AcquiredCredential(identity: plan.identity, entry: entry)
         }
         if let operation = flights[plan.identity], !operation.isFinished {
             return try await operation.value(progress: progress)
         }
-        let operation = SharedOperation<AcquiredCredential> { output in
+        let operation = try owner.make { output in
             try await self.perform(plan, progress: output)
         }
         flights[plan.identity] = operation
@@ -93,10 +97,11 @@ public actor CredentialProvider: CredentialProviding {
 
     /// Rotate once per successful login, even with several callers and a pre-login refresh in flight.
     func afterLogin(plan: CredentialPlan, loginID: UUID, progress: @escaping AuthProgress) async throws -> AcquiredCredential {
+        try owner.checkOpen()
         if let refresh = loginRefreshes[plan.identity], refresh.id == loginID {
             return try await refresh.work.value(progress: progress)
         }
-        let work = SharedOperation<AcquiredCredential> { output in
+        let work = try owner.make { output in
             if let old = await self.pending(for: plan.identity) {
                 _ = try? await old.value()
             }
@@ -118,6 +123,7 @@ public actor CredentialProvider: CredentialProviding {
     }
 
     private func perform(_ plan: CredentialPlan, progress: @escaping AuthProgress) async throws -> AcquiredCredential {
+        try owner.checkOpen()
         let credential: Credential
         switch plan.method {
         case .token(let token): credential = try Credential(token: token)
@@ -134,5 +140,15 @@ public actor CredentialProvider: CredentialProviding {
         try Task.checkCancellation()
         guard credential.clientCertificateData == nil else { throw AuthenticationError.unsupportedCertificate }
         return AcquiredCredential(identity: plan.identity, entry: try cache.store(credential, for: plan.identity))
+    }
+
+    public func shutdown() async {
+        owner.cancelAll()
+        async let resolution: Void = resolver.shutdown()
+        await owner.shutdown()
+        await resolution
+        flights.removeAll()
+        loginRefreshes.removeAll()
+        cache.removeAll()
     }
 }

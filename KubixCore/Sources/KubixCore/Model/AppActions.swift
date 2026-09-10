@@ -320,6 +320,7 @@ extension AppActions {
         let detailWork = Array(podDetailTasks.values)
         let logWork = Array(logTasks.values)
         shutdown()
+        async let authenticationDrain: Void = authentication.shutdown()
         for task in pending { await task.value }
         for task in auth { _ = await task.result }
         for task in settings { _ = await task.result }
@@ -328,6 +329,7 @@ extension AppActions {
         for task in podWork { await task.value }
         for task in detailWork { await task.value }
         for task in logWork { await task.value }
+        await authenticationDrain
     }
 
     static func authDiagnostic(_ error: any Error) -> String {

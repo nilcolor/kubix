@@ -86,6 +86,7 @@ final class TransportPromise<Value: Sendable>: @unchecked Sendable {
 }
 
 func transportError(_ error: any Error) -> any Error {
+    if error is CredentialAcquisitionFailure { return error }
     if error is CancellationError || error is APIError || error is AuthenticationError || error is AuthError { return error }
     let nsError = error as NSError
     if nsError.domain == NSURLErrorDomain {

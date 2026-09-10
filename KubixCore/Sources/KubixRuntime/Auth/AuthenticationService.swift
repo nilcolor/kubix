@@ -15,6 +15,7 @@ public actor AuthenticationService: AuthenticationControlling, CredentialProvidi
     private let provider: CredentialProvider
     private let login: AWSLoginService
     private let deadline: any AuthDeadlineWaiting
+    private let owner = SharedOperationOwner<AcquiredCredential>()
     private var operations: [UUID: Operation] = [:]
     private var active: [CredentialIdentity: UUID] = [:]
     private var subscribers: [UUID: AsyncStream<AuthSession>.Continuation] = [:]
@@ -33,7 +34,9 @@ public actor AuthenticationService: AuthenticationControlling, CredentialProvidi
     }
 
     public func acquire(for context: ResolvedContext, progress: @escaping AuthProgress) async throws -> AcquiredCredential {
+        try owner.checkOpen()
         let plan = try await provider.prepare(context)
+        try owner.checkOpen()
         if let id = active[plan.identity], let operation = operations[id], !operation.work.isFinished {
             return try await operation.work.value(progress: progress)
         }
@@ -45,14 +48,16 @@ public actor AuthenticationService: AuthenticationControlling, CredentialProvidi
     }
 
     public func signIn(for context: ResolvedContext, useDeviceCode: Bool = false) async throws -> AcquiredCredential {
+        try owner.checkOpen()
         let plan = try await provider.prepare(context)
+        try owner.checkOpen()
         guard let plugin = plan.plugin else { throw AuthenticationError.unsupportedAWSInvocation }
         let binding = try AWSLoginBinding(context: context, plugin: plugin)
         if let id = active[plan.identity], let operation = operations[id],
            operation.loginKey != nil, !operation.work.isFinished {
             return try await operation.work.value()
         }
-        let ticket = await login.operation(for: binding, useDeviceCode: useDeviceCode)
+        let ticket = try await login.operation(for: binding, useDeviceCode: useDeviceCode)
         return try await begin(plan, binding: binding, ticket: ticket, useDeviceCode: useDeviceCode)
     }
 
@@ -61,6 +66,7 @@ public actor AuthenticationService: AuthenticationControlling, CredentialProvidi
     }
 
     public func update(settings: AuthSettings) async throws {
+        try owner.checkOpen()
         try await provider.update(settings: settings)
     }
 
@@ -87,6 +93,7 @@ public actor AuthenticationService: AuthenticationControlling, CredentialProvidi
     public func sessions() -> AsyncStream<AuthSession> {
         let id = UUID()
         let (stream, continuation) = AsyncStream<AuthSession>.makeStream(bufferingPolicy: .bufferingNewest(64))
+        do { try owner.checkOpen() } catch { continuation.finish(); return stream }
         subscribers[id] = continuation
         for operation in operations.values { continuation.yield(operation.session) }
         continuation.onTermination = { [weak self] _ in Task { await self?.unsubscribe(id) } }
@@ -108,6 +115,7 @@ public actor AuthenticationService: AuthenticationControlling, CredentialProvidi
     }
 
     public func retry(operationID: UUID) async throws -> AcquiredCredential {
+        try owner.checkOpen()
         guard let operation = operations[operationID] else { throw AuthenticationError.unknownOperation }
         if !operation.work.isFinished { return try await operation.work.value() }
         if operation.loginKey != nil {
@@ -120,6 +128,7 @@ public actor AuthenticationService: AuthenticationControlling, CredentialProvidi
         _ plan: CredentialPlan, binding: AWSLoginBinding? = nil, ticket: SharedOperation<Void>? = nil,
         useDeviceCode: Bool = false, progress: @escaping AuthProgress = { _ in }
     ) async throws -> AcquiredCredential {
+        try owner.checkOpen()
         if let id = active[plan.identity], let existing = operations[id], !existing.work.isFinished,
            ticket == nil || existing.loginKey != nil {
             return try await existing.work.value(progress: progress)
@@ -129,7 +138,7 @@ public actor AuthenticationService: AuthenticationControlling, CredentialProvidi
             id: id, credentialIdentity: plan.identity, provider: binding == nil ? "Credential plugin" : "AWS SSO",
             profile: binding?.profile, state: ticket == nil ? .acquiring : .waitingForBrowser
         )
-        let work = SharedOperation<AcquiredCredential> { output in
+        let work = try owner.make { output in
             try await self.perform(id: id, plan: plan, ticket: ticket, output: output)
         }
         operations[id] = Operation(
@@ -215,4 +224,18 @@ public actor AuthenticationService: AuthenticationControlling, CredentialProvidi
     private func unsubscribe(_ id: UUID) { subscribers.removeValue(forKey: id) }
 
     func waiterCount(operationID: UUID) -> Int { operations[operationID]?.work.waiterCount ?? 0 }
+
+    public func shutdown() async {
+        owner.cancelAll()
+        // Close every child owner before joining; each retains work retired from active indexes.
+        async let acquisition: Void = provider.shutdown()
+        async let browser: Void = login.shutdown()
+        await owner.shutdown()
+        await acquisition
+        await browser
+        active.removeAll()
+        operations.removeAll()
+        for subscriber in subscribers.values { subscriber.finish() }
+        subscribers.removeAll()
+    }
 }

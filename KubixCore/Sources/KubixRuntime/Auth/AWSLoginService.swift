@@ -3,6 +3,7 @@ import KubixCore
 
 public actor AWSLoginService {
     private let runner: any ProcessRunning
+    private let owner = SharedOperationOwner<Void>()
     private var flights: [AWSLoginKey: SharedOperation<Void>] = [:]
 
     public init(runner: any ProcessRunning = ProcessRunner()) { self.runner = runner }
@@ -18,9 +19,10 @@ public actor AWSLoginService {
         return operation
     }
 
-    func operation(for binding: AWSLoginBinding, useDeviceCode: Bool) -> SharedOperation<Void> {
+    func operation(for binding: AWSLoginBinding, useDeviceCode: Bool) throws -> SharedOperation<Void> {
+        try owner.checkOpen()
         if let operation = active(for: binding) { return operation }
-        let operation = SharedOperation<Void> { [runner] progress in
+        let operation = try owner.make { [runner] progress in
             let start = ContinuousClock.now
             let version = try await runner.run(ProcessRequest(
                 executable: binding.executable, arguments: ["--version"], environment: binding.environment,
@@ -48,4 +50,9 @@ public actor AWSLoginService {
     func cancel(key: AWSLoginKey) { flights[key]?.cancel() }
 
     public func cancel(_ binding: AWSLoginBinding) { cancel(key: binding.key) }
+
+    public func shutdown() async {
+        await owner.shutdown()
+        flights.removeAll()
+    }
 }

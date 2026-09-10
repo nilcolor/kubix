@@ -101,7 +101,12 @@ can trigger reacquisition. There is no background browser-login scheduler.
 `AuthenticationService` is the credential facade injected into every transport.
 `SharedOperation` gives independent waiters cancellation; the last waiter or
 explicit shared Cancel stops owned work. Unsubscribing a UI progress observer
-does not itself cancel login. Direct AWS logins share a key incorporating the
+does not itself cancel login. Waiter completion is not worker teardown: separate
+lifetime owners retain cancelled acquisitions, login refreshes, browser logins,
+and PATH discovery until cleanup finishes, even after active/retry indexes replace
+or evict them. `AppActions.shutdownAndWait` closes the authentication facade and
+its child owners to new work, cancels them, and joins that cleanup before returning.
+Direct AWS logins share a key incorporating the
 resolved executable, profile or explicitly bound SSO session, effective
 environment, and relevant options. One successful login coordinates post-login
 credential reacquisition.
@@ -129,7 +134,9 @@ exec identity against a context-only cache key.
 The authenticated transport tags sanitized plugin-resolution/process failures only
 around credential acquisition. `WatchService` maps that tag to pod authentication
 failure, so explicit Retry can restart discovery after a nonzero configured-plugin
-exit. Network/API failures remain separate; cancellation and terminal 403 behavior
+exit. Log error normalization preserves the same safe tag for shared authentication
+recovery guidance, without retaining provider or server payloads.
+Network/API failures remain separate; cancellation and terminal 403 behavior
 are unchanged. The authentication session retains the safe process diagnostic,
 not credential stdout or terminal browser instructions.
 

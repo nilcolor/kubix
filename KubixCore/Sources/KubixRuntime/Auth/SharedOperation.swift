@@ -12,6 +12,7 @@ final class SharedOperation<Value: Sendable>: @unchecked Sendable {
     private let deliveryLock = NSRecursiveLock()
     private var action: Action?
     private var task: Task<Void, Never>?
+    private var workerFinished = false
     private var result: Result<Value, any Error>?
     private var waiters: [UUID: CheckedContinuation<Value, any Error>] = [:]
     private var subscribers: [UUID: AuthProgress] = [:]
@@ -20,7 +21,20 @@ final class SharedOperation<Value: Sendable>: @unchecked Sendable {
     init(action: @escaping Action) { self.action = action }
 
     var isFinished: Bool { lock.withLock { result != nil } }
+    var isCancelled: Bool {
+        lock.withLock {
+            if case .failure(let error) = result { return error is CancellationError }
+            return false
+        }
+    }
     var waiterCount: Int { lock.withLock { waiters.count } }
+    var isWorkerFinished: Bool { lock.withLock { workerFinished || (result != nil && task == nil) } }
+
+    /// Only the owner joins: an individual cancelled waiter must never await another caller's work.
+    func waitForCompletion() async {
+        let worker = lock.withLock { task }
+        await worker?.value
+    }
 
     func value(progress: @escaping AuthProgress = { _ in }) async throws -> Value {
         let waiterID = UUID()
@@ -46,7 +60,11 @@ final class SharedOperation<Value: Sendable>: @unchecked Sendable {
                 let replay = instructions
                 if task == nil, let action {
                     task = Task {
-                        do { self.complete(.success(try await action(self.emit))) } catch {
+                        defer { self.lock.withLock { self.workerFinished = true } }
+                        do {
+                            try Task.checkCancellation()
+                            self.complete(.success(try await action(self.emit)))
+                        } catch {
                             self.complete(.failure(error))
                         }
                     }
@@ -88,7 +106,6 @@ final class SharedOperation<Value: Sendable>: @unchecked Sendable {
         if empty {
             result = .failure(CancellationError())
             instructions = ""
-            task = nil
             action = nil
         }
         lock.unlock()
@@ -108,7 +125,6 @@ final class SharedOperation<Value: Sendable>: @unchecked Sendable {
         waiters.removeAll()
         subscribers.removeAll()
         let owned = task
-        task = nil
         lock.unlock()
         deliveryLock.unlock()
         // Cancellation handlers can synchronously enter another operation; hold neither lock here.

@@ -192,8 +192,8 @@ func awsRejectsNonV2CLIWithoutStartingLogin(version: ProcessResult) async throws
     ))
     #expect(first.key != differentConfig.key)
     let login = AWSLoginService(runner: FakeProcess())
-    let operation = await login.operation(for: first, useDeviceCode: false)
-    let shared = await login.operation(for: second, useDeviceCode: false)
+    let operation = try await login.operation(for: first, useDeviceCode: false)
+    let shared = try await login.operation(for: second, useDeviceCode: false)
     #expect(operation.id == shared.id)
     await login.cancel(first)
 }

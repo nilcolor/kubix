@@ -17,8 +17,11 @@ public protocol AuthenticationControlling: Sendable {
     func cancel(operationID: UUID) async
     /// Always an explicit user action; terminal operations are never restarted automatically.
     func retry(operationID: UUID) async throws -> AcquiredCredential
+    /// Terminal cancellation and join of all owned acquisition/login work, including retired work.
+    func shutdown() async
 }
 
 public extension AuthenticationControlling {
     func presentation(for context: ResolvedContext) async -> AuthPluginPresentation { AuthPluginPresentation() }
+    func shutdown() async {}
 }

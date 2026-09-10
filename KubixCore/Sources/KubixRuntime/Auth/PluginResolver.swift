@@ -42,7 +42,8 @@ public actor PluginResolver {
     private let files: any PluginFileSystem
     private let store: any AuthSettingsStoring
     private var cachedSettings: AuthSettings?
-    private var cachedBaseline: Task<ShellPathResult, Never>?
+    private var cachedBaseline: SharedOperation<ShellPathResult>?
+    private let owner = SharedOperationOwner<ShellPathResult>()
     private var revision = 0
 
     public init(
@@ -56,9 +57,11 @@ public actor PluginResolver {
     }
 
     public func settings() async throws -> AuthSettings {
+        try owner.checkOpen()
         if let cachedSettings { return cachedSettings }
         let version = revision
         let loaded = try await store.load()
+        try owner.checkOpen()
         try loaded.validate()
         if version != revision { return try await settings() }
         cachedSettings = loaded
@@ -66,8 +69,10 @@ public actor PluginResolver {
     }
 
     public func update(settings: AuthSettings) async throws {
+        try owner.checkOpen()
         try settings.validate()
         try await store.save(settings)
+        try owner.checkOpen()
         revision += 1
         cachedSettings = settings
         cachedBaseline?.cancel()
@@ -80,11 +85,16 @@ public actor PluginResolver {
         guard !configuration.command.isEmpty, !configuration.command.contains("\0") else { throw AuthError.invalidExecCommand }
         let settings = try await settings()
         let version = revision
-        if cachedBaseline == nil {
-            cachedBaseline = Task { [shell, environment] in await shell.baseline(environment: environment) }
+        if cachedBaseline == nil || cachedBaseline?.isCancelled == true {
+            cachedBaseline = try owner.make { [shell, environment] _ in await shell.baseline(environment: environment) }
         }
-        let baseline = await cachedBaseline!.value
-        try Task.checkCancellation()
+        let baseline: ShellPathResult
+        do { baseline = try await cachedBaseline!.value() } catch {
+            try owner.checkOpen()
+            if version != revision { return try await resolve(configuration, sourceFile: sourceFile, userName: userName) }
+            throw error
+        }
+        try owner.checkOpen()
         if version != revision { return try await resolve(configuration, sourceFile: sourceFile, userName: userName) }
         var effective = environment
         effective["PATH"] = baseline.path
@@ -96,6 +106,7 @@ public actor PluginResolver {
             _ = try invocation.profile(environment: effective, binding: binding)
             effective["AWS_PROFILE"] = binding.profile
         }
+
         let selection = executable(configuration.command, settings: settings, path: path, sourceFile: sourceFile)
         guard let selected = selection.path, files.isExecutable(selected) else {
             throw PluginDiagnostic(
@@ -107,6 +118,11 @@ public actor PluginResolver {
             executable: URL(fileURLWithPath: selected), environment: effective, settings: settings,
             source: selection.source, baselineDiagnostic: baseline.diagnostic
         )
+    }
+
+    public func shutdown() async {
+        await owner.shutdown()
+        cachedBaseline = nil
     }
 
     private func executable(
