@@ -60,3 +60,19 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+
+# --- Kubix ---
+
+# Downloaded libghostty and staged resources.
+GhosttyKit.xcframework/
+kubix/Resources/ghostty/
+kubix/Resources/terminfo/
+
+# Generated projects and build artifacts.
+build/
+.build/
+kubix.xcodeproj/
+.swiftpm/
+
+.DS_Store
+*.sock
