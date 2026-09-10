@@ -70,6 +70,11 @@ public extension AppActions {
         try? await signIn(context: context, useDeviceCode: store.useDeviceCode)
     }
 
+    func authenticateSelectedContext() async {
+        guard let context = store.selectedContext else { return }
+        try? await acquireCredentials(context: context)
+    }
+
     func openAuthorizationURL(operationID: UUID) async {
         guard !stopped, let session = store.authenticationSessions[operationID],
               let url = AuthPresentation(session).authorizationURL else { return }

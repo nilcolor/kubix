@@ -108,6 +108,30 @@ private actor RegistryFactory {
     #expect(await process.requests().isEmpty)
 }
 
+@Test func configuredWrapperAcquisitionPreservesCommandAndHidesCredentialOutput() async throws {
+    let arguments = ["exec", "synthetic-role", "--", "aws", "eks", "get-token", "--cluster-name", "synthetic"]
+    let process = FakeProcess { request, progress in
+        #expect(request.executable.path == "/tools/aws-vault")
+        #expect(request.arguments == arguments)
+        #expect(request.output == .credential)
+        #expect(request.environment["KUBERNETES_EXEC_INFO"] != nil)
+        progress("Open https://synthetic.invalid/authorization")
+        return ProcessResult(stdout: syntheticCredential, exitCode: 0)
+    }
+    let resolver = testResolver(files: Executables(paths: ["/tools/aws-vault"]))
+    let (auth, _) = orchestration(process: process, resolver: resolver)
+    let context = try runtimeContext(user: KubeconfigUser(exec: runtimeExec(command: "aws-vault", args: arguments)))
+    let capture = SessionCapture()
+    let observer = observe(auth, in: capture)
+    defer { observer.cancel() }
+    let acquired = try await auth.acquire(for: context)
+    #expect(acquired.entry?.credential.token == "synthetic-credential-only")
+    #expect(await process.requests().count == 1)
+    try await eventually { capture.values.contains { $0.state == .succeeded } }
+    #expect(capture.values.allSatisfy { !$0.instructions.contains("synthetic-credential-only") })
+    #expect(capture.values.last?.instructions.isEmpty == true)
+}
+
 @Test func bridgeQuotedCommandIsParsedByAnActualNoninteractiveShell() async throws {
     let workspace = try StubWorkspace()
     let executable = workspace.root.appendingPathComponent("Kubix 'quoted' \"$HOME\".sh")

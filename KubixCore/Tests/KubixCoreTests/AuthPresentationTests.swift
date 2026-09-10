@@ -32,6 +32,55 @@ import Testing
 }
 
 @Suite @MainActor struct AuthPresentationActionTests {
+    @Test func explicitPluginAuthenticationDoesNotStartOrResumeShells() async throws {
+        let target = try appTarget()
+        let auth = AppTestAuth()
+        await auth.gate.open()
+        await auth.fail(AuthenticationError.materialUnavailable)
+        let store = AppStore(contexts: [target.context])
+        let surfaces = AppTestSurfaces()
+        let actions = AppActions(store: store, exec: AppTestExec(), authentication: auth, surfaces: surfaces)
+        defer { actions.shutdown() }
+        try actions.selectContext(named: target.context.name)
+        let failedShell = actions.openShell(target: target)
+        try await appEventually { store.execSessions.first?.state.isTerminal == true }
+        await auth.fail(nil)
+        await actions.authenticateSelectedContext()
+        #expect(await auth.acquisitions == [target.context, target.context])
+        #expect(await auth.signIns.isEmpty)
+        #expect(store.execSessions.count == 1 && surfaces.created[failedShell] == nil)
+        #expect(store.authenticationDiagnostic == nil)
+    }
+
+    @Test func standalonePluginAuthenticationReportsFailureWithoutCreatingShell() async throws {
+        let context = try appContext()
+        let auth = AppTestAuth()
+        await auth.gate.open()
+        await auth.fail(AuthenticationError.materialUnavailable)
+        let store = AppStore(contexts: [context])
+        let actions = AppActions(store: store, exec: AppTestExec(), authentication: auth, surfaces: AppTestSurfaces())
+        defer { actions.shutdown() }
+        try actions.selectContext(named: context.name)
+        await actions.authenticateSelectedContext()
+        #expect(await auth.acquisitions == [context])
+        #expect(store.execSessions.isEmpty)
+        #expect(store.authenticationDiagnostic == AuthenticationError.materialUnavailable.errorDescription)
+    }
+
+    @Test func standalonePluginAuthenticationJoinsShutdown() async throws {
+        let context = try appContext()
+        let auth = AppTestAuth()
+        let store = AppStore(contexts: [context])
+        let actions = AppActions(store: store, exec: AppTestExec(), authentication: auth, surfaces: AppTestSurfaces())
+        try actions.selectContext(named: context.name)
+        let work = Task { await actions.authenticateSelectedContext() }
+        try await appEventually { await auth.acquisitions.count == 1 }
+        await actions.shutdownAndWait()
+        await work.value
+        #expect(store.execSessions.isEmpty && store.authenticationSessions.isEmpty)
+        #expect(store.authenticationDiagnostic == nil)
+    }
+
     @Test func browserIsExplicitSafeAndUnavailableAfterCancellation() async throws {
         let browser = RecordingBrowser()
         let auth = AppTestAuth()

@@ -275,6 +275,12 @@ public final class AppActions {
 }
 
 extension AppActions {
+    public func acquireCredentials(context: ResolvedContext) async throws {
+        try await authenticate { [authentication] in
+            try await authentication.acquire(for: context)
+        }
+    }
+
     /// A native termination delegate must await owned work before allowing the process to exit.
     public func shutdownAndWait() async {
         let pending = Array(tasks.values) + Array(closingTasks.values)

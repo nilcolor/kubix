@@ -10,11 +10,17 @@ struct AuthProgressView: View {
             HStack {
                 Button("Sign in with AWS") { Task { await actions.signInSelectedContext() } }
                     .disabled(!store.pluginPresentation.canSignIn)
+                Button("Authenticate configured plugin") { Task { await actions.authenticateSelectedContext() } }
+                    .disabled(store.selectedContext?.user?.exec == nil || store.pluginPresentation.executable == nil)
                 Toggle("Use device code", isOn: Binding(get: { store.useDeviceCode }, set: { actions.setUseDeviceCode($0) }))
                     .toggleStyle(.checkbox)
                 Button("Configure Plugin Path") { actions.setShowingSettings(true) }
             }
             let plugin = store.pluginPresentation
+            if !plugin.canSignIn, plugin.executable != nil {
+                Text("The configured plugin can acquire credentials or request browser sign-in. It is not replaced with AWS CLI SSO login.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if let executable = plugin.executable {
                 Text("\(executable) (\(plugin.source ?? "configured executable"))").font(.caption).textSelection(.enabled)
             }
