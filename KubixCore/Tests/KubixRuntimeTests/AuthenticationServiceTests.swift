@@ -246,6 +246,52 @@ actor ControlledAuthDeadline: AuthDeadlineWaiting {
     }
 }
 
+private actor AdvancingAuthDeadline: AuthDeadlineWaiting {
+    let expired = TestGate()
+    private(set) var budget: TimeInterval?
+    private var elapsed: TimeInterval = 0
+    func wait(seconds: TimeInterval) async throws {
+        budget = seconds
+        try await expired.wait()
+    }
+    func advance(by seconds: TimeInterval) async {
+        elapsed += seconds
+        if let budget, elapsed >= budget { await expired.open() }
+    }
+}
+
+@Test func configuredPluginApprovalRemainsActivePastThreeMinutesUntilFullAuthDeadline() async throws {
+    let gate = TestGate()
+    let cancelled = TextCapture()
+    let process = FakeProcess { request, progress in
+        #expect(request.timeout == 600)
+        progress("Open https://synthetic.invalid/device-approval")
+        do { try await gate.wait() } catch { cancelled.append("stopped"); throw error }
+        return ProcessResult(stdout: syntheticCredential, exitCode: 0)
+    }
+    let provider = CredentialProvider(resolver: testResolver(), runner: CredentialRunner(process: process))
+    let clock = AdvancingAuthDeadline()
+    let service = AuthenticationService(provider: provider, deadline: clock)
+    let capture = SessionCapture()
+    let observer = observe(service, in: capture)
+    defer { observer.cancel() }
+    let work = Task { try await service.acquire(for: runtimeContext()) }
+    defer { work.cancel() }
+    try await eventually {
+        let budget = await clock.budget
+        let count = await process.requests().count
+        return budget == 600 && count == 1
+    }
+    await clock.advance(by: 180)
+    #expect(cancelled.value.isEmpty)
+    await clock.advance(by: 419)
+    #expect(cancelled.value.isEmpty)
+    await clock.advance(by: 1)
+    await #expect(throws: ProcessFailure.timedOut) { try await work.value }
+    try await eventually { cancelled.value == "stopped" && capture.values.last?.state == .failed }
+    #expect(capture.values.last?.instructions.isEmpty == true)
+}
+
 @Test func oneConfigurableAuthDeadlineCoversLoginAndPostLoginAcquisition() async throws {
     let acquisition = TestGate()
     let cancelled = TextCapture()

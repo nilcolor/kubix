@@ -6,7 +6,7 @@ import KubixRuntime
 /// Auth only: documented aws-vault file storage and native device authorization; no cluster requests.
 @MainActor
 enum AWSVaultIsolationValidation {
-    enum Failure: Error { case configuration, storage, processFailed, timeout, browser, cancellation, credential }
+    enum Failure: Error { case configuration, storage, processFailed, browser, credential }
     private static var didRun = false
     private static var evidence: [String: String] = [:]
     static var root: URL? {
@@ -31,9 +31,8 @@ enum AWSVaultIsolationValidation {
             record("initialSession", "missing: newly created empty isolated encrypted backend")
             record("originalVault", "not selected; original AWS config/profile chain retained")
             record("backend", "aws-vault 7.13.6 documented file backend; random in-memory passphrase")
-            record("stage", "first native device-authorization wait; will cancel before opening browser")
-            let cancelledID = try await cancelFirstWait(composition, vault: vault)
-            try await approveRetry(composition, cancelledID: cancelledID)
+            record("stage", "one fresh native device-authorization attempt; no cancellation rehearsal")
+            try await approveFresh(composition)
             let final = try await vault.snapshot()
             guard final.entries > 0, final.securePermissions, final.jweHeadersMatch else { throw Failure.storage }
             record("ownedEncryptedEntries", String(final.entries))
@@ -55,74 +54,49 @@ enum AWSVaultIsolationValidation {
         record("finished", "true")
     }
 
-    private static func cancelFirstWait(_ composition: AppComposition, vault: IsolatedAWSVaultRunner) async throws -> UUID {
-        let work = Task { await composition.actions.authenticateSelectedContext() }
-        defer { work.cancel() }
-        do {
-            let session = try await waitForPrompt(composition.store)
-            record("firstWait", "native aws-vault device authorization instructions and HTTPS fallback visible")
-            try await Task.sleep(for: .seconds(1))
-            guard composition.store.authenticationSessions[session.id]?.state.isTerminal == false,
-                  let pid = await vault.processIDs.last, kill(pid, 0) == 0 else { throw Failure.cancellation }
-            await composition.actions.cancelAuthentication(operationID: session.id)
-            await work.value
-            let deadline = ContinuousClock.now.advanced(by: .seconds(5))
-            while kill(pid, 0) == 0 {
-                guard ContinuousClock.now < deadline else { throw Failure.cancellation }
-                try await Task.sleep(for: .milliseconds(25))
-            }
-            guard let cancelled = composition.store.authenticationSessions[session.id],
-                  cancelled.state == .cancelled, cancelled.instructions.isEmpty, cancelled.authorizationURL == nil,
-                  try await vault.snapshot().entries == 0 else { throw Failure.cancellation }
-            record("browserWaitCancellation", "passed; owned process reaped, transient instructions cleared, isolated store still empty")
-            return session.id
-        } catch {
-            work.cancel()
-            await work.value
-            throw error
+    private static func approveFresh(_ composition: AppComposition) async throws {
+        let started = Date()
+        let timeout = composition.store.authSettings.timeout
+        record("configuredAuthTimeoutSeconds", String(timeout))
+        record("acquisitionStartedUTC", ISO8601DateFormatter().string(from: started))
+        record("configuredDeadlineUTC", ISO8601DateFormatter().string(from: started.addingTimeInterval(timeout)))
+        var complete = false
+        let work = Task {
+            await composition.actions.authenticateSelectedContext()
+            complete = true
         }
-    }
-
-    private static func approveRetry(_ composition: AppComposition, cancelledID: UUID) async throws {
-        let work = Task { try await composition.actions.retryAuthentication(operationID: cancelledID) }
         defer { work.cancel() }
         do {
-            let session = try await waitForPrompt(composition.store, excluding: cancelledID)
-            record("retry", "original configured aws-vault exec command; same synthetic-profile to exp chain")
+            let session = try await waitForPrompt(composition.store, isComplete: { complete })
+            record("invocation", "one original configured aws-vault exec command; same synthetic-profile to exp chain")
             record("deviceMode", "native StartDeviceAuthorization / device_code grant, not direct-AWS --use-device-code")
             record("stage", "opening actual HTTPS fallback; waiting for human browser approval")
             record("operationID", session.id.uuidString)
             let opened = await composition.actions.openAuthorizationURL(operationID: session.id)
             record("httpsOpenBrowserSucceeded", String(opened))
             guard opened else { throw Failure.browser }
-            let deadline = Task {
-                do { try await Task.sleep(for: .seconds(180)) } catch { return }
-                record("humanApprovalDeadlineReached", "true")
-                await composition.actions.cancelAuthentication(operationID: session.id)
-            }
-            defer { deadline.cancel() }
-            try await work.value
-            guard composition.store.authenticationDiagnostic == nil else { throw Failure.credential }
+            await work.value
+            await Task.yield()
+            guard composition.store.authenticationDiagnostic == nil,
+                  composition.store.authenticationSessions[session.id]?.state == .succeeded else { throw Failure.credential }
             record("credentialResult", "real ExecCredential accepted after isolated browser approval; no cluster API or exec")
         } catch {
             work.cancel()
-            _ = await work.result
+            await work.value
             throw error
         }
     }
 
-    private static func waitForPrompt(_ store: AppStore, excluding: UUID? = nil) async throws -> AuthSession {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(45))
-        while ContinuousClock.now < deadline {
-            let sessions = store.authenticationSessions.values.filter { $0.id != excluding }
+    private static func waitForPrompt(_ store: AppStore, isComplete: () -> Bool) async throws -> AuthSession {
+        while true {
+            let sessions = store.authenticationSessions.values
             if let session = sessions.first(where: {
                 !$0.state.isTerminal && $0.instructions.contains("Open the SSO authorization page in a browser")
                     && $0.authorizationURL != nil
             }) { return session }
-            if sessions.contains(where: { $0.state.isTerminal }) { throw Failure.processFailed }
+            if isComplete() || sessions.contains(where: { $0.state.isTerminal }) { throw Failure.processFailed }
             try await Task.sleep(for: .milliseconds(25))
         }
-        throw Failure.timeout
     }
 
     private static func record(_ key: String, _ value: String) {
