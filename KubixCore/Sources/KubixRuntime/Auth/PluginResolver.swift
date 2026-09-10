@@ -1,0 +1,126 @@
+import Foundation
+import KubixCore
+
+public struct PluginDiagnostic: Error, Sendable, LocalizedError, CustomStringConvertible, CustomReflectable {
+    public let installHint: String?
+    public let source: String
+    public let searchedPath: String
+    public let baselineDiagnostic: String?
+    public var action: String { "Configure Plugin Path" }
+    public var description: String { "Authentication plugin not found. Configure Plugin Path (details redacted)." }
+    public var errorDescription: String? { description }
+    public var customMirror: Mirror { Mirror(self, children: ["contents": "redacted"]) }
+}
+
+public struct ResolvedPlugin: Sendable, CustomStringConvertible, CustomReflectable {
+    public let executable: URL
+    public let environment: [String: String]
+    public let settings: AuthSettings
+    public let source: String
+    public let baselineDiagnostic: String?
+    public var description: String { "ResolvedPlugin (contents redacted)" }
+    public var customMirror: Mirror { Mirror(self, children: ["contents": "redacted"]) }
+}
+
+public protocol PluginFileSystem: Sendable {
+    func isExecutable(_ path: String) -> Bool
+}
+
+public struct LocalPluginFileSystem: PluginFileSystem {
+    public init() {}
+    public func isExecutable(_ path: String) -> Bool {
+        var directory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: path, isDirectory: &directory)
+            && !directory.boolValue && FileManager.default.isExecutableFile(atPath: path)
+    }
+}
+
+public actor PluginResolver {
+    private let environment: [String: String]
+    private let shell: any ShellPathProviding
+    private let files: any PluginFileSystem
+    private let store: any AuthSettingsStoring
+    private var cachedSettings: AuthSettings?
+    private var cachedBaseline: Task<ShellPathResult, Never>?
+    private var revision = 0
+
+    public init(
+        environment: [String: String], store: any AuthSettingsStoring,
+        shell: any ShellPathProviding = ShellPath(), files: any PluginFileSystem = LocalPluginFileSystem()
+    ) {
+        self.environment = environment
+        self.store = store
+        self.shell = shell
+        self.files = files
+    }
+
+    public func settings() async throws -> AuthSettings {
+        if let cachedSettings { return cachedSettings }
+        let version = revision
+        let loaded = try await store.load()
+        try loaded.validate()
+        if version != revision { return try await settings() }
+        cachedSettings = loaded
+        return loaded
+    }
+
+    public func update(settings: AuthSettings) async throws {
+        try settings.validate()
+        try await store.save(settings)
+        revision += 1
+        cachedSettings = settings
+        cachedBaseline?.cancel()
+        cachedBaseline = nil
+    }
+
+    public func resolve(
+        _ configuration: KubeconfigExec, sourceFile: URL? = nil, userName: String? = nil
+    ) async throws -> ResolvedPlugin {
+        guard !configuration.command.isEmpty, !configuration.command.contains("\0") else { throw AuthError.invalidExecCommand }
+        let settings = try await settings()
+        let version = revision
+        if cachedBaseline == nil {
+            cachedBaseline = Task { [shell, environment] in await shell.baseline(environment: environment) }
+        }
+        let baseline = await cachedBaseline!.value
+        try Task.checkCancellation()
+        if version != revision { return try await resolve(configuration, sourceFile: sourceFile, userName: userName) }
+        var effective = environment
+        effective["PATH"] = baseline.path
+        for variable in configuration.env ?? [] { effective[variable.name] = variable.value }
+        let path = (settings.searchDirectories + [effective["PATH"] ?? ""]).joined(separator: ":")
+        effective["PATH"] = path
+        if let userName, let binding = settings.awsProfiles[userName] {
+            let invocation = try AWSInvocation(configuration: configuration)
+            _ = try invocation.profile(environment: effective, binding: binding)
+            effective["AWS_PROFILE"] = binding.profile
+        }
+        let selection = executable(configuration.command, settings: settings, path: path, sourceFile: sourceFile)
+        guard let selected = selection.path, files.isExecutable(selected) else {
+            throw PluginDiagnostic(
+                installHint: configuration.installHint, source: selection.source, searchedPath: path,
+                baselineDiagnostic: baseline.diagnostic
+            )
+        }
+        return ResolvedPlugin(
+            executable: URL(fileURLWithPath: selected), environment: effective, settings: settings,
+            source: selection.source, baselineDiagnostic: baseline.diagnostic
+        )
+    }
+
+    private func executable(
+        _ command: String, settings: AuthSettings, path: String, sourceFile: URL?
+    ) -> (path: String?, source: String) {
+        if let override = settings.executableOverrides[command] { return (override, "absolute override") }
+        if command.hasPrefix("/") { return (command, "absolute kubeconfig command") }
+        if command.contains("/") {
+            let resolved = sourceFile?.deletingLastPathComponent().appendingPathComponent(command).standardizedFileURL.path
+            return (resolved, "kubeconfig-relative command")
+        }
+        // Ignore empty/relative PATH entries: Finder's cwd must never select an unintended binary.
+        let candidates = path.split(separator: ":").filter { $0.hasPrefix("/") }.map {
+            URL(fileURLWithPath: String($0)).appendingPathComponent(command).path
+        }
+        return (candidates.first(where: files.isExecutable), "effective PATH")
+    }
+}

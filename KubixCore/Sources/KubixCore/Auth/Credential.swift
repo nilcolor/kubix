@@ -51,10 +51,15 @@ public struct CredentialIdentity: Hashable, Sendable, CustomStringConvertible, C
     /// Namespace and context display name do not affect auth. Include all cluster/user configuration
     /// and their provenance, so changing tokens, TLS policy, plugin arguments/environment, or source
     /// files cannot reuse credentials merely because the context has the same name.
-    public init(from context: ResolvedContext) throws {
+    public init(
+        from context: ResolvedContext, settings: AuthSettings = AuthSettings(),
+        executable: String? = nil, environment: [String: String] = [:]
+    ) throws {
+        try settings.validate()
         let snapshot = IdentityConfiguration(
             clusterName: context.clusterName, cluster: context.cluster, clusterSource: context.clusterSourceFile,
-            userName: context.userName, user: context.user, userSource: context.userSourceFile
+            userName: context.userName, user: context.user, userSource: context.userSourceFile,
+            settings: settings, executable: executable, environment: environment
         )
         do {
             let encoder = JSONEncoder()
@@ -73,4 +78,7 @@ private struct IdentityConfiguration: Encodable {
     let userName: String?
     let user: KubeconfigUser?
     let userSource: URL?
+    let settings: AuthSettings
+    let executable: String?
+    let environment: [String: String]
 }

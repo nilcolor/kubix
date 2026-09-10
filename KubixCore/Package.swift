@@ -25,7 +25,7 @@ let package = Package(
             ],
             resources: [.copy("Fixtures")]
         ),
-        .testTarget(name: "KubixRuntimeTests", dependencies: ["KubixRuntime"]),
+        .testTarget(name: "KubixRuntimeTests", dependencies: ["KubixRuntime"], resources: [.copy("Fixtures")]),
     ],
     swiftLanguageModes: [.v6]
 )
