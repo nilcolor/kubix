@@ -58,7 +58,7 @@ public protocol ProcessRunning: Sendable {
     func run(_ request: ProcessRequest, progress: @escaping @Sendable (String) -> Void) async throws -> ProcessResult
 }
 
-/// A detached worker polls both nonblocking pipes. No blocking read/waitUntilExit is used: even an
+/// A dispatch worker polls both nonblocking pipes. No blocking read/waitUntilExit is used: even an
 /// inherited pipe held by a descendant cannot prevent deadline/cancellation or completion.
 public struct ProcessRunner: ProcessRunning {
     private let didLaunch: (@Sendable (Int32) -> Void)?
@@ -73,9 +73,14 @@ public struct ProcessRunner: ProcessRunning {
         let cancellation = ProcessCancellation()
         return try await withTaskCancellationHandler {
             try Task.checkCancellation()
-            return try await Task.detached {
-                try Self.execute(request, cancellation: cancellation, progress: progress, didLaunch: didLaunch)
-            }.value
+            // Polling a browser-waiting process must not occupy Swift's bounded cooperative pool.
+            return try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    continuation.resume(with: Result {
+                        try Self.execute(request, cancellation: cancellation, progress: progress, didLaunch: didLaunch)
+                    })
+                }
+            }
         } onCancel: {
             cancellation.cancel()
         }

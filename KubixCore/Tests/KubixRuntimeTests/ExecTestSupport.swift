@@ -45,16 +45,18 @@ final class ExecTestSocket: WebSocketConnection, @unchecked Sendable {
     let incoming = ExecTestQueue<Data>()
     let sendGate: TestGate?
     let blockAfter: Int
+    let pingGate: TestGate?
     private let lock = NSLock()
     private var outgoing: [Data] = []
     private var cancelled = false
     var sent: [Data] { lock.withLock { outgoing } }
     var isCancelled: Bool { lock.withLock { cancelled } }
 
-    init(protocolName: String? = "v5.channel.k8s.io", sendGate: TestGate? = nil, blockAfter: Int = 0) {
+    init(protocolName: String? = "v5.channel.k8s.io", sendGate: TestGate? = nil, blockAfter: Int = 0, pingGate: TestGate? = nil) {
         negotiatedProtocol = protocolName
         self.sendGate = sendGate
         self.blockAfter = blockAfter
+        self.pingGate = pingGate
     }
 
     func send(_ data: Data) async throws {
@@ -65,7 +67,7 @@ final class ExecTestSocket: WebSocketConnection, @unchecked Sendable {
     }
 
     func receive() async throws -> Data { try await incoming.next() }
-    func ping() {}
+    func ping() async throws { try await pingGate?.wait() }
     func cancel() {
         lock.withLock { cancelled = true }
         Task { await incoming.finish(CancellationError()) }

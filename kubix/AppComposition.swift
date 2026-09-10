@@ -57,14 +57,11 @@ final class AppComposition {
         #else
         registry = ContextTransportRegistry(credentials: authentication, warning: { _ in })
         #endif
-        let transports: ExecService.TransportFactory = { [registry] context in
-            guard let registry else { throw APIError.invalidRequest }
-            return try await registry.transport(for: context)
-        }
+        let transports = Self.transports(registry)
         let exec = Self.execService(transports: transports)
         let pods: (any PodWatching)?
         #if DEBUG
-        validationPods = ExecLiveValidation.isEnabled ? ExecLivePodWatcher(transports: transports) : nil
+        validationPods = ExecLiveValidation.isEnabled ? ExecLivePodWatcher(transports: transports, integrated: ExecLiveValidation.isAcceptance) : nil
         if let validationPods { pods = validationPods } else { pods = Self.podWatcher(transports: transports) }
         #else
         pods = Self.podWatcher(transports: transports)
@@ -79,6 +76,22 @@ final class AppComposition {
         )
         factory.closeSession = { [weak actions] id in actions?.closeShell(id) }
         Self.active = self
+    }
+
+    private static func transports(_ registry: ContextTransportRegistry?) -> ExecService.TransportFactory {
+        #if DEBUG
+        let acceptance = ExecLiveValidation.isAcceptance
+        #endif
+        return { context in
+            guard let registry else { throw APIError.invalidRequest }
+            #if DEBUG
+            if acceptance {
+                guard context.name == ExecLiveDiscovery.context else { throw APIError.invalidRequest }
+                return ExecLiveScopedTransport(underlying: try await registry.transport(for: context))
+            }
+            #endif
+            return try await registry.transport(for: context)
+        }
     }
 
     private static func podWatcher(transports: @escaping ExecService.TransportFactory) -> (any PodWatching)? {

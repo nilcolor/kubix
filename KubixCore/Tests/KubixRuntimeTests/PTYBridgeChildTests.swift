@@ -198,7 +198,8 @@ import Testing
         }
     }
 
-    @Test func idleCancellationRestoresAndClosesOwnedSocketWithoutClosingCallerFDs() throws {
+    @Test(arguments: 0..<32)
+    func idleCancellationRestoresAndClosesOwnedSocketWithoutClosingCallerFDs(_ repetition: Int) throws {
         let session = try BridgeTestSession()
         let run = session.start()
         defer { session.stop() }
@@ -207,7 +208,9 @@ import Testing
         #expect(try run.wait(seconds: 1) == .localFailure(.cancelled))
         #expect(run.diagnosticAfterRestoration)
         #expect(fcntl(session.tty.terminal, F_GETFD) >= 0)
-        #expect(try BridgeIO.read(session.connector.peer, maximumCount: 1) == Data())
+        let remaining = try BridgeIO.read(session.connector.peer, maximumCount: 1)
+        let readError = errno
+        #expect(remaining == Data(), "nonblocking read errno \(readError)")
         // Late notifications have no descriptor to close, including after the worker returned.
         run.control.resize()
         run.control.cancel()

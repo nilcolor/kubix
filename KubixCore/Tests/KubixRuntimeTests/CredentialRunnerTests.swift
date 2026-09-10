@@ -4,6 +4,26 @@ import KubixCore
 @testable import KubixRuntime
 import Testing
 
+@Test func waitingProcessesDoNotOccupyCooperativeExecutor() async throws {
+    let workspace = try StubWorkspace()
+    let plugin = try await workspace.resolver(mode: "wait").resolve(runtimeExec())
+    let context = try runtimeContext()
+    let progress = TextCapture()
+    let count = min(32, max(16, ProcessInfo.processInfo.activeProcessorCount * 2))
+    let calls = (0..<count).map { _ in
+        Task {
+            try await CredentialRunner().acquire(context: context, plugin: plugin) { _ in progress.append(".") }
+        }
+    }
+    defer { for call in calls { call.cancel() } }
+    try await eventually { progress.value.count == count }
+    for call in calls { call.cancel() }
+    for call in calls {
+        await #expect(throws: CancellationError.self) { try await call.value }
+    }
+    #expect(progress.value.count == count)
+}
+
 @Test func credentialRunnerFakeVerifiesArgvEnvironmentAndExecInfoPolicy() async throws {
     let config = runtimeExec(args: ["space ; $(not-a-command)"], env: [
         ExecEnvironmentVariable(name: "FIXTURE_VALUE", value: "kubeconfig"),

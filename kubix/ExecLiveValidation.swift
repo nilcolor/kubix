@@ -12,16 +12,20 @@ enum ExecLiveValidation {
     }
     private static var didRun = false
     private static var evidence: [String: String] = [:]
+    static var isAcceptance: Bool {
+        ProcessInfo.processInfo.environment["KUBIX_EXEC_VALIDATION_CONFIRM"] == "authorized-readonly-task20" && root != nil
+    }
     static var isEnabled: Bool {
-        ProcessInfo.processInfo.environment["KUBIX_EXEC_VALIDATION_CONFIRM"] == "authorized-readonly-task12"
-            && root != nil
+        (ProcessInfo.processInfo.environment["KUBIX_EXEC_VALIDATION_CONFIRM"] == "authorized-readonly-task12" && root != nil) || isAcceptance
     }
     private static var root: URL? {
         guard let path = ProcessInfo.processInfo.environment["KUBIX_EXEC_VALIDATION_ROOT"], path.hasPrefix("/") else { return nil }
         return URL(fileURLWithPath: path)
     }
     static var bridgeRoot: URL? { isEnabled ? root?.appendingPathComponent(".build") : nil }
-    private static var resultURL: URL? { root?.appendingPathComponent(".build/validation/task12-live-exec/result.json") }
+    private static var resultURL: URL? {
+        root?.appendingPathComponent(isAcceptance ? ".build/validation/task20/live/result.json" : ".build/validation/task12-live-exec/result.json")
+    }
 
     static func record(_ key: String, _ value: String) {
         evidence[key] = value
@@ -31,6 +35,10 @@ enum ExecLiveValidation {
     static func run(composition: AppComposition) async {
         guard isEnabled, !didRun, let root else { return }
         didRun = true
+        if isAcceptance {
+            await ExecLiveAcceptance.run(composition, root: root)
+            return
+        }
         record("appPID", String(ProcessInfo.processInfo.processIdentifier))
         record("scope", "read-only synthetic-namespace / authorized dj-slow prefix / regular synthetic-container")
         record("initialSSOState", "unknown; shared caches untouched; prior browser success user-confirmed")

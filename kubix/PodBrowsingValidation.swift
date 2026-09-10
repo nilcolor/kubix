@@ -16,6 +16,7 @@ import KubixCore
         guard let directory, !didRun else { return }
         didRun = true
         do {
+            evidence["liveScopeGuard"] = try await ExecLiveScopedTransport.validateNativeScope()
             try await check(fixture)
             evidence["result"] = "passed"
         } catch {
@@ -92,6 +93,8 @@ import KubixCore
         try await checkTable(fixture, window: window, table: table)
         try await checkSessions(fixture, window: window, table: table)
         try await checkDraftsAndStates(fixture, window: window, table: table)
+        stage = "1253-row encoded pagination, expiry and measured native events"
+        evidence["scale"] = try await PodScaleNativeValidation.check(fixture, table: table)
     }
 
     private static func checkTable(_ fixture: PodBrowsingFixture, window: NSWindow, table: NSTableView) async throws {

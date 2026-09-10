@@ -26,6 +26,10 @@ enum TerminalSmokeTest {
     static func run(_ session: LocalTerminalSession) async {
         guard let directory, !didRun else { return }
         didRun = true
+        // The smoke sends its NSEvents directly to its owned NSWindow. Ignore unrelated physical
+        // key events delivered by NSApplication while this foreground-only rendering check runs.
+        let physicalInput = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { _ in nil }
+        defer { if let physicalInput { NSEvent.removeMonitor(physicalInput) } }
         do {
             try await check(session, directory: URL(fileURLWithPath: directory, isDirectory: true))
             stage = "command wait policy and window close"
@@ -56,6 +60,7 @@ enum TerminalSmokeTest {
         NSApp.activate(ignoringOtherApps: true)
         window.makeFirstResponder(view)
         try await until { viewport(view).contains("kubix-smoke>") }
+        try await checkInputIsolation(view, window: window)
         let child = ghostty_surface_foreground_pid(view.surface)
         guard child > 0 else { throw SmokeError.failed }
         evidence["shellPID"] = String(child)
@@ -94,6 +99,19 @@ enum TerminalSmokeTest {
         try await capture(view, marker: "KUBIXRESIZED", to: directory.appendingPathComponent("resized.png"))
 
         try await checkTeardown(session, view: view, window: window, child: child)
+    }
+
+    private static func checkInputIsolation(_ view: GhosttySurfaceView, window: NSWindow) async throws {
+        let before = viewport(view)
+        guard let unrelated = NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber, context: nil, characters: "x", charactersIgnoringModifiers: "x",
+            isARepeat: false, keyCode: 7
+        ) else { throw SmokeError.failed }
+        NSApp.postEvent(unrelated, atStart: false)
+        try await Task.sleep(for: .milliseconds(100))
+        guard viewport(view) == before else { throw SmokeError.failed }
+        evidence["inputIsolation"] = "posted application key ignored; subsequent direct native window key events still execute all probes"
     }
 
     private static func checkTeardown(

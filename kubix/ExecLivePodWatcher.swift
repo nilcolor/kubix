@@ -1,14 +1,22 @@
 #if DEBUG
 import Foundation
 import KubixCore
+import KubixRuntime
 
 /// Legacy read-only exec validation can publish only one explicitly authorized metadata Table row.
 /// Before discovery selects that target, context/namespace activation performs no request.
 actor ExecLivePodWatcher: PodWatching {
     private let transports: @Sendable (ResolvedContext) async throws -> any Transport
     private var target: ExecTarget?
+    private let integrated: Bool
+    private var armed = false
 
-    init(transports: @escaping @Sendable (ResolvedContext) async throws -> any Transport) { self.transports = transports }
+    init(transports: @escaping @Sendable (ResolvedContext) async throws -> any Transport, integrated: Bool = false) {
+        self.transports = transports
+        self.integrated = integrated
+    }
+
+    func armAcceptance() { armed = true }
 
     func select(_ target: ExecTarget) throws {
         guard target.context.name == ExecLiveDiscovery.context, target.namespace == ExecLiveDiscovery.namespace,
@@ -21,6 +29,11 @@ actor ExecLivePodWatcher: PodWatching {
     func run(
         context: ResolvedContext, namespace: String, update: @escaping @MainActor @Sendable (PodWatchUpdate) -> Void
     ) async {
+        if integrated {
+            guard armed, context.name == ExecLiveDiscovery.context, namespace == ExecLiveDiscovery.namespace else { return }
+            await WatchService(transports: transports).run(context: context, namespace: namespace, update: update)
+            return
+        }
         guard let target, context == target.context, namespace == target.namespace else { return }
         do {
             let transport = try await transports(context)

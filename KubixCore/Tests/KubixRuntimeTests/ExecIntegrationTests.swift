@@ -4,6 +4,44 @@ import KubixCore
 import Testing
 
 @Suite @MainActor struct ExecIntegrationTests {
+    @Test func expiredCredentialRefreshAndMissedPongNeverReplayRunningShell() async throws {
+        let wall = RuntimeClock()
+        let clock = ManualTransportClock()
+        let process = FakeProcess { _, _ in
+            let expiration = wall.now().addingTimeInterval(200).ISO8601Format()
+            return ProcessResult(stdout: Data("""
+            {"apiVersion":"client.authentication.k8s.io/v1","kind":"ExecCredential",
+             "status":{"token":"synthetic-token","expirationTimestamp":"\(expiration)"}}
+            """.utf8), exitCode: 0)
+        }
+        let fixture = try ExecIntegrationFixture(process: process, clock: clock, now: wall.now, pingGate: TestGate())
+        defer { fixture.actions.shutdown() }
+        let id = fixture.actions.openShell(target: fixture.target)
+        try await sessionEventually { fixture.store.execSessions.first?.state == .running && clock.deadlines == [15] }
+        let surface = try #require(fixture.surfaces.created[id])
+        wall.set(1300)
+        _ = try await fixture.auth.acquire(for: fixture.target.context)
+        #expect(await process.requests().count == 2)
+        #expect(await fixture.session.socketRequests.count == 1)
+        #expect(fixture.store.execSessions.first?.state == .running && fixture.actions.surface(for: id) === surface)
+        try bridgeWrite(surface.tty.controller, bytes: Data([120]))
+        try await transportEventually { fixture.socket.sent.contains { $0 == Data([0, 120]) } }
+        clock.advance(to: 15)
+        try await transportEventually { clock.deadlines == [30] }
+        clock.advance(to: 29)
+        #expect(fixture.store.execSessions.first?.state == .running)
+        clock.advance(to: 30)
+        try await sessionEventually { fixture.store.execSessions.first?.state.isTerminal == true && surface.run.finished }
+        #expect(fixture.store.execSessions.first?.state == .finished(.failed(.api(.transport(.pongTimedOut)))))
+        #expect(try surface.run.wait() == .localFailure(.connection))
+        #expect(fixture.socket.isCancelled)
+        #expect(await fixture.session.socketRequests.count == 1)
+        #expect(await process.requests().count == 2)
+        await fixture.actions.shutdownAndWait()
+        #expect(surface.closes == 1)
+        try await transportEventually { clock.deadlines.isEmpty && fixture.directories.created.allSatisfy { !bridgeFileExists($0) } }
+    }
+
     @Test(arguments: [false, true])
     func realAuthTransportServerAndRelayShareLoginAndKeepRemoteOutcomeAuthoritative(serverFailure: Bool) async throws {
         let loginGate = TestGate()
@@ -131,7 +169,7 @@ import Testing
 }
 
 @MainActor private final class ExecIntegrationFixture {
-    let socket = ExecTestSocket()
+    let socket: ExecTestSocket
     let directories = BridgeDirectoryCapture()
     let surfaces = RelaySurfaceFactory()
     let session: ScriptedTransportSession
@@ -140,15 +178,21 @@ import Testing
     let store: AppStore
     let actions: AppActions
 
-    init(process: FakeProcess, resolver: PluginResolver = testResolver()) throws {
+    init(
+        process: FakeProcess, resolver: PluginResolver = testResolver(),
+        clock: any TransportClock = ContinuousTransportClock(), now: @escaping @Sendable () -> Date = { Date() },
+        pingGate: TestGate? = nil
+    ) throws {
+        socket = ExecTestSocket(pingGate: pingGate)
         let context = try awsContext()
         target = try ExecTarget(context: context, namespace: "target-namespace", pod: "pod", container: "regular")
-        auth = orchestration(process: process, resolver: resolver).0
+        let provider = CredentialProvider(resolver: resolver, runner: CredentialRunner(process: process), now: now)
+        auth = AuthenticationService(provider: provider, login: AWSLoginService(runner: process))
         session = ScriptedTransportSession(socket: { [socket] _, _ in socket })
         let server = PTYBridgeServer(makeDirectory: { [directories] in try directories.create() })
         let exec = ExecService(transports: { [auth, session] context in
             try await URLSessionTransport(
-                context: context, credentials: auth, factory: RecordingSessionFactory(session), warning: { _ in }
+                context: context, credentials: auth, factory: RecordingSessionFactory(session), clock: clock, warning: { _ in }
             )
         }, bridgeServer: server)
         store = try AppStore(contexts: [context, runtimeContext(user: nil, name: "other", server: "https://other.synthetic.invalid")])

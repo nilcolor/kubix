@@ -179,13 +179,12 @@ final class OwnedBridgeListener {
 
     func stopAccepting() {
         if descriptor >= 0 { Darwin.close(descriptor); descriptor = -1 }
-    }
-
-    func close() {
-        stopAccepting()
+        // Removing only our socket name also prevents connects through an inherited listener alias.
         if let identity, identity.matches(path) { unlink(path) }
         identity = nil
     }
+
+    func close() { stopAccepting() }
 
     deinit { close() }
 }

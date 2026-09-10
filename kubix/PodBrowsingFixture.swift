@@ -47,10 +47,14 @@ actor PodFixtureTransport: Transport {
     private(set) var streams: [PodFixtureStream] = []
     private(set) var logStreams: [PodFixtureStream] = []
     private(set) var logRequests: [APIRequest] = []
+    private(set) var scaleRequests = 0
+    private(set) var scaleWatchVersions: [String] = []
+    private var scaleRelisted = false
 
     func data(for request: APIRequest) async throws -> Data {
         requests.append(request)
         if request.accept == "application/json" { return try Self.details(request) }
+        if request.path == ["api", "v1", "namespaces", "scale", "pods"] { return try await scalePage(request) }
         guard request.path.count == 5, request.path.prefix(3) == ["api", "v1", "namespaces"],
               request.path.last == "pods", request.accept == APIRequest.tableAccept,
               ["team", "other", "known", "empty", "forbidden"].contains(request.path[3]) else { throw APIError.invalidRequest }
@@ -74,6 +78,9 @@ actor PodFixtureTransport: Transport {
             return stream
         }
         guard purpose == .watch, request.path.last == "pods" else { throw APIError.invalidRequest }
+        if request.path[3] == "scale" {
+            scaleWatchVersions.append(request.query.first { $0.name == "resourceVersion" }?.value ?? "")
+        }
         let stream = PodFixtureStream()
         streams.append(stream)
         return stream
@@ -121,6 +128,56 @@ actor PodFixtureTransport: Transport {
         {"cells":["aardvark",1,false,"node2",{"a":2}],"object":{"metadata":{"uid":"uid-z","name":"zulu","namespace":"team","resourceVersion":"next"}}}]} }
         """.replacingOccurrences(of: "\n", with: "")
         streams.last?.yield(Data((event + "\n").utf8))
+    }
+
+    private func scalePage(_ request: APIRequest) async throws -> Data {
+        guard request.accept == APIRequest.tableAccept,
+              request.query.contains(where: { $0.name == "limit" && $0.value == "500" }) else { throw APIError.invalidRequest }
+        scaleRequests += 1
+        let cursor = request.query.first { $0.name == "continue" }?.value
+        if scaleRequests == 2 {
+            guard cursor == "500" else { throw APIError.invalidRequest }
+            try await Task.sleep(for: .milliseconds(150))
+            throw APIError.http(code: 410, resource: "pods")
+        }
+        let start = Int(cursor ?? "0") ?? -1
+        guard [0, 500, 1000].contains(start) else { throw APIError.invalidRequest }
+        if start > 0 { try await Task.sleep(for: .milliseconds(150)) }
+        let end = min(start + 500, 1253)
+        let rows = (start..<end).map { Self.scaleRow(scaleRequests == 1 ? $0 + 9000 : $0) }
+        return try JSONSerialization.data(withJSONObject: [
+            "apiVersion": "meta.k8s.io/v1", "kind": "Table",
+            "metadata": ["resourceVersion": scaleRelisted ? "resync-rv" : "scale-rv", "continue": end == 1253 ? "" : "\(end)"],
+            "columnDefinitions": start == 0 ? [["name": "Name", "type": "string"]] as Any : NSNull(),
+            "rows": rows,
+        ])
+    }
+
+    static func scaleRow(_ id: Int) -> [String: Any] {
+        ["cells": ["pod-\(id)"], "object": ["metadata": [
+            "uid": "scale-\(id)", "name": "pod-\(id)", "namespace": "scale", "resourceVersion": "event-\(id)",
+        ]]]
+    }
+
+    func scaleEvent(_ type: String, id: Int) throws {
+        let bytes = try JSONSerialization.data(withJSONObject: [
+            "type": type, "object": ["apiVersion": "meta.k8s.io/v1", "kind": "Table", "rows": [Self.scaleRow(id)]],
+        ])
+        streams.last?.yield(bytes + Data([10]))
+    }
+
+    func expireScaleWatch() {
+        scaleRelisted = true
+        streams.last?.yield(Data(#"{"type":"ERROR","object":{"apiVersion":"v1","kind":"Status","code":410,"reason":"Expired"}}"#.utf8) + Data([10]))
+    }
+
+    func deletePod(named name: String) throws {
+        guard var page = try JSONSerialization.jsonObject(
+            with: Self.page(namespace: "team", second: name == "alpha", empty: false)
+        ) as? [String: Any] else { throw APIError.invalidRequest }
+        page["metadata"] = ["resourceVersion": "deleted-rv"]
+        let event = try JSONSerialization.data(withJSONObject: ["type": "DELETED", "object": page])
+        streams.last?.yield(event + Data([10]))
     }
 }
 

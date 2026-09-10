@@ -140,6 +140,7 @@ extension AppActions {
             store.podSort = nil
         }
         if store.connection != update.connection { store.connection = update.connection }
+        reconcileLogPods(update)
         reconcilePodSelection()
     }
 }

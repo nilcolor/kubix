@@ -5,6 +5,21 @@ import KubixCore
 import Testing
 
 @Suite struct PTYBridgeServerTests {
+    @Test func stoppedListenerRejectsNewPeersEvenWhileADuplicateRemainsOpen() throws {
+        let directory = try BridgeDirectoryCapture().create()
+        defer { rmdir(directory) }
+        let path = directory + "/session.sock"
+        let listener = try OwnedBridgeListener(path: path)
+        defer { listener.close() }
+        let retained = dup(listener.descriptor)
+        #expect(retained >= 0)
+        defer { Darwin.close(retained) }
+        let endpoint = try ExecBridgeEndpoint(socketPath: path, nonce: BridgeNonce(bytes: Data(repeating: 1, count: 32)))
+        listener.stopAccepting()
+        #expect(throws: BridgeIOError.self) { try BridgeServerClient(endpoint: endpoint) }
+        #expect(fcntl(retained, F_GETFD) >= 0)
+    }
+
     @Test func privateSocketAndDirectoryPermissionsRealIOAndFreshDirectoryAfterLastClose() async throws {
         let directories = BridgeDirectoryCapture()
         let server = PTYBridgeServer(makeDirectory: { try directories.create() })

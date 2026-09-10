@@ -141,4 +141,57 @@ import Testing
         #expect(await transport.requests.count == 1)
         await owner.actions.shutdownAndWait()
     }
+
+    @Test(arguments: [false, true])
+    func observedDeletionOrReplacementStopsFollowingWithoutReplay(_ replacement: Bool) async throws {
+        let watchBytes = MemoryByteStream()
+        let logBytes = MemoryByteStream([Data("retained\n".utf8)])
+        let transport = LogTestTransport(
+            data: { request, _ in
+                request.accept == APIRequest.tableAccept ? try podPage() : try podDetailsData()
+            },
+            stream: { request, _ in request.path.last == "log" ? logBytes : watchBytes }
+        )
+        let owner = try PodShellTestOwner(
+            transport: transport, watch: WatchService { _ in transport }, logs: LogService { _ in transport }
+        )
+        defer { owner.actions.shutdown() }
+        owner.actions.refreshPods()
+        try await watchEventually { watchBytes.isWaiting && owner.store.connection == .live }
+        owner.actions.openPodLogs(uid: "uid-0")
+        try await watchEventually { logBytes.isWaiting }
+        let session = try #require(owner.store.logSessions.first)
+        if replacement {
+            let event = String(decoding: try podEvent(id: 0), as: UTF8.self)
+                .replacingOccurrences(of: "uid-0", with: "replacement")
+            watchBytes.yield(Data(event.utf8))
+            try await watchEventually { owner.store.rows.count == 2 }
+        }
+        watchBytes.yield(try podEvent("DELETED", id: 0))
+        try await watchEventually { owner.store.rows.allSatisfy { $0.id != "uid-0" } }
+        await Task.yield()
+        #expect(session.state == .failed(replacement ? .replaced : .deleted))
+        #expect(!session.status.contains("404"))
+        try await watchEventually { owner.actions.logTasks.isEmpty }
+        #expect(logBytes.cancelled && session.segment == 1 && session.buffer.lines.last?.text == "retained")
+        #expect(session.target.uid == "uid-0")
+        #expect(await transport.streams.filter { $0.path.last == "log" }.count == 1)
+        await owner.actions.shutdownAndWait()
+        #expect(watchBytes.cancelled)
+    }
+
+    @Test func incompleteRelistCannotDeclareAnActiveLogDeleted() async throws {
+        let bytes = MemoryByteStream()
+        let transport = LogTestTransport(stream: { _, _ in bytes })
+        let owner = try PodShellTestOwner(transport: transport, logs: LogService { _ in transport })
+        defer { owner.actions.shutdown() }
+        owner.actions.openPodLogs(uid: "uid-0")
+        try await watchEventually { bytes.isWaiting }
+        let session = try #require(owner.store.logSessions.first)
+        owner.actions.applyPodUpdate(.init(rows: [], columns: nil, connection: .connecting))
+        #expect(session.state == .following && !bytes.cancelled)
+        try owner.install(ids: [0])
+        #expect(session.state == .following && !bytes.cancelled)
+        await owner.actions.shutdownAndWait()
+    }
 }

@@ -39,6 +39,7 @@ import KubixCore
         for (index, shell) in shells.enumerated() {
             guard actions.surface(for: shell.id) === views[index] else { throw Failure.assertion }
         }
+        try await deletion(fixture, session: switched)
         actions.closeLog(session.id)
         actions.closeLog(switched.id)
         guard let shell = shells.first else { throw Failure.assertion }
@@ -49,8 +50,15 @@ import KubixCore
               views.allSatisfy({ $0.freeCount == 0 }) else { throw Failure.assertion }
         return "native Logs menu; real bounded virtual table and filter field; scroll-up disables autoscroll; interruption/Resume boundary; "
             + "full count/byte rings retain viewport ID and pixel offset; filter/eviction fallbacks and Latest verified; "
-            + "fresh init-container switch distinct UUID; close joins streams; two existing exec UUIDs/targets/surfaces preserved with zero frees; "
+            + "fresh init-container switch distinct UUID; observed watch deletion stops follow without replay; "
+            + "close joins streams; two existing exec UUIDs/targets/surfaces preserved with zero frees; "
             + "synthetic only; counts/state evidence, no log text or screenshots"
+    }
+
+    private static func deletion(_ fixture: PodBrowsingFixture, session: LogSession) async throws {
+        try await fixture.transport.deletePod(named: session.target.pod)
+        try await PodBrowsingValidation.until { session.state == .failed(.deleted) }
+        guard session.buffer.count > 0, session.segment == 1 else { throw Failure.assertion }
     }
 
     private static func openMenu(table: NSTableView, window: NSWindow) throws {

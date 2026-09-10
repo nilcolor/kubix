@@ -102,7 +102,7 @@ func eventually(_ condition: @escaping @Sendable () async -> Bool) async throws 
     let deadline = ContinuousClock.now.advanced(by: .seconds(5))
     while !(await condition()) {
         guard ContinuousClock.now < deadline else { throw TestFailure.deadline }
-        await Task.yield()
+        try await Task.sleep(for: .milliseconds(1))
     }
 }
 
@@ -128,8 +128,10 @@ final class StubWorkspace: @unchecked Sendable {
         guard let fixture = Bundle.module.url(forResource: "exec-stub", withExtension: "sh", subdirectory: "Fixtures") else {
             throw TestFailure.missingFixture
         }
-        try FileManager.default.copyItem(at: fixture, to: executable)
-        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+        // Reuse the immutable packaged executable; unique copied scripts serialize first-launch
+        // validation on macOS and can exhaust otherwise unrelated five-second auth deadlines.
+        guard FileManager.default.isExecutableFile(atPath: fixture.path) else { throw TestFailure.missingFixture }
+        try FileManager.default.createSymbolicLink(at: executable, withDestinationURL: fixture)
         gate = root.appendingPathComponent("gate")
         guard mkfifo(gate.path, 0o600) == 0 else { throw TestFailure.missingFixture }
         gateFD = Darwin.open(gate.path, O_RDWR | O_NONBLOCK)

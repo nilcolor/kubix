@@ -28,6 +28,27 @@ func logTestTarget() throws -> LogTarget {
 }
 
 @Suite @MainActor struct LogServiceTests {
+    @Test func realElapsedQuietFollowSurvivesMoreThanOneMinute() async throws {
+        let stream = MemoryByteStream()
+        let session = ScriptedTransportSession(stream: { _, _ in HTTPStreamResponse(statusCode: 200, body: stream) })
+        let transport = try await testTransport(session: session)
+        let capture = LogCapture()
+        let work = try runLog(transport, capture: capture)
+        defer { work.cancel() }
+        try await watchEventually { stream.isWaiting && capture.opened }
+        let began = ContinuousClock.now
+        try await Task.sleep(for: .seconds(61))
+        let elapsed = began.duration(to: .now)
+        #expect(elapsed > .seconds(60))
+        #expect(!stream.cancelled && capture.opened && capture.lines.isEmpty)
+        stream.yield(Data("synthetic post-quiet marker\n".utf8))
+        try await watchEventually { capture.lines.count == 1 && stream.isWaiting }
+        work.cancel()
+        #expect(await work.value == .cancelled)
+        #expect(stream.cancelled)
+        print("CONTROLLED quiet follow: real elapsed \(elapsed); post-quiet delivery and cancellation passed")
+    }
+
     @Test func authenticatedFollowUsesLongProfileAndSplitUTF8CleanEOF() async throws {
         let bytes = Array("hello 🙂\npartial".utf8)
         let stream = MemoryByteStream(bytes.map { Data([$0]) }, finished: true)

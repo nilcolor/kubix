@@ -56,6 +56,8 @@ final class UnixBridgeConnection: BridgeConnection {
 
     func close() {
         guard descriptor >= 0 else { return }
+        // End the endpoint even if a concurrently spawned child briefly inherited a duplicate.
+        _ = Darwin.shutdown(descriptor, SHUT_RDWR)
         Darwin.close(descriptor)
         descriptor = -1
     }

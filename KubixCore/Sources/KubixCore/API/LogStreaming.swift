@@ -35,7 +35,7 @@ public enum LogFailure: Equatable, Sendable {
     public var diagnostic: String {
         switch self {
         case .forbidden: "Forbidden: logs require get-pods and get-pods/log permission."
-        case .deleted: "This pod or its logs are no longer available (404)."
+        case .deleted: "This pod or its logs are no longer available."
         case .notReady: "Container logs are not available yet, or the requested previous instance does not exist (400)."
         case .replaced: "The pod was replaced. This session will never adopt a different Pod UID."
         case .invalidTarget: "The original pod/container is no longer an eligible log target."

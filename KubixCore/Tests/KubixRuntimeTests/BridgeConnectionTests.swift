@@ -5,6 +5,20 @@ import KubixCore
 import Testing
 
 @Suite struct BridgeConnectionTests {
+    @Test func closeEndsPeerEvenWhenAnotherDescriptorRetainsTheSocket() throws {
+        let connector = try TestBridgeConnector()
+        let connection = try connector.connect(path: "/unused", control: PTYBridgeControl(), clock: ContinuousTransportClock())
+        let retained = dup(connection.descriptor)
+        #expect(retained >= 0)
+        defer { Darwin.close(retained) }
+        connection.close()
+        #expect(connection.descriptor == -1)
+        let remaining = try BridgeIO.read(connector.peer, maximumCount: 1)
+        #expect(remaining == Data())
+        #expect(fcntl(retained, F_GETFD) >= 0)
+        connection.close()
+    }
+
     @Test func realNamedSocketValidatesPeerAndCarriesTheActualChildLoop() throws {
         let listener = try TestBridgeListener()
         let tty = try TestPTY()

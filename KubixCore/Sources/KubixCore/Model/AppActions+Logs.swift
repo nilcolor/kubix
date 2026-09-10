@@ -47,6 +47,22 @@ extension AppActions {
         }
     }
 
+    func reconcileLogPods(_ update: PodWatchUpdate) {
+        // Connecting/relist snapshots are not authoritative evidence of deletion.
+        guard update.connection == .live else { return }
+        let retained = Set(update.rows.map(\.id))
+        for session in store.logSessions where !session.isClosed {
+            guard session.target.context == store.selectedContext, session.target.namespace == store.selectedNamespace,
+                  !retained.contains(session.target.uid),
+                  session.state == .following || session.state == .connecting else { continue }
+            pauseLog(session.id)
+            logAttempts.removeValue(forKey: session.id)
+            podLogGuards.removeValue(forKey: session.id)
+            let replaced = update.rows.contains { $0.metadata.name == session.target.pod }
+            session.state = .failed(replaced ? .replaced : .deleted)
+        }
+    }
+
     func startLog(_ session: LogSession) {
         guard let logs, !stopped else { return }
         let attempt = UUID()

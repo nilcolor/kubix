@@ -12,8 +12,11 @@ actor ExecValidationProcess: ProcessRunning {
 
     func run(_ request: ProcessRequest, progress: @escaping @Sendable (String) -> Void) async throws -> ProcessResult {
         calls += 1
-        kubectlDiscoverable = (request.environment["PATH"] ?? "").split(separator: ":").contains {
+        kubectlDiscoverable = kubectlDiscoverable || (request.environment["PATH"] ?? "").split(separator: ":").contains {
             FileManager.default.isExecutableFile(atPath: String($0) + "/kubectl")
+        }
+        if ProcessInfo.processInfo.environment["KUBIX_EXEC_VALIDATION_CONFIRM"] == "authorized-readonly-task20", kubectlDiscoverable {
+            throw APIError.invalidRequest
         }
         return try await ProcessRunner(validationDidLaunch: { [launches] in launches.append($0) }).run(request, progress: progress)
     }
