@@ -74,6 +74,8 @@ public actor AuthenticationService: AuthenticationControlling, CredentialProvidi
                     executable: plugin.executable.path, source: plugin.source,
                     profile: binding.profile, canSignIn: true
                 )
+            } catch AuthenticationError.unsupportedAWSInvocation {
+                return AuthPluginPresentation(executable: plugin.executable.path, source: plugin.source)
             } catch {
                 return AuthPluginPresentation(
                     executable: plugin.executable.path, source: plugin.source, diagnostic: diagnostic(error)

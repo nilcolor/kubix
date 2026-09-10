@@ -34,7 +34,7 @@ struct AuthProgressView: View {
             if let diagnostic = store.authenticationDiagnostic { Text(diagnostic).foregroundStyle(.orange) }
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
-                    ForEach(store.authenticationSessions.values.sorted { $0.id.uuidString < $1.id.uuidString }, id: \.id) { session in
+                    ForEach(store.visibleAuthenticationSessions, id: \.id) { session in
                         progress(AuthPresentation(session))
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)

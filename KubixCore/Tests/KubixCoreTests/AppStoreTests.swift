@@ -110,6 +110,54 @@ import Testing
         }
     }
 
+    @Test func completedAuthCardsCoalesceWithoutHidingActiveOperationsOrOtherFailures() async throws {
+        let auth = AppTestAuth()
+        let store = AppStore()
+        let actions = AppActions(store: store, exec: AppTestExec(), authentication: auth, surfaces: AppTestSurfaces())
+        defer { actions.shutdown() }
+        try await appEventually { await auth.subscriberCount == 1 }
+        let identity = try CredentialIdentity(from: appContext())
+        let first = AuthSession(credentialIdentity: identity, provider: "Synthetic", state: .succeeded)
+        var active = AuthSession(credentialIdentity: identity, provider: "Synthetic")
+        let replacement = AuthSession(credentialIdentity: identity, provider: "Synthetic", state: .succeeded)
+        var unrelated = try AuthSession(credentialIdentity: CredentialIdentity(from: appContext("other")), provider: "Synthetic")
+        unrelated.transition(to: .failed, diagnostic: "Configured plugin failed.")
+        for session in [first, active, replacement, unrelated] { await auth.emit(session) }
+        try await appEventually { store.authenticationSessions.count == 4 }
+        #expect(store.visibleAuthenticationSessions.map(\.id) == [active.id, replacement.id, unrelated.id])
+        #expect(store.visibleAuthenticationSessions.last?.diagnostic == "Configured plugin failed.")
+        let stale = AuthSession(id: first.id, credentialIdentity: identity, provider: "Synthetic")
+        await auth.emit(stale)
+        active.append("SYNTHETIC-PROGRESS")
+        await auth.emit(active)
+        try await appEventually { store.authenticationSessions[active.id]?.instructions == active.instructions }
+        #expect(store.authenticationSessions[first.id]?.state == .succeeded)
+        #expect(store.visibleAuthenticationSessions.map(\.id) == [active.id, replacement.id, unrelated.id])
+        var latest = AuthSession(credentialIdentity: identity, provider: "Synthetic")
+        latest.transition(to: .failed, diagnostic: "New authentication failure.")
+        await auth.emit(latest)
+        try await appEventually { store.authenticationSessions[latest.id] != nil }
+        #expect(store.visibleAuthenticationSessions.map(\.id) == [active.id, unrelated.id, latest.id])
+        #expect(store.visibleAuthenticationSessions.last?.diagnostic == "New authentication failure.")
+        actions.shutdown()
+        #expect(store.visibleAuthenticationSessions.isEmpty)
+    }
+
+    @Test func boundedAuthHistoryRetainsLatestCompletedStatus() async throws {
+        let auth = AppTestAuth()
+        let store = AppStore()
+        let actions = AppActions(store: store, exec: AppTestExec(), authentication: auth, surfaces: AppTestSurfaces())
+        defer { actions.shutdown() }
+        try await appEventually { await auth.subscriberCount == 1 }
+        let identity = try CredentialIdentity(from: appContext())
+        let sessions = (0..<129).map { _ in AuthSession(credentialIdentity: identity, provider: "Synthetic", state: .succeeded) }
+        for session in sessions { await auth.emit(session) }
+        try await appEventually { store.authenticationSessions[sessions[128].id] != nil }
+        #expect(store.authenticationSessions.count == 128)
+        #expect(store.authenticationSessions[sessions[0].id] == nil)
+        #expect(store.visibleAuthenticationSessions.map(\.id) == [sessions[128].id])
+    }
+
     @Test func authFailureCanRetrySameIDWithoutAllocatingAnEarlySurface() async throws {
         let auth = AppTestAuth()
         await auth.fail(AuthenticationError.materialUnavailable)

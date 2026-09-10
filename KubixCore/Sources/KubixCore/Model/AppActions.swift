@@ -186,6 +186,7 @@ public final class AppActions {
         for task in settingsTasks.values { task.cancel() }
         for task in authenticationTasks.values { task.cancel() }
         store.authenticationSessions = [:]
+        store.authenticationSessionOrder = []
         store.authenticationDiagnostic = nil
         presentationRevision += 1
         configurationRevision += 1
@@ -257,10 +258,12 @@ public final class AppActions {
 
     private func receive(_ session: AuthSession) {
         guard !stopped, store.authenticationSessions[session.id]?.state.isTerminal != true else { return }
+        if store.authenticationSessions[session.id] == nil { store.authenticationSessionOrder.append(session.id) }
         store.authenticationSessions[session.id] = session
         if store.authenticationSessions.count > 128,
-           let oldest = store.authenticationSessions.first(where: { $0.value.state.isTerminal })?.key {
+           let oldest = store.authenticationSessionOrder.first(where: { store.authenticationSessions[$0]?.state.isTerminal == true }) {
             store.authenticationSessions.removeValue(forKey: oldest)
+            store.authenticationSessionOrder.removeAll { $0 == oldest }
         }
     }
 

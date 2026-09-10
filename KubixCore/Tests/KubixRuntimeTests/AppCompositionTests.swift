@@ -103,7 +103,7 @@ private actor RegistryFactory {
     let presentation = await auth.presentation(for: context)
     #expect(presentation.executable == "/tools/aws-vault")
     #expect(!presentation.canSignIn && presentation.profile == nil)
-    #expect(presentation.diagnostic == AuthenticationError.unsupportedAWSInvocation.errorDescription)
+    #expect(presentation.diagnostic == nil)
     await #expect(throws: AuthenticationError.unsupportedAWSInvocation) { try await auth.signIn(for: context) }
     #expect(await process.requests().isEmpty)
 }

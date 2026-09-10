@@ -10,6 +10,7 @@ public final class AppStore {
     public internal(set) var selectedNamespace: String
     public internal(set) var execSessions: [ExecSession] = []
     public internal(set) var authenticationSessions: [UUID: AuthSession] = [:]
+    var authenticationSessionOrder: [UUID] = []
     public internal(set) var authSettings: AuthSettings
     public internal(set) var authenticationDiagnostic: String?
     public internal(set) var configurationDiagnostics: [String] = []
@@ -25,6 +26,14 @@ public final class AppStore {
     public internal(set) var connectDiagnostic: String?
     public internal(set) var selectedExecSessionID: UUID?
     public internal(set) var surfaceRevision = 0
+
+    public var visibleAuthenticationSessions: [AuthSession] {
+        var completed = Set<CredentialIdentity>()
+        let newestFirst = authenticationSessionOrder.reversed().compactMap { authenticationSessions[$0] }.filter {
+            !$0.state.isTerminal || completed.insert($0.credentialIdentity).inserted
+        }
+        return Array(newestFirst.reversed())
+    }
 
     public init(contexts: [ResolvedContext] = [], authSettings: AuthSettings = AuthSettings()) {
         self.contexts = contexts
