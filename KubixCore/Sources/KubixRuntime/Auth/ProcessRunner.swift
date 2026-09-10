@@ -61,7 +61,11 @@ public protocol ProcessRunning: Sendable {
 /// A detached worker polls both nonblocking pipes. No blocking read/waitUntilExit is used: even an
 /// inherited pipe held by a descendant cannot prevent deadline/cancellation or completion.
 public struct ProcessRunner: ProcessRunning {
-    public init() {}
+    private let didLaunch: (@Sendable (Int32) -> Void)?
+    public init() { didLaunch = nil }
+    #if DEBUG
+    public init(validationDidLaunch: @escaping @Sendable (Int32) -> Void) { didLaunch = validationDidLaunch }
+    #endif
 
     public func run(
         _ request: ProcessRequest, progress: @escaping @Sendable (String) -> Void
@@ -70,7 +74,7 @@ public struct ProcessRunner: ProcessRunning {
         return try await withTaskCancellationHandler {
             try Task.checkCancellation()
             return try await Task.detached {
-                try Self.execute(request, cancellation: cancellation, progress: progress)
+                try Self.execute(request, cancellation: cancellation, progress: progress, didLaunch: didLaunch)
             }.value
         } onCancel: {
             cancellation.cancel()
@@ -79,7 +83,7 @@ public struct ProcessRunner: ProcessRunning {
 
     private static func execute(
         _ request: ProcessRequest, cancellation: ProcessCancellation,
-        progress: @escaping @Sendable (String) -> Void
+        progress: @escaping @Sendable (String) -> Void, didLaunch: (@Sendable (Int32) -> Void)?
     ) throws -> ProcessResult {
         guard request.executable.isFileURL, request.executable.path.hasPrefix("/"),
               request.timeout.isFinite, request.timeout > 0 else { throw ProcessFailure.invalidRequest }
@@ -110,6 +114,7 @@ public struct ProcessRunner: ProcessRunning {
             if ownsGroup { _ = Darwin.kill(-pid, SIGKILL) }
             if process.isRunning { _ = Darwin.kill(pid, SIGKILL) }
         }
+        didLaunch?(pid)
         try stdout.fileHandleForWriting.close()
         try stderr.fileHandleForWriting.close()
         let outFD = stdout.fileHandleForReading.fileDescriptor

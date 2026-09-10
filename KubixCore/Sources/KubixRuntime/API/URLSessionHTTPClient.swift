@@ -16,6 +16,7 @@ public struct URLSessionFactory: TransportSessionFactory {
     public static func configuration(for purpose: TransportPurpose) -> URLSessionConfiguration {
         let policy = TransportPolicy.policy(for: purpose)
         let configuration = URLSessionConfiguration.ephemeral
+        configuration.tlsMinimumSupportedProtocolVersion = .TLSv12
         configuration.timeoutIntervalForRequest = policy.idleTimeout
         configuration.timeoutIntervalForResource = policy.totalTimeout
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
@@ -45,7 +46,12 @@ public final class URLSessionHTTPClient: TransportSession, Sendable {
             let (data, response) = try await session.data(for: request, delegate: delegate)
             guard let response = response as? HTTPURLResponse else { throw APIError.transport(.invalidResponse) }
             return HTTPDataResponse(statusCode: response.statusCode, body: data)
-        } catch { throw delegate.authenticationFailure ?? transportError(error) }
+        } catch {
+            #if DEBUG
+            trust.recordValidationError(error)
+            #endif
+            throw delegate.authenticationFailure ?? transportError(error)
+        }
     }
 
     public func stream(for request: URLRequest) async throws -> HTTPStreamResponse {

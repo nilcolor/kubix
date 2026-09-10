@@ -7,6 +7,22 @@ public final class ClusterTrustPolicy: @unchecked Sendable {
     public let insecureSkipTLSVerify: Bool
     public let serverName: String?
     public let anchors: [SecCertificate]
+    #if DEBUG
+    private let evaluationLock = NSLock()
+    private var evaluationCode: Int?
+    private var validationDetails: [String: Int] = [:]
+    public var validationErrorCode: Int? { evaluationLock.withLock { evaluationCode } }
+    public var validationDiagnostics: [String: Int] { evaluationLock.withLock { validationDetails } }
+    func recordValidationError(_ error: any Error) {
+        let error = error as NSError
+        evaluationLock.withLock {
+            validationDetails["urlErrorCode"] = error.code
+            for key in ["_kCFStreamErrorCodeKey", "_kCFStreamErrorDomainKey"] {
+                if let code = error.userInfo[key] as? Int { validationDetails[key] = code }
+            }
+        }
+    }
+    #endif
     public var warning: String? {
         insecureSkipTLSVerify ? "WARNING: TLS certificate and hostname verification are DISABLED for this context." : nil
     }
@@ -41,6 +57,9 @@ public final class ClusterTrustPolicy: @unchecked Sendable {
     }
 
     public func evaluate(_ trust: SecTrust, hostname: String) -> Bool {
+        #if DEBUG
+        evaluationLock.withLock { validationDetails["evaluations", default: 0] += 1 }
+        #endif
         if insecureSkipTLSVerify { return true }
         let policy = SecPolicyCreateSSL(true, (serverName ?? hostname) as CFString)
         guard SecTrustSetPolicies(trust, policy) == errSecSuccess else { return false }
@@ -48,7 +67,15 @@ public final class ClusterTrustPolicy: @unchecked Sendable {
             guard SecTrustSetAnchorCertificates(trust, anchors as CFArray) == errSecSuccess,
                   SecTrustSetAnchorCertificatesOnly(trust, true) == errSecSuccess else { return false }
         }
-        return SecTrustEvaluateWithError(trust, nil)
+        var error: CFError?
+        let accepted = SecTrustEvaluateWithError(trust, &error)
+        #if DEBUG
+        evaluationLock.withLock {
+            evaluationCode = error.map { CFErrorGetCode($0) }
+            validationDetails["accepted"] = accepted ? 1 : 0
+        }
+        #endif
+        return accepted
     }
 
     private static func certificates(_ data: Data) throws -> [SecCertificate] {
@@ -123,9 +150,9 @@ public class ClusterTrustDelegate: NSObject, URLSessionDelegate, URLSessionTaskD
                 completionHandler(.cancelAuthenticationChallenge, nil)
             }
         case NSURLAuthenticationMethodClientCertificate:
-            // Identity import, including certificate-returning exec plugins, is Task 19.
-            failureLock.withLock { failure = AuthenticationError.unsupportedCertificate }
-            completionHandler(.cancelAuthenticationChallenge, nil)
+            // Kubernetes requests an optional certificate even for bearer authentication.
+            // Actual configured certificate credentials are rejected by the provider until Task 19.
+            completionHandler(.performDefaultHandling, nil)
         default: completionHandler(.performDefaultHandling, nil)
         }
     }

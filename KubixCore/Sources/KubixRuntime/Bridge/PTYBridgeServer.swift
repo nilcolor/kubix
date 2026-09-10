@@ -30,6 +30,18 @@ public actor PTYBridgeServer: PTYBridgeServing {
         handshakeTimeout = 5
     }
 
+    #if DEBUG
+    init(validationRoot: URL) {
+        makeDirectory = {
+            let path = validationRoot.appendingPathComponent("v-" + UUID().uuidString.prefix(6)).path
+            guard validationRoot.isFileURL, mkdir(path, 0o700) == 0 else { throw BridgeIOError.unavailable }
+            return path
+        }
+        clock = ContinuousTransportClock()
+        handshakeTimeout = 5
+    }
+    #endif
+
     /// Controlled local tests inject creation without consulting HOME or TMPDIR.
     init(
         makeDirectory: @escaping @Sendable () throws -> String,

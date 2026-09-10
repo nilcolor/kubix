@@ -98,6 +98,7 @@ func nativeSessionConfigurationsMatchPolicyAndCannotPersistCredentials(_ purpose
     let configuration = URLSessionFactory.configuration(for: purpose)
     let policy = TransportPolicy.policy(for: purpose)
     #expect(configuration.timeoutIntervalForRequest == policy.idleTimeout)
+    #expect(configuration.tlsMinimumSupportedProtocolVersion == .TLSv12)
     #expect(configuration.timeoutIntervalForResource == policy.totalTimeout)
     #expect(configuration.urlCache == nil)
     #expect(configuration.urlCredentialStorage == nil)
@@ -151,7 +152,7 @@ private final class SyntheticProtectionSpace: URLProtectionSpace, @unchecked Sen
 }
 
 @Test(arguments: [NSURLAuthenticationMethodClientCertificate, NSURLAuthenticationMethodServerTrust])
-func failedNativeAuthenticationChallengesHaveExplicitErrors(_ method: String) throws {
+func optionalClientCertificateDoesNotAbortBearerAuthButInvalidServerTrustFails(_ method: String) throws {
     let policy = try ClusterTrustPolicy(cluster: KubeconfigCluster(server: "https://synthetic.invalid"), authorityData: nil)
     let delegate = ClusterTrustDelegate(policy: policy)
     let session = URLSession(configuration: .ephemeral)
@@ -161,11 +162,11 @@ func failedNativeAuthenticationChallengesHaveExplicitErrors(_ method: String) th
         failureResponse: nil, error: nil, sender: SyntheticChallengeSender()
     )
     delegate.urlSession(session, didReceive: challenge) { disposition, credential in
-        #expect(disposition == .cancelAuthenticationChallenge)
+        #expect(disposition == (method == NSURLAuthenticationMethodClientCertificate ? .performDefaultHandling : .cancelAuthenticationChallenge))
         #expect(credential == nil)
     }
     if method == NSURLAuthenticationMethodClientCertificate {
-        #expect(delegate.authenticationFailure as? AuthenticationError == .unsupportedCertificate)
+        #expect(delegate.authenticationFailure == nil)
     } else {
         #expect(delegate.authenticationFailure as? APIError == .tls(.trustEvaluationFailed))
     }

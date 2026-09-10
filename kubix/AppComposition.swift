@@ -9,6 +9,10 @@ final class AppComposition {
     let store: AppStore
     let actions: AppActions
     private let registry: ContextTransportRegistry
+    #if DEBUG
+    let validationProcess = ExecValidationProcess()
+    let validationTransportFactory = ExecValidationTransportFactory()
+    #endif
 
     private init() {
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -16,12 +20,33 @@ final class AppComposition {
         let settings = AppAuthSettingsStore(directory: directory)
         let environment = ProcessInfo.processInfo.environment
         let resolver = PluginResolver(environment: environment, store: settings)
+        #if DEBUG
+        let process: any ProcessRunning = ExecLiveValidation.isEnabled ? validationProcess : ProcessRunner()
+        let provider = CredentialProvider(resolver: resolver, runner: CredentialRunner(process: process))
+        #else
         let provider = CredentialProvider(resolver: resolver)
+        #endif
         let login = AWSLoginService()
         let authentication = AuthenticationService(provider: provider, login: login)
         // The immutable context warning is also rendered beside every session and the connect form.
+        #if DEBUG
+        if ExecLiveValidation.isEnabled {
+            registry = ContextTransportRegistry(factory: { [validationTransportFactory] context in
+                try await URLSessionTransport(
+                    context: context, credentials: authentication, factory: validationTransportFactory, warning: { _ in }
+                )
+            })
+        } else { registry = ContextTransportRegistry(credentials: authentication, warning: { _ in }) }
+        #else
         registry = ContextTransportRegistry(credentials: authentication, warning: { _ in })
-        let exec = ExecService(transports: { [registry] in try await registry.transport(for: $0) })
+        #endif
+        let transports: ExecService.TransportFactory = { [registry] in try await registry.transport(for: $0) }
+        #if DEBUG
+        let exec = ExecLiveValidation.bridgeRoot.map { ExecService(transports: transports, validationRoot: $0) }
+            ?? ExecService(transports: transports)
+        #else
+        let exec = ExecService(transports: transports)
+        #endif
         let factory = ExecSurfaceFactory()
         store = AppStore()
         actions = AppActions(
@@ -38,6 +63,12 @@ final class AppComposition {
         await actions.shutdownAndWait()
         await registry.shutdown()
     }
+
+    #if DEBUG
+    func validationTransport(for context: ResolvedContext) async throws -> any Transport {
+        try await registry.transport(for: context)
+    }
+    #endif
 }
 
 private actor AppAuthSettingsStore: AuthSettingsStoring {

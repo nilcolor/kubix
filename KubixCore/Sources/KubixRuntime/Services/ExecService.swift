@@ -7,6 +7,7 @@ public actor ExecService: ExecSessionControlling {
     private let transports: TransportFactory
     private let bridges: any PTYBridgeServing
     private let clock: any TransportClock
+    private var readOnlyValidation = false
     private var sessions: [UUID: ExecRunControl] = [:]
 
     public init(transports: @escaping TransportFactory, bridgeServer: PTYBridgeServer = PTYBridgeServer()) {
@@ -14,6 +15,15 @@ public actor ExecService: ExecSessionControlling {
         bridges = bridgeServer
         clock = ContinuousTransportClock()
     }
+
+    #if DEBUG
+    public init(transports: @escaping TransportFactory, validationRoot: URL) {
+        self.transports = transports
+        bridges = PTYBridgeServer(validationRoot: validationRoot)
+        clock = ContinuousTransportClock()
+        readOnlyValidation = true
+    }
+    #endif
 
     init(
         transports: @escaping TransportFactory, bridges: any PTYBridgeServing,
@@ -32,7 +42,9 @@ public actor ExecService: ExecSessionControlling {
         guard sessions[sessionID] == nil else { return .failed(.bridge) }
         let control = ExecRunControl()
         sessions[sessionID] = control
-        let invocation = ExecInvocation(sessionID: sessionID, target: target, ready: ready, update: update)
+        let invocation = ExecInvocation(
+            sessionID: sessionID, target: target, ready: ready, update: update, readOnlyValidation: readOnlyValidation
+        )
         let worker = Task { [transports, bridges, clock] in
             await Self.execute(
                 invocation, transports: transports, bridges: bridges, clock: clock, control: control
@@ -61,7 +73,7 @@ public actor ExecService: ExecSessionControlling {
         do {
             try Task.checkCancellation()
             let transport = try await transports(invocation.target.context)
-            let request = try shellRequest(invocation.target)
+            let request = try shellRequest(invocation.target, readOnlyValidation: invocation.readOnlyValidation)
             let connection = try await transport.webSocket(for: request.apiRequest)
             socket = connection
             guard connection.negotiatedProtocol == URLSessionTransport.execProtocol else { throw APIError.unsupportedProtocol }
@@ -102,12 +114,22 @@ public actor ExecService: ExecSessionControlling {
         let target: ExecTarget
         let ready: @MainActor @Sendable (ExecBridgeEndpoint) throws -> Void
         let update: @MainActor @Sendable (ExecSession.State) -> Void
+        let readOnlyValidation: Bool
     }
 
-    private static func shellRequest(_ target: ExecTarget) throws -> ExecRequest {
-        try ExecRequest(
+    static func shellRequest(_ target: ExecTarget, readOnlyValidation: Bool = false) throws -> ExecRequest {
+        var command = ["env", "TERM=xterm-256color", "sh", "-c", "command -v bash >/dev/null && exec bash || exec sh"]
+        #if DEBUG
+        if readOnlyValidation {
+            command = [
+                "env", "TERM=xterm-256color", "HISTFILE=", "HISTSIZE=0", "HISTFILESIZE=0", "ENV=", "BASH_ENV=",
+                "sh", "-c", "command -v bash >/dev/null && exec bash --noprofile --norc || exec sh"
+            ]
+        }
+        #endif
+        return try ExecRequest(
             namespace: target.namespace, pod: target.pod, container: target.container,
-            command: ["env", "TERM=xterm-256color", "sh", "-c", "command -v bash >/dev/null && exec bash || exec sh"]
+            command: command
         )
     }
 

@@ -51,10 +51,12 @@ struct ExecSessionDeck: View {
             }.padding(.horizontal, 8)
             if let surface = actions.surface(for: session.id) as? GhosttySurfaceView {
                 TerminalView(surface: surface, isSelected: selected)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 Spacer()
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func status(_ state: ExecSession.State) -> String {
