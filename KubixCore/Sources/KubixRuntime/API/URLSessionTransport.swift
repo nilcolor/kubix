@@ -57,7 +57,7 @@ public final class URLSessionTransport: Transport, Sendable {
                 ) { try await self.session(.request).data(for: outgoing) }
             } catch { throw transportError(error) }
             guard (200..<300).contains(response.statusCode) else {
-                throw self.responseError(response.statusCode, response.body, request, acquired)
+                throw self.responseError(response.statusCode, response.body, request, acquired, retryAfter: response.retryAfter)
             }
             return response.body
         }
@@ -88,7 +88,7 @@ public final class URLSessionTransport: Transport, Sendable {
                     throw self.responseError(response.statusCode, Data(), request, acquired)
                 }
                 let body = try await self.errorBody(stream)
-                throw self.responseError(response.statusCode, body, request, acquired)
+                throw self.responseError(response.statusCode, body, request, acquired, retryAfter: response.retryAfter)
             }
             if Task.isCancelled { stream.cancel(); throw CancellationError() }
             return stream
@@ -129,7 +129,8 @@ public final class URLSessionTransport: Transport, Sendable {
             let acquired = try await credentials.acquire(for: context)
             try Task.checkCancellation()
             do { return try await operation(acquired) } catch let error as APIError {
-                guard attempt == 0, error.httpCode == 401 else { throw error }
+                guard error.httpCode == 401 else { throw error }
+                guard attempt == 0 else { throw APIError.credentialsExhausted(error) }
                 if let entry = acquired.entry {
                     await credentials.invalidate(acquired.identity, failedGeneration: entry.generation)
                 }
@@ -151,8 +152,13 @@ public final class URLSessionTransport: Transport, Sendable {
         return outgoing
     }
 
-    private func responseError(_ code: Int, _ body: Data, _ request: APIRequest, _ acquired: AcquiredCredential) -> APIError {
-        .response(code: code, body: body, resource: request.resourceContext, redacting: acquired.entry?.credential.token)
+    private func responseError(
+        _ code: Int, _ body: Data, _ request: APIRequest, _ acquired: AcquiredCredential, retryAfter: String? = nil
+    ) -> APIError {
+        .response(
+            code: code, body: body, resource: request.resourceContext,
+            redacting: acquired.entry?.credential.token, retryAfter: retryAfter
+        )
     }
 
     private func errorBody(_ stream: any HTTPByteStream) async throws -> Data {

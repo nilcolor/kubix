@@ -43,10 +43,20 @@ public enum APIError: Error, Equatable, Sendable, LocalizedError, CustomStringCo
     case tls(TLSFailure)
     case unsupportedProtocol
     case invalidRequest
+    indirect case retryAfter(APIError, delay: TimeInterval)
+    /// The authenticated transport already retried this 401 with refreshed credentials.
+    indirect case credentialsExhausted(APIError)
 
     public static func response(
-        code: Int, body: Data, resource: String, redacting token: String? = nil
+        code: Int, body: Data, resource: String, redacting token: String? = nil,
+        retryAfter: String? = nil, now: Date = Date()
     ) -> Self {
+        let error = bodyError(code: code, body: body, resource: resource, redacting: token)
+        if let delay = RetryAfter.delay(retryAfter, now: now) { return .retryAfter(error, delay: delay) }
+        return error
+    }
+
+    private static func bodyError(code: Int, body: Data, resource: String, redacting token: String?) -> Self {
         // Error pages are untrusted; never retain HTML, oversized bodies, or credential echoes.
         if body.count <= 65_536, let decoded = try? JSONDecoder().decode(KubernetesStatus.self, from: body),
            decoded.apiVersion == "v1", decoded.kind == "Status" {
@@ -58,7 +68,13 @@ public enum APIError: Error, Equatable, Sendable, LocalizedError, CustomStringCo
             }
             let status = KubernetesStatus(
                 apiVersion: "v1", kind: "Status", status: safe(decoded.status), reason: safe(decoded.reason),
-                message: safe(decoded.message), code: decoded.code, details: nil
+                message: safe(decoded.message), code: decoded.code,
+                details: decoded.details?.retryAfterSeconds.flatMap { delay in
+                    guard delay >= 0 else { return nil }
+                    return KubernetesStatusDetails(
+                        name: nil, group: nil, kind: nil, uid: nil, causes: nil, retryAfterSeconds: delay
+                    )
+                }
             )
             return .status(status, httpCode: code, resource: resource)
         }
@@ -68,7 +84,33 @@ public enum APIError: Error, Equatable, Sendable, LocalizedError, CustomStringCo
     public var httpCode: Int? {
         switch self {
         case .status(_, let code, _), .http(let code, _): code
+        case .retryAfter(let error, _), .credentialsExhausted(let error): error.httpCode
         default: nil
+        }
+    }
+
+    public var kubernetesStatus: KubernetesStatus? {
+        switch self {
+        case .status(let status, _, _): status
+        case .retryAfter(let error, _), .credentialsExhausted(let error): error.kubernetesStatus
+        default: nil
+        }
+    }
+
+    public var retryAfterDelay: TimeInterval? {
+        switch self {
+        case .retryAfter(let error, let delay): max(delay, error.retryAfterDelay ?? 0)
+        case .credentialsExhausted(let error): error.retryAfterDelay
+        case .status(let status, _, _): status.details?.retryAfterSeconds.flatMap { $0 >= 0 ? TimeInterval($0) : nil }
+        default: nil
+        }
+    }
+
+    public var credentialRefreshExhausted: Bool {
+        switch self {
+        case .credentialsExhausted: true
+        case .retryAfter(let error, _): error.credentialRefreshExhausted
+        default: false
         }
     }
 
@@ -83,6 +125,8 @@ public enum APIError: Error, Equatable, Sendable, LocalizedError, CustomStringCo
         case .transport(let failure): "Transport failure: \(failure.rawValue)"
         case .unsupportedProtocol: "Exec requires negotiated v5.channel.k8s.io. Check server and intermediary support."
         case .invalidRequest: "Invalid Kubernetes server URL, resource path, or request options."
+        case .retryAfter(let error, _): error.description
+        case .credentialsExhausted(let error): error.description + " Credential refresh was exhausted."
         }
     }
 

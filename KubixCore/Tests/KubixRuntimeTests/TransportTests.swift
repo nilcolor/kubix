@@ -54,11 +54,54 @@ func transportBounds401AndNeverRetries403(_ entry: TransportEntry, code: Int) as
         Issue.record("Expected HTTP error")
     } catch let error as APIError {
         #expect(error.httpCode == code)
+        #expect(error.credentialRefreshExhausted == (code == 401))
         #expect(error.description.contains("pods"))
         if code == 403 { #expect(error.description.contains("Forbidden")) }
     }
+
     #expect(await credentials.acquisitions == (code == 401 ? 2 : 1))
     #expect(await credentials.invalidations.count == (code == 401 ? 1 : 0))
+}
+
+@Test(arguments: [TransportEntry.data, .stream])
+func transportPreservesHTTPRetryAfterAndSanitizedStatusDelay(_ entry: TransportEntry) async throws {
+    let body = Data("""
+    {"apiVersion":"v1","kind":"Status","code":429,"reason":"TooManyRequests","details":{"retryAfterSeconds":15}}
+    """.utf8)
+    let session = ScriptedTransportSession(
+        data: { _, _ in HTTPDataResponse(statusCode: 429, body: body, retryAfter: "45") },
+        stream: { _, _ in HTTPStreamResponse(statusCode: 429, body: MemoryByteStream([body], finished: true), retryAfter: "45") }
+    )
+    let credentials = TransportCredentials()
+    let transport = try await testTransport(session: session, credentials: credentials)
+    do {
+        try await entry.run(transport)
+        Issue.record("Expected throttling")
+    } catch let error as APIError {
+        #expect(error.httpCode == 429 && error.retryAfterDelay == 45)
+        #expect(error.kubernetesStatus?.details?.retryAfterSeconds == 15)
+        var state = try WatchState(rows: [], columns: nil, resourceVersion: "list")
+        _ = state.resume()
+        #expect(state.failedRequest(error, jitter: 1) == .retry(delay: 45, resourceVersion: "list"))
+    }
+    #expect(await credentials.acquisitions == 1)
+}
+
+@Test func exhaustedTransport401IsTerminalAtWatchBoundaryWithoutDoubleRefresh() async throws {
+    let credentials = TransportCredentials()
+    let transport = try await testTransport(session: statusSession(401), credentials: credentials)
+    do {
+        _ = try await transport.stream(for: podsRequest, purpose: .watch)
+        Issue.record("Expected exhausted unauthorized")
+    } catch let error as APIError {
+        var state = try WatchState(rows: [], columns: nil, resourceVersion: "list")
+        _ = state.resume()
+        #expect(error.credentialRefreshExhausted)
+        #expect(state.failedRequest(error) == .failed(.credentialRefreshLimit))
+        #expect(state.credentialRefreshes == 0)
+    }
+    #expect(await credentials.acquisitions == 2)
+    #expect(await credentials.invalidations.count == 1)
 }
 
 @Test func simultaneousAndLate401OnlyInvalidatesFailedGeneration() async throws {

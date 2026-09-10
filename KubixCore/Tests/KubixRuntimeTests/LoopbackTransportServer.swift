@@ -7,7 +7,7 @@ import Foundation
 /// Blocking test IO runs on a GCD worker with bounded poll/read/write timeouts, not a Swift actor.
 final class LoopbackTransportServer: @unchecked Sendable {
     enum Reply: Sendable {
-        case http(Int, String)
+        case http(Int, String, retryAfter: String? = nil)
         case websocket
         case quiet
     }
@@ -88,8 +88,9 @@ final class LoopbackTransportServer: @unchecked Sendable {
         let text = String(decoding: header, as: UTF8.self)
         lock.withLock { captured = text }
         switch reply {
-        case .http(let code, let body):
-            try write(socket, Data("HTTP/1.1 \(code) Synthetic\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)".utf8))
+        case .http(let code, let body, let retryAfter):
+            let retry = retryAfter.map { "Retry-After: \($0)\r\n" } ?? ""
+            try write(socket, Data("HTTP/1.1 \(code) Synthetic\r\nContent-Length: \(body.utf8.count)\r\n\(retry)Connection: close\r\n\r\n\(body)".utf8))
         case .websocket: try upgrade(socket, request: text)
         case .quiet:
             // Caller cancellation closes the TCP connection. The socket timeout bounds failures.

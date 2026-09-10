@@ -10,13 +10,23 @@ public protocol HTTPByteStream: Sendable {
 public struct HTTPDataResponse: Sendable {
     public let statusCode: Int
     public let body: Data
-    public init(statusCode: Int, body: Data) { self.statusCode = statusCode; self.body = body }
+    public let retryAfter: String?
+    public init(statusCode: Int, body: Data, retryAfter: String? = nil) {
+        self.statusCode = statusCode
+        self.body = body
+        self.retryAfter = retryAfter
+    }
 }
 
 public struct HTTPStreamResponse: Sendable {
     public let statusCode: Int
     public let body: any HTTPByteStream
-    public init(statusCode: Int, body: any HTTPByteStream) { self.statusCode = statusCode; self.body = body }
+    public let retryAfter: String?
+    public init(statusCode: Int, body: any HTTPByteStream, retryAfter: String? = nil) {
+        self.statusCode = statusCode
+        self.body = body
+        self.retryAfter = retryAfter
+    }
 }
 
 /// Implementations must propagate task cancellation to IO, including response-header waits.

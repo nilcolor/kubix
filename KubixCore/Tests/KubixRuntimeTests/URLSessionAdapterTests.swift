@@ -37,6 +37,24 @@ func localSession() throws -> URLSessionHTTPClient {
     try await streamServer.wait()
 }
 
+@Test(arguments: [TransportEntry.data, .stream])
+func nativeFoundationHTTPAdaptersPreserveRetryAfterFromLoopback(_ entry: TransportEntry) async throws {
+    let server = try LoopbackTransportServer(reply: .http(429, "synthetic throttling", retryAfter: "45"))
+    defer { server.stop() }
+    let session = try localSession()
+    switch entry {
+    case .data:
+        let response = try await session.data(for: loopbackRequest(server))
+        #expect(response.statusCode == 429 && response.retryAfter == "45")
+    case .stream:
+        let response = try await session.stream(for: loopbackRequest(server))
+        defer { response.body.cancel() }
+        #expect(response.statusCode == 429 && response.retryAfter == "45")
+    case .socket: Issue.record("Not an HTTP adapter")
+    }
+    try await server.wait()
+}
+
 @Test func nativeFoundationWebSocketNegotiatesAuthenticatedRequestAndBinaryPingIO() async throws {
     let server = try LoopbackTransportServer(reply: .websocket)
     defer { server.stop() }

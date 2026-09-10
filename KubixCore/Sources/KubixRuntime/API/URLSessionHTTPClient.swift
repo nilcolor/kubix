@@ -45,7 +45,9 @@ public final class URLSessionHTTPClient: TransportSession, Sendable {
         do {
             let (data, response) = try await session.data(for: request, delegate: delegate)
             guard let response = response as? HTTPURLResponse else { throw APIError.transport(.invalidResponse) }
-            return HTTPDataResponse(statusCode: response.statusCode, body: data)
+            return HTTPDataResponse(
+                statusCode: response.statusCode, body: data, retryAfter: response.value(forHTTPHeaderField: "Retry-After")
+            )
         } catch {
             #if DEBUG
             trust.recordValidationError(error)
@@ -62,7 +64,10 @@ public final class URLSessionHTTPClient: TransportSession, Sendable {
                 bytes.task.cancel()
                 throw APIError.transport(.invalidResponse)
             }
-            return HTTPStreamResponse(statusCode: response.statusCode, body: URLSessionByteStream(bytes: bytes))
+            return HTTPStreamResponse(
+                statusCode: response.statusCode, body: URLSessionByteStream(bytes: bytes),
+                retryAfter: response.value(forHTTPHeaderField: "Retry-After")
+            )
         } catch { throw delegate.authenticationFailure ?? transportError(error) }
     }
 
