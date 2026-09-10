@@ -175,6 +175,56 @@ private actor PresentationExec: ExecSessionControlling {
     func childTerminated(sessionID: UUID) {}
 }
 
+@Test @MainActor func wrapperBrowserFailureWaitsForExplicitRetryOfOriginalCommandWithoutShells() async throws {
+    let arguments = ["exec", "synthetic-role", "--", "aws", "eks", "get-token", "--cluster-name", "synthetic"]
+    let gate = TestGate()
+    let invocations = InvocationCount()
+    let process = FakeProcess { request, progress in
+        #expect(request.executable.path == "/tools/aws-vault" && request.arguments == arguments)
+        #expect(request.environment["CONFIGURED_VALUE"] == "synthetic")
+        #expect(request.output == .credential)
+        if await invocations.next() == 1 {
+            progress("Complete browser approval https://synthetic.invalid/authorize")
+            try await gate.wait()
+            return ProcessResult(stdout: Data(), exitCode: 17)
+        }
+        return ProcessResult(stdout: syntheticCredential, exitCode: 0)
+    }
+    let resolver = testResolver(files: Executables(paths: ["/tools/aws-vault"]))
+    let (auth, _) = orchestration(process: process, resolver: resolver)
+    let context = try runtimeContext(user: KubeconfigUser(exec: runtimeExec(
+        command: "aws-vault", args: arguments, env: [.init(name: "CONFIGURED_VALUE", value: "synthetic")]
+    )))
+    let other = try runtimeContext(user: nil, name: "other")
+    let store = AppStore(contexts: [context, other])
+    let browser = PresentationBrowser()
+    let exec = PresentationExec()
+    let actions = AppActions(store: store, exec: exec, authentication: auth, surfaces: UnusedSurfaces(), browser: browser)
+    defer { actions.shutdown() }
+    try actions.selectContext(named: context.name)
+    #expect(await auth.presentation(for: context).canSignIn == false)
+    let first = Task { await actions.authenticateSelectedContext() }
+    defer { first.cancel() }
+    try await eventually { await MainActor.run { store.authenticationSessions.values.contains { !$0.instructions.isEmpty } } }
+    let session = try #require(store.authenticationSessions.values.first)
+    #expect(AuthPresentation(session).canCancel && browser.opens == 0)
+    await actions.openAuthorizationURL(operationID: session.id)
+    #expect(browser.opens == 1)
+    await gate.open()
+    await first.value
+    try await eventually { await MainActor.run { store.authenticationSessions[session.id]?.state == .failed } }
+    let failed = AuthPresentation(try #require(store.authenticationSessions[session.id]))
+    #expect(failed.canRetry && failed.instructions.isEmpty)
+    #expect(await process.requests().count == 1)
+    try actions.selectContext(named: other.name)
+    try await actions.retryAuthentication(operationID: session.id)
+    try await eventually { await MainActor.run { store.authenticationSessions.values.contains { $0.state == .succeeded } } }
+    #expect(await process.requests().count == 2)
+    #expect(store.authenticationDiagnostic == nil && store.execSessions.isEmpty)
+    #expect(store.authenticationSessions.values.allSatisfy { $0.instructions.isEmpty })
+    #expect(await exec.targets.isEmpty && browser.opens == 1)
+}
+
 @Test @MainActor func productionAuthPresentationShowsLiveInstructionsNeverCredentialStdoutAndCoalescesShells() async throws {
     let gate = TestGate()
     let process = FakeProcess { request, progress in
