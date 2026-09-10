@@ -1,7 +1,18 @@
+import Foundation
+
 /// App-owned terminal adapters must make teardown idempotent and must never recreate a closed surface.
 @MainActor
 public protocol TerminalSurface: AnyObject {
     func teardown()
+}
+
+/// App composition supplies the executable command and actual Ghostty adapter, not core/runtime.
+@MainActor
+public protocol TerminalSurfaceCreating {
+    func makeSurface(
+        sessionID: UUID, target: ExecTarget, endpoint: ExecBridgeEndpoint,
+        onChildExit: @escaping @MainActor @Sendable () -> Void
+    ) throws -> any TerminalSurface
 }
 
 /// The session owns this lifetime, not the UI representable. Close before releasing the session.

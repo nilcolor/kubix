@@ -1,0 +1,249 @@
+import Foundation
+
+@MainActor
+public final class AppActions {
+    public let store: AppStore
+    private let exec: any ExecSessionControlling
+    private let authentication: any AuthenticationControlling
+    private let surfaces: any TerminalSurfaceCreating
+    private var tasks: [UUID: Task<Void, Never>] = [:]
+    private var attempts: [UUID: UUID] = [:]
+    private var lifetimes: [UUID: TerminalSurfaceLifetime] = [:]
+    private var progressTask: Task<Void, Never>?
+    private var settingsTask: Task<Void, any Error>?
+    private var settingsTasks: [UUID: Task<Void, any Error>] = [:]
+    private var authenticationTasks: [UUID: Task<AcquiredCredential, any Error>] = [:]
+    private var settingsRevision = 0
+    private var authenticationRevision = 0
+    private var stopped = false
+
+    public init(
+        store: AppStore, exec: any ExecSessionControlling,
+        authentication: any AuthenticationControlling, surfaces: any TerminalSurfaceCreating
+    ) {
+        self.store = store
+        self.exec = exec
+        self.authentication = authentication
+        self.surfaces = surfaces
+        progressTask = Task { [weak self, authentication] in
+            let stream = await authentication.sessions()
+            for await session in stream {
+                guard !Task.isCancelled else { break }
+                self?.receive(session)
+            }
+        }
+    }
+
+    public func selectContext(named name: String) throws {
+        guard let context = store.contexts.first(where: { $0.name == name }) else {
+            throw KubeconfigError.unknownContext
+        }
+        store.selectedContext = context
+        store.selectedNamespace = context.namespace
+        store.namespaces = [context.namespace]
+    }
+
+    public func selectNamespace(_ namespace: String) throws {
+        guard !namespace.isEmpty, namespace != ".", namespace != "..",
+              !namespace.contains("/"), !namespace.utf8.contains(0) else { throw APIError.invalidRequest }
+        store.selectedNamespace = namespace
+        if !store.namespaces.contains(namespace) { store.namespaces.append(namespace) }
+    }
+
+    @discardableResult
+    public func openShell(target: ExecTarget) -> UUID {
+        let session = ExecSession(target: target)
+        store.execSessions.append(session)
+        if stopped {
+            finish(session.id, result: .cancelled)
+        } else {
+            start(session)
+        }
+        return session.id
+    }
+
+    public func closeShell(_ id: UUID) {
+        guard let index = index(id), !store.execSessions[index].isClosed else { return }
+        store.execSessions[index].isClosed = true
+        finish(id, result: .cancelled)
+        attempts.removeValue(forKey: id)
+        tasks.removeValue(forKey: id)?.cancel()
+        lifetimes.removeValue(forKey: id)?.close()
+    }
+
+    /// Local codes are intentionally not accepted as remote exit codes.
+    public func childTerminated(_ id: UUID) async {
+        guard let index = index(id), !store.execSessions[index].isClosed,
+              !store.execSessions[index].state.isTerminal else { return }
+        await exec.childTerminated(sessionID: id)
+    }
+
+    public func surface(for id: UUID) -> (any TerminalSurface)? { lifetimes[id]?.surface }
+
+    public func retryShell(_ id: UUID) {
+        guard !stopped, let index = index(id), !store.execSessions[index].isClosed,
+              case .finished(.failed(.authentication)) = store.execSessions[index].state else { return }
+        tasks.removeValue(forKey: id)?.cancel()
+        store.execSessions[index].state = .authenticating
+        start(store.execSessions[index])
+    }
+
+    public func updateAuthSettings(_ settings: AuthSettings) async throws {
+        guard !stopped else { throw CancellationError() }
+        try settings.validate()
+        settingsRevision += 1
+        let revision = settingsRevision
+        let id = UUID()
+        let previous = settingsTask
+        let work = Task { [authentication] in
+            _ = await previous?.result
+            try Task.checkCancellation()
+            try await authentication.update(settings: settings)
+        }
+        settingsTask = work
+        settingsTasks[id] = work
+        defer { settingsTasks.removeValue(forKey: id) }
+        try await work.value
+        guard !stopped, revision == settingsRevision else { return }
+        settingsTask = nil
+        store.authSettings = settings
+    }
+
+    public func signIn(context: ResolvedContext, useDeviceCode: Bool = false) async throws {
+        try await authenticate { [authentication] in
+            try await authentication.signIn(for: context, useDeviceCode: useDeviceCode)
+        }
+    }
+
+    public func retryAuthentication(operationID: UUID) async throws {
+        try await authenticate { [authentication] in
+            try await authentication.retry(operationID: operationID)
+        }
+    }
+
+    private func authenticate(_ operation: @escaping @Sendable () async throws -> AcquiredCredential) async throws {
+        guard !stopped else { throw CancellationError() }
+        authenticationRevision += 1
+        let revision = authenticationRevision
+        let id = UUID()
+        let work = Task { try await operation() }
+        authenticationTasks[id] = work
+        defer { authenticationTasks.removeValue(forKey: id) }
+        do {
+            _ = try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
+            if !stopped, revision == authenticationRevision { store.authenticationDiagnostic = nil }
+        } catch {
+            if !stopped, revision == authenticationRevision { store.authenticationDiagnostic = Self.authDiagnostic(error) }
+            throw error
+        }
+    }
+
+    public func cancelAuthentication(operationID: UUID) async {
+        if var session = store.authenticationSessions[operationID] {
+            session.transition(to: .cancelled)
+            store.authenticationSessions[operationID] = session
+        }
+        await authentication.cancel(operationID: operationID)
+    }
+
+    /// Composition explicitly closes this owner, rather than relying on view dismantling.
+    public func shutdown() {
+        guard !stopped else { return }
+        stopped = true
+        for session in store.execSessions { closeShell(session.id) }
+        progressTask?.cancel()
+        progressTask = nil
+        settingsTask?.cancel()
+        settingsTask = nil
+        for task in settingsTasks.values { task.cancel() }
+        for task in authenticationTasks.values { task.cancel() }
+        store.authenticationSessions = [:]
+        store.authenticationDiagnostic = nil
+    }
+
+    private func start(_ session: ExecSession) {
+        let attempt = UUID()
+        attempts[session.id] = attempt
+        tasks[session.id] = Task { [weak self, authentication, exec] in
+            let result: ExecSessionResult
+            do {
+                _ = try await authentication.acquire(for: session.target.context)
+                try Task.checkCancellation()
+                guard self?.isCurrent(session.id, attempt: attempt) == true else { return }
+                self?.update(session.id, state: .connecting)
+                result = await exec.run(
+                    sessionID: session.id, target: session.target,
+                    ready: { [weak self] endpoint in
+                        guard let self, self.isCurrent(session.id, attempt: attempt), !Task.isCancelled else {
+                            throw CancellationError()
+                        }
+                        try self.createSurface(session, endpoint: endpoint)
+                    },
+                    update: { [weak self] state in
+                        guard self?.isCurrent(session.id, attempt: attempt) == true else { return }
+                        self?.update(session.id, state: state)
+                    }
+                )
+            } catch {
+                result = error is CancellationError ? .cancelled : .failed(.authentication(Self.authDiagnostic(error)))
+            }
+            guard self?.isCurrent(session.id, attempt: attempt) == true else { return }
+            self?.finish(session.id, result: result)
+            self?.tasks.removeValue(forKey: session.id)
+            self?.attempts.removeValue(forKey: session.id)
+        }
+    }
+
+    private func createSurface(_ session: ExecSession, endpoint: ExecBridgeEndpoint) throws {
+        let surface: any TerminalSurface
+        do {
+            surface = try surfaces.makeSurface(
+                sessionID: session.id, target: session.target, endpoint: endpoint,
+                onChildExit: { [weak self] in Task { await self?.childTerminated(session.id) } }
+            )
+        } catch { throw ExecFailure.surface }
+        guard let index = index(session.id), !store.execSessions[index].isClosed else {
+            surface.teardown()
+            throw CancellationError()
+        }
+        lifetimes[session.id] = TerminalSurfaceLifetime(surface: surface)
+    }
+
+    private func index(_ id: UUID) -> Int? { store.execSessions.firstIndex { $0.id == id } }
+
+    private func isCurrent(_ id: UUID, attempt: UUID) -> Bool {
+        !stopped && attempts[id] == attempt && index(id).map { !store.execSessions[$0].isClosed } == true
+    }
+
+    private func update(_ id: UUID, state: ExecSession.State) {
+        guard let index = index(id), !store.execSessions[index].state.isTerminal else { return }
+        store.execSessions[index].state = state
+    }
+
+    private func finish(_ id: UUID, result: ExecSessionResult) { update(id, state: .finished(result)) }
+
+    private func receive(_ session: AuthSession) {
+        guard !stopped, store.authenticationSessions[session.id]?.state.isTerminal != true else { return }
+        store.authenticationSessions[session.id] = session
+        if store.authenticationSessions.count > 128,
+           let oldest = store.authenticationSessions.first(where: { $0.value.state.isTerminal })?.key {
+            store.authenticationSessions.removeValue(forKey: oldest)
+        }
+    }
+
+    private static func authDiagnostic(_ error: any Error) -> String {
+        if let error = error as? AuthenticationError { return error.errorDescription ?? "Authentication failed." }
+        if let error = error as? AuthError { return error.description }
+        if let error = error as? any AuthenticationDiagnosticProviding { return error.authenticationDiagnostic }
+        if error is CancellationError { return "Authentication was cancelled." }
+        return "Authentication failed. Check the configured plugin/profile and explicitly retry."
+    }
+
+    deinit {
+        progressTask?.cancel()
+        settingsTask?.cancel()
+        for task in settingsTasks.values { task.cancel() }
+        for task in authenticationTasks.values { task.cancel() }
+        for task in tasks.values { task.cancel() }
+    }
+}

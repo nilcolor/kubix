@@ -32,6 +32,10 @@ public actor CredentialProvider: CredentialProviding {
         try await acquire(plan: prepare(context), progress: progress)
     }
 
+    func update(settings: AuthSettings) async throws {
+        try await resolver.update(settings: settings)
+    }
+
     func prepare(_ context: ResolvedContext) async throws -> CredentialPlan {
         let method = try AuthMethod.resolve(from: context)
         let plugin: ResolvedPlugin?

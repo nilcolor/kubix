@@ -1,7 +1,7 @@
 import Foundation
 import KubixCore
 
-public struct PluginDiagnostic: Error, Sendable, LocalizedError, CustomStringConvertible, CustomReflectable {
+public struct PluginDiagnostic: Error, Sendable, LocalizedError, CustomStringConvertible, CustomReflectable, AuthenticationDiagnosticProviding {
     public let installHint: String?
     public let source: String
     public let searchedPath: String
@@ -9,6 +9,7 @@ public struct PluginDiagnostic: Error, Sendable, LocalizedError, CustomStringCon
     public var action: String { "Configure Plugin Path" }
     public var description: String { "Authentication plugin not found. Configure Plugin Path (details redacted)." }
     public var errorDescription: String? { description }
+    public var authenticationDiagnostic: String { description }
     public var customMirror: Mirror { Mirror(self, children: ["contents": "redacted"]) }
 }
 

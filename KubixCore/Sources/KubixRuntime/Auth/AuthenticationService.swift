@@ -60,6 +60,10 @@ public actor AuthenticationService: AuthenticationControlling, CredentialProvidi
         await provider.invalidate(identity, failedGeneration: failedGeneration)
     }
 
+    public func update(settings: AuthSettings) async throws {
+        try await provider.update(settings: settings)
+    }
+
     public func sessions() -> AsyncStream<AuthSession> {
         let id = UUID()
         let (stream, continuation) = AsyncStream<AuthSession>.makeStream(bufferingPolicy: .bufferingNewest(64))

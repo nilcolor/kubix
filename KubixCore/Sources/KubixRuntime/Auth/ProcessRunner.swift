@@ -1,8 +1,11 @@
 import Darwin
 import Foundation
+import KubixCore
 
-public enum ProcessFailure: Error, Equatable, Sendable, LocalizedError {
+public enum ProcessFailure: Error, Equatable, Sendable, LocalizedError, AuthenticationDiagnosticProviding {
     case invalidRequest, launchFailed, timedOut, outputLimit, exited(Int32), pipeFailed
+
+    public var authenticationDiagnostic: String { errorDescription ?? "Authentication failed." }
 
     public var errorDescription: String? {
         switch self {
