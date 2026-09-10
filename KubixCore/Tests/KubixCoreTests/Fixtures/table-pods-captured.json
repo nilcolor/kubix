@@ -1,0 +1,59 @@
+{
+  "apiVersion": "meta.k8s.io/v1",
+  "kind": "Table",
+  "metadata": {"resourceVersion": "rv-list-100"},
+  "columnDefinitions": [
+    {
+      "name": "Name", "type": "string", "format": "name", "priority": 0,
+      "description": "Name must be unique within a namespace. Is required when creating resources, although some resources may allow a client to request the generation of an appropriate name automatically. Name is primarily intended for creation idempotence and configuration definition. Cannot be updated. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names#names"
+    },
+    {
+      "name": "Ready", "type": "string", "format": "", "priority": 0,
+      "description": "The aggregate readiness state of this pod for accepting traffic."
+    },
+    {
+      "name": "Status", "type": "string", "format": "", "priority": 0,
+      "description": "The aggregate status of the containers in this pod."
+    },
+    {
+      "name": "Restarts", "type": "string", "format": "", "priority": 0,
+      "description": "The number of times the containers in this pod have been restarted and when the last container in this pod has restarted."
+    },
+    {
+      "name": "Age", "type": "string", "format": "", "priority": 0,
+      "description": "CreationTimestamp is a timestamp representing the server time when this object was created. It is not guaranteed to be set in happens-before order across separate operations. Clients may not set this value. It is represented in RFC3339 form and is in UTC.\n\nPopulated by the system. Read-only. Null for lists. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata"
+    },
+    {
+      "name": "IP", "type": "string", "format": "", "priority": 1,
+      "description": "podIP address allocated to the pod. Routable at least within the cluster. Empty if not yet allocated."
+    },
+    {
+      "name": "Node", "type": "string", "format": "", "priority": 1,
+      "description": "NodeName indicates in which node this pod is scheduled. If empty, this pod is a candidate for scheduling by the scheduler defined in schedulerName. Once this field is set, the kubelet for this node becomes responsible for the lifecycle of this pod. This field should not be used to express a desire for the pod to be scheduled on a specific node. https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodename"
+    },
+    {
+      "name": "Nominated Node", "type": "string", "format": "", "priority": 1,
+      "description": "nominatedNodeName is set only when this pod preempts other pods on the node, but it cannot be scheduled right away as preemption victims receive their graceful termination periods. This field does not guarantee that the pod will be scheduled on this node. Scheduler may decide to place the pod elsewhere if other nodes become available sooner. Scheduler may also decide to give the resources on this node to a higher priority pod that is created after preemption. As a result, this field may be different than PodSpec.nodeName when the pod is scheduled."
+    },
+    {
+      "name": "Readiness Gates", "type": "string", "format": "", "priority": 1,
+      "description": "If specified, all readiness gates will be evaluated for pod readiness. A pod is ready when all its containers are ready AND all conditions specified in the readiness gates have status equal to \"True\" More info: https://git.k8s.io/enhancements/keps/sig-network/580-pod-readiness-gates"
+    }
+  ],
+  "rows": [
+    {
+      "cells": ["sample-pod", "1/1", "Running", "0", "1h", "192.0.2.10", "sample-node", "<none>", "<none>"],
+      "object": {
+        "apiVersion": "meta.k8s.io/v1",
+        "kind": "PartialObjectMetadata",
+        "metadata": {
+          "uid": "11111111-2222-4333-8444-555555555555",
+          "name": "sample-pod",
+          "namespace": "sample-namespace",
+          "resourceVersion": "rv-pod-90",
+          "creationTimestamp": "2026-01-02T03:04:05Z"
+        }
+      }
+    }
+  ]
+}

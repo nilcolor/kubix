@@ -1,0 +1,7 @@
+{
+  "apiVersion": "meta.k8s.io/v1",
+  "kind": "Table",
+  "metadata": {"resourceVersion": "rv-list-100", "continue": ""},
+  "columnDefinitions": [{"name": "Name", "type": "string", "format": "name", "priority": 0}],
+  "rows": []
+}

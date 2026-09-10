@@ -1,0 +1,39 @@
+{
+  "apiVersion": "meta.k8s.io/v1",
+  "kind": "Table",
+  "metadata": {"resourceVersion": "opaque/list-version"},
+  "columnDefinitions": [
+    {"name": "Name", "type": "string", "format": "name"},
+    {"name": "Hidden Count", "type": "integer", "priority": 2},
+    {"name": "Printed Count", "type": "integer", "priority": 0},
+    {"name": "Healthy", "type": "boolean", "priority": 0},
+    {"name": "Absent", "type": "string", "priority": 0},
+    {"name": "Ratio", "type": "number", "priority": 0},
+    {"name": "Values", "type": "array", "priority": 1},
+    {"name": "Extension", "type": "future-custom-type", "priority": 0},
+    {"name": "Large Count", "type": "integer", "priority": 0},
+    {"name": "Negative", "type": "number", "priority": -1},
+    {"name": "Unhealthy", "type": "boolean", "priority": 0},
+    {"name": "Message", "type": "string", "priority": 0}
+  ],
+  "rows": [
+    {
+      "cells": [
+        "display-name-is-not-identity", 7, "007", true, null, 1.25,
+        ["two", 2, false, null], {"z": false, "a": 1},
+        18446744073709551615, -17, false, "line\n\"quoted\" 雪"
+      ],
+      "object": {
+        "apiVersion": "meta.k8s.io/v1",
+        "kind": "PartialObjectMetadata",
+        "metadata": {
+          "uid": "opaque-pod-uid",
+          "name": "sample-pod",
+          "namespace": "sample-namespace",
+          "resourceVersion": "opaque/row-version",
+          "creationTimestamp": "2026-01-02T07:04:05.125+04:00"
+        }
+      }
+    }
+  ]
+}

@@ -144,18 +144,6 @@ private struct ExecCredentialStatus: Decodable {
 }
 
 private func parseExpiration(_ value: String) throws -> Date {
-    let pattern = #"^[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]+)?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$"#
-    guard value.range(of: pattern, options: .regularExpression) != nil else { throw AuthError.invalidExpiration }
-    // ISO8601DateFormatter normalizes impossible dates (e.g. February 30); reject them first.
-    let calendarValidator = DateFormatter()
-    calendarValidator.locale = Locale(identifier: "en_US_POSIX")
-    calendarValidator.calendar = Calendar(identifier: .gregorian)
-    calendarValidator.timeZone = TimeZone(secondsFromGMT: 0)
-    calendarValidator.isLenient = false
-    calendarValidator.dateFormat = "yyyy-MM-dd"
-    guard calendarValidator.date(from: String(value.prefix(10))) != nil else { throw AuthError.invalidExpiration }
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = value.contains(".") ? [.withInternetDateTime, .withFractionalSeconds] : [.withInternetDateTime]
-    guard let date = formatter.date(from: value) else { throw AuthError.invalidExpiration }
+    guard let date = RFC3339.date(from: value) else { throw AuthError.invalidExpiration }
     return date
 }

@@ -1,0 +1,20 @@
+{
+  "apiVersion": "meta.k8s.io/v1",
+  "kind": "Table",
+  "metadata": {},
+  "columnDefinitions": null,
+  "rows": [
+    {
+      "cells": ["sample-pod", "1/1", "Running", "1", "2h", "192.0.2.10", "sample-node", "<none>", "<none>"],
+      "object": {
+        "apiVersion": "meta.k8s.io/v1",
+        "kind": "PartialObjectMetadata",
+        "metadata": {
+          "uid": "11111111-2222-4333-8444-555555555555",
+          "name": "sample-pod", "namespace": "sample-namespace", "resourceVersion": "rv-pod-101",
+          "creationTimestamp": "2026-01-02T03:04:05Z"
+        }
+      }
+    }
+  ]
+}
