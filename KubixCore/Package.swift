@@ -22,7 +22,8 @@ let package = Package(
             dependencies: [
                 "KubixCore",
                 .product(name: "Yams", package: "Yams"),
-            ]
+            ],
+            resources: [.copy("Fixtures")]
         ),
         .testTarget(name: "KubixRuntimeTests", dependencies: ["KubixRuntime"]),
     ],
