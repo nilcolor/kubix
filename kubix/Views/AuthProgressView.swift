@@ -7,31 +7,11 @@ struct AuthProgressView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            let plugin = store.pluginPresentation
-            HStack {
-                Button("Authenticate configured plugin") { Task { await actions.authenticateSelectedContext() } }
-                    .disabled(store.selectedContext?.user?.exec == nil || plugin.executable == nil)
-                if plugin.canSignIn {
-                    Button("Sign in with AWS") { Task { await actions.signInSelectedContext() } }
-                    Toggle("Use device code", isOn: Binding(get: { store.useDeviceCode }, set: { actions.setUseDeviceCode($0) }))
-                        .toggleStyle(.checkbox)
-                }
-                Button("Configure Plugin Path") { actions.setShowingSettings(true) }
+            ViewThatFits(in: .horizontal) {
+                HStack { authenticationButtons }
+                VStack(alignment: .leading, spacing: 6) { authenticationButtons }
             }
-            if !plugin.canSignIn, plugin.executable != nil {
-                Text("The configured plugin can acquire credentials or request browser sign-in. It is not replaced with AWS CLI SSO login.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            if store.selectedContext?.user?.exec != nil {
-                Text("Complete any browser approval, then choose Retry authentication if the plugin reports a failure.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            if let executable = plugin.executable {
-                Text("\(executable) (\(plugin.source ?? "configured executable"))").font(.caption).textSelection(.enabled)
-            }
-            if let profile = plugin.profile { Text("Bound AWS profile: \(profile)").font(.caption) }
-            if let diagnostic = plugin.diagnostic { Text(diagnostic).foregroundStyle(.orange) }
-            if let diagnostic = store.authenticationDiagnostic { Text(diagnostic).foregroundStyle(.orange) }
+            pluginDetails
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(store.visibleAuthenticationSessions, id: \.id) { session in
@@ -40,6 +20,36 @@ struct AuthProgressView: View {
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }.frame(maxHeight: store.authenticationSessions.isEmpty ? 0 : 150)
         }
+    }
+
+    @ViewBuilder private var authenticationButtons: some View {
+        let plugin = store.pluginPresentation
+        Button("Authenticate configured plugin") { Task { await actions.authenticateSelectedContext() } }
+            .disabled(store.selectedContext?.user?.exec == nil || plugin.executable == nil)
+        if plugin.canSignIn {
+            Button("Sign in with AWS") { Task { await actions.signInSelectedContext() } }
+            Toggle("Use device code", isOn: Binding(get: { store.useDeviceCode }, set: { actions.setUseDeviceCode($0) }))
+                .toggleStyle(.checkbox)
+        }
+        Button("Configure Plugin Path") { actions.setShowingSettings(true) }
+    }
+
+    @ViewBuilder private var pluginDetails: some View {
+        let plugin = store.pluginPresentation
+        if !plugin.canSignIn, plugin.executable != nil {
+            Text("The configured plugin can acquire credentials or request browser sign-in. It is not replaced with AWS CLI SSO login.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        if store.selectedContext?.user?.exec != nil {
+            Text("Complete any browser approval, then choose Retry authentication if the plugin reports a failure.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        if let executable = plugin.executable {
+            Text("\(executable) (\(plugin.source ?? "configured executable"))").font(.caption).textSelection(.enabled)
+        }
+        if let profile = plugin.profile { Text("Bound AWS profile: \(profile)").font(.caption) }
+        if let diagnostic = plugin.diagnostic { Text(diagnostic).foregroundStyle(.orange) }
+        if let diagnostic = store.authenticationDiagnostic { Text(diagnostic).foregroundStyle(.orange) }
     }
 
     private func progress(_ presentation: AuthPresentation) -> some View {

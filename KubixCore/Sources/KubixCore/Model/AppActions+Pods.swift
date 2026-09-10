@@ -6,7 +6,11 @@ public extension AppActions {
             throw KubeconfigError.unknownContext
         }
         guard !stopped else { return }
-        if store.selectedContext == context { refreshPluginPresentation(); return }
+        if store.selectedContext == context {
+            refreshPluginPresentation()
+            if store.connection == .idle { refreshPods() }
+            return
+        }
         store.selectedContext = context
         resetNamespaceSelection()
         store.podName = ""
@@ -26,7 +30,10 @@ public extension AppActions {
         store.namespaceDraft = namespace
         store.namespaceDiagnostic = nil
         store.namespaces = namespaceSelection.suggestions(for: store.selectedContext)
-        guard store.selectedNamespace != namespace else { return }
+        guard store.selectedNamespace != namespace else {
+            if store.connection == .idle { refreshPods() }
+            return
+        }
         store.selectedNamespace = namespace
         refreshPods()
     }
@@ -54,9 +61,49 @@ public extension AppActions {
     func commitNamespaceInput() -> Bool {
         do { try selectNamespace(store.namespaceDraft); return true } catch { return false }
     }
+
+    func reloadSelectedPods() {
+        let previousGeneration = podGeneration
+        guard commitNamespaceInput() else { return }
+        if podGeneration == previousGeneration { refreshPods() }
+    }
+
+    func setPodFilter(_ value: String) {
+        store.podFilter = value
+        reconcilePodSelection()
+    }
+
+    func setPodWide(_ value: Bool) {
+        store.podWide = value
+        store.podSort = store.podTable.sort
+        reconcilePodSelection()
+    }
+
+    func sortPods(_ value: PodTablePresentation.Sort?) {
+        store.podSort = value
+        store.podSort = store.podTable.sort
+        reconcilePodSelection()
+    }
+
+    func selectPod(uid: String?) {
+        store.selectedPodUID = uid
+        reconcilePodSelection()
+    }
 }
 
 extension AppActions {
+    func retryPodsAfterAuthentication(for identity: CredentialIdentity) {
+        guard !stopped, let context = store.selectedContext, (try? CredentialIdentity(from: context)) == identity,
+              case .failed(let error) = store.connection,
+              error == .podAuthentication || error.httpCode == 401 else { return }
+        refreshPods()
+    }
+
+    private func reconcilePodSelection() {
+        let selected = store.podTable.selectedUID
+        if store.selectedPodUID != selected { store.selectedPodUID = selected }
+    }
+
     func resetNamespaceSelection() {
         cancelPods()
         applyPodUpdate(PodWatchUpdate(rows: [], columns: nil, connection: .idle))
@@ -81,7 +128,11 @@ extension AppActions {
 
     func applyPodUpdate(_ update: PodWatchUpdate) {
         if store.rows != update.rows { store.rows = update.rows }
-        if store.columns != update.columns { store.columns = update.columns }
+        if store.columns != update.columns {
+            store.columns = update.columns
+            store.podSort = nil
+        }
         if store.connection != update.connection { store.connection = update.connection }
+        reconcilePodSelection()
     }
 }

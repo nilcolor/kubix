@@ -21,6 +21,7 @@ extension AppStoreTests {
             _ = store.rows
             _ = store.columns
             _ = store.connection
+            _ = store.selectedPodUID
         } onChange: { changed.mark() }
         await probe.emit(value)
         #expect(!changed.value)

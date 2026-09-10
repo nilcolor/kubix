@@ -6,6 +6,7 @@ import KubixCore
 @MainActor
 enum AuthLoginValidation {
     private static var didRun = false
+    static var isEnabled: Bool { ProcessInfo.processInfo.environment["KUBIX_AUTH_VALIDATION_CONFIRM"] == "sign-in-only" }
 
     static func run(composition: AppComposition) async {
         let environment = ProcessInfo.processInfo.environment

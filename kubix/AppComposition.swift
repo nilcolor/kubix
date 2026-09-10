@@ -8,14 +8,29 @@ final class AppComposition {
     private(set) static var active: AppComposition?
     let store: AppStore
     let actions: AppActions
-    private let registry: ContextTransportRegistry
+    private let registry: ContextTransportRegistry?
     #if DEBUG
     let validationProcess = ExecValidationProcess()
     let validationTransportFactory = ExecValidationTransportFactory()
     let isolatedVault: IsolatedAWSVaultRunner?
+    let podValidation: PodBrowsingFixture?
     #endif
 
-    private init() {
+    private convenience init() {
+        #if DEBUG
+        // Select the closed synthetic world before constructing any user configuration/auth adapters.
+        if PodBrowsingValidation.isEnabled {
+            self.init(fixture: PodBrowsingFixture())
+            return
+        }
+        #endif
+        self.init(live: ())
+    }
+
+    private init(live: Void) {
+        #if DEBUG
+        podValidation = nil
+        #endif
         let home = FileManager.default.homeDirectoryForCurrentUser
         let directory = home.appendingPathComponent("Library/Application Support/Kubix", isDirectory: true)
         let settings = AppAuthSettingsStore(directory: directory)
@@ -47,13 +62,11 @@ final class AppComposition {
         #else
         registry = ContextTransportRegistry(credentials: authentication, warning: { _ in })
         #endif
-        let transports: ExecService.TransportFactory = { [registry] in try await registry.transport(for: $0) }
-        #if DEBUG
-        let exec = ExecLiveValidation.bridgeRoot.map { ExecService(transports: transports, validationRoot: $0) }
-            ?? ExecService(transports: transports)
-        #else
-        let exec = ExecService(transports: transports)
-        #endif
+        let transports: ExecService.TransportFactory = { [registry] context in
+            guard let registry else { throw APIError.invalidRequest }
+            return try await registry.transport(for: context)
+        }
+        let exec = Self.execService(transports: transports)
         let factory = ExecSurfaceFactory()
         store = AppStore()
         actions = AppActions(
@@ -69,22 +82,39 @@ final class AppComposition {
     private static func podWatcher(transports: @escaping ExecService.TransportFactory) -> (any PodWatching)? {
         #if DEBUG
         // Existing constrained exec/auth validation must never grow a discovery request implicitly.
-        if ExecLiveValidation.isEnabled || AWSVaultIsolationValidation.root != nil { return nil }
+        if ExecLiveValidation.isEnabled || AuthLoginValidation.isEnabled || AWSVaultIsolationValidation.root != nil { return nil }
         #endif
         return WatchService(transports: transports)
     }
 
+    private static func execService(transports: @escaping ExecService.TransportFactory) -> ExecService {
+        #if DEBUG
+        if let root = ExecLiveValidation.bridgeRoot { return ExecService(transports: transports, validationRoot: root) }
+        #endif
+        return ExecService(transports: transports)
+    }
+
     func shutdown() async {
         await actions.shutdownAndWait()
-        await registry.shutdown()
+        await registry?.shutdown()
         #if DEBUG
         try? await isolatedVault?.cleanup()
         #endif
     }
 
     #if DEBUG
+    private init(fixture: PodBrowsingFixture) {
+        podValidation = fixture
+        isolatedVault = nil
+        registry = nil
+        store = fixture.store
+        actions = fixture.actions
+        Self.active = self
+    }
+
     func validationTransport(for context: ResolvedContext) async throws -> any Transport {
-        try await registry.transport(for: context)
+        guard let registry else { throw APIError.invalidRequest }
+        return try await registry.transport(for: context)
     }
     #endif
 }

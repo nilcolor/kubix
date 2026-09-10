@@ -13,6 +13,10 @@ public final class AppStore {
     public internal(set) var rows: [PodRow] = []
     public internal(set) var columns: [KubernetesTable.ColumnDefinition]?
     public internal(set) var connection: PodConnection = .idle
+    public internal(set) var podFilter = ""
+    public internal(set) var podWide = false
+    public internal(set) var podSort: PodTablePresentation.Sort?
+    public internal(set) var selectedPodUID: String?
     public internal(set) var execSessions: [ExecSession] = []
     public internal(set) var authenticationSessions: [UUID: AuthSession] = [:]
     var authenticationSessionOrder: [UUID] = []
@@ -31,6 +35,13 @@ public final class AppStore {
     public internal(set) var connectDiagnostic: String?
     public internal(set) var selectedExecSessionID: UUID?
     public internal(set) var surfaceRevision = 0
+
+    public var podTable: PodTablePresentation {
+        PodTablePresentation(
+            rows: rows, columns: columns, connection: connection, filter: podFilter,
+            wide: podWide, sort: podSort, selectedUID: selectedPodUID
+        )
+    }
 
     public var visibleAuthenticationSessions: [AuthSession] {
         var completed = Set<CredentialIdentity>()

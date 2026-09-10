@@ -128,12 +128,15 @@ public final class AppActions {
             try await authentication.signIn(for: context, useDeviceCode: useDeviceCode)
         }
         for session in store.execSessions where session.target.context == context { retryShell(session.id) }
+        retryPodsAfterAuthentication(for: try CredentialIdentity(from: context))
     }
 
     public func retryAuthentication(operationID: UUID) async throws {
+        let identity = store.authenticationSessions[operationID]?.credentialIdentity
         try await authenticate { [authentication] in
             try await authentication.retry(operationID: operationID)
         }
+        if let identity { retryPodsAfterAuthentication(for: identity) }
     }
 
     private func authenticate(_ operation: @escaping @Sendable () async throws -> AcquiredCredential) async throws {
@@ -273,6 +276,7 @@ extension AppActions {
         try await authenticate { [authentication] in
             try await authentication.acquire(for: context)
         }
+        retryPodsAfterAuthentication(for: try CredentialIdentity(from: context))
     }
 
     /// A native termination delegate must await owned work before allowing the process to exit.
