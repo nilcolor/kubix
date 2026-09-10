@@ -12,27 +12,43 @@ struct ExecSessionDeck: View {
                 HStack {
                     ForEach(sessions) { session in
                         HStack(spacing: 4) {
-                            Button(session.target.pod + "/" + session.target.container) { actions.selectShell(session.id) }
-                                .fontWeight(store.selectedExecSessionID == session.id ? .bold : .regular)
+                            Button("Shell: " + session.target.pod + "/" + session.target.container) { actions.selectShell(session.id) }
+                                .fontWeight(isSelected(session.id) ? .bold : .regular)
                             Button { actions.closeShell(session.id) } label: { Image(systemName: "xmark") }
                                 .help("Close this session")
+                        }
+                    }
+                    ForEach(store.logSessions) { session in
+                        HStack(spacing: 4) {
+                            Button("Logs: " + session.target.pod + "/" + session.target.container.name) { actions.selectLog(session.id) }
+                                .fontWeight(store.selectedLogSessionID == session.id ? .bold : .regular)
+                            Button { actions.closeLog(session.id) } label: { Image(systemName: "xmark") }
+                                .help("Close this log session")
                         }
                     }
                 }.padding(8)
             }.fixedSize(horizontal: false, vertical: true)
             ZStack {
-                if sessions.isEmpty {
+                if sessions.isEmpty && store.logSessions.isEmpty {
                     ContentUnavailableView("Connect to a known container", systemImage: "terminal")
                 }
                 ForEach(sessions) { session in
-                    sessionView(session, selected: session.id == store.selectedExecSessionID)
-                        .opacity(session.id == store.selectedExecSessionID ? 1 : 0)
-                        .allowsHitTesting(session.id == store.selectedExecSessionID)
-                        .accessibilityHidden(session.id != store.selectedExecSessionID)
+                    sessionView(session, selected: isSelected(session.id))
+                        .opacity(isSelected(session.id) ? 1 : 0)
+                        .allowsHitTesting(isSelected(session.id))
+                        .accessibilityHidden(!isSelected(session.id))
+                }
+                ForEach(store.logSessions) { session in
+                    LogView(session: session, actions: actions)
+                        .opacity(session.id == store.selectedLogSessionID ? 1 : 0)
+                        .allowsHitTesting(session.id == store.selectedLogSessionID)
+                        .accessibilityHidden(session.id != store.selectedLogSessionID)
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
+
+    private func isSelected(_ id: UUID) -> Bool { store.selectedLogSessionID == nil && store.selectedExecSessionID == id }
 
     private func sessionView(_ session: ExecSession, selected: Bool) -> some View {
         // Observing the revision mounts a ready surface before the bridge awaits its initial size.

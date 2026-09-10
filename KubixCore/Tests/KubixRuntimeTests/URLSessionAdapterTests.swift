@@ -11,9 +11,9 @@ func loopbackRequest(_ server: LoopbackTransportServer, socket: Bool = false) th
     return request
 }
 
-func localSession() throws -> URLSessionHTTPClient {
+func localSession(purpose: TransportPurpose = .logs) throws -> URLSessionHTTPClient {
     let policy = try ClusterTrustPolicy(cluster: KubeconfigCluster(server: "http://127.0.0.1"), authorityData: nil)
-    return URLSessionHTTPClient(purpose: .logs, trust: policy)
+    return URLSessionHTTPClient(purpose: purpose, trust: policy)
 }
 
 @Test func nativeFoundationDataAndByteAdaptersUseSyntheticLoopbackOnly() async throws {
@@ -35,6 +35,26 @@ func localSession() throws -> URLSessionHTTPClient {
     #expect(bytes == Data("one\né\n".utf8))
     stream.body.cancel()
     try await streamServer.wait()
+}
+
+@Test(arguments: [TransportPurpose.logs, .request])
+func nativeLogAdapterDeliversBoundedBytesAfterConsumerPausesAndCancels(_ purpose: TransportPurpose) async throws {
+    let session = try localSession(purpose: purpose)
+    let server = try LoopbackTransportServer(reply: .http(200, String(repeating: "é\n", count: 300)))
+    defer { server.stop() }
+    let response = try await session.stream(for: loopbackRequest(server))
+    defer { response.body.cancel() }
+    var count = 0
+    for _ in 0..<900 {
+        let bytes = try #require(try await response.body.read())
+        #expect(bytes.count == 1)
+        count += bytes.count
+        await Task.yield()
+    }
+    #expect(count == 900)
+    #expect(try await response.body.read() == nil)
+    response.body.cancel()
+    try await server.wait()
 }
 
 @Test(arguments: [TransportEntry.data, .stream])

@@ -10,6 +10,7 @@ struct PodTableView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text("Pods").font(.headline)
+                Button("Logs") { actions.openPodLogs() }.disabled(presentation.selectedUID == nil)
                 TextField("Filter visible columns", text: Binding(get: { store.podFilter }, set: { actions.setPodFilter($0) }))
                     .accessibilityIdentifier("pod-filter")
                 if !store.podFilter.isEmpty { Button("Clear") { actions.setPodFilter("") } }
@@ -34,6 +35,9 @@ struct PodTableView: View {
             if let diagnostic = store.podShellDiagnostic {
                 Text(diagnostic).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
             }
+            if let diagnostic = store.podLogDiagnostic {
+                Text(diagnostic).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
+            }
             NativePodTable(presentation: presentation, actions: actions)
         }
         .padding(8)
@@ -52,6 +56,7 @@ struct NativePodTable: NSViewRepresentable {
         table.openShell = { [weak coordinator = context.coordinator] row, menu in
             coordinator?.shellAction(row: row, menu: menu)
         }
+        table.openLogs = { [weak coordinator = context.coordinator] row in coordinator?.logsAction(row: row) }
         table.identifier = NSUserInterfaceItemIdentifier("pod-table")
         table.delegate = context.coordinator
         table.dataSource = context.coordinator
@@ -87,6 +92,11 @@ struct NativePodTable: NSViewRepresentable {
             let uid = presentation.rows[row].id
             if menu { return actions.podShellMenuAction(uid: uid) }
             return { [actions] in actions.openPodShell(uid: uid) }
+        }
+
+        func logsAction(row: Int) -> (@MainActor () -> Void)? {
+            guard let presentation, presentation.rows.indices.contains(row) else { return nil }
+            return actions.podLogsMenuAction(uid: presentation.rows[row].id)
         }
 
         func update(_ table: NSTableView, presentation next: PodTablePresentation) {

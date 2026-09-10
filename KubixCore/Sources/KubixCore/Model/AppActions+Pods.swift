@@ -11,6 +11,7 @@ public extension AppActions {
             if store.connection == .idle { refreshPods() }
             return
         }
+        pauseLogsForScopeChange()
         store.selectedContext = context
         resetNamespaceSelection()
         resetSettingsDraft()
@@ -32,6 +33,7 @@ public extension AppActions {
             if store.connection == .idle { refreshPods() }
             return
         }
+        pauseLogsForScopeChange()
         store.selectedNamespace = namespace
         refreshPods()
     }

@@ -31,9 +31,11 @@ public struct URLSessionFactory: TransportSessionFactory {
 public final class URLSessionHTTPClient: TransportSession, Sendable {
     private let session: URLSession
     private let trust: ClusterTrustPolicy
+    private let suspendBetweenReads: Bool
 
     public init(purpose: TransportPurpose, trust: ClusterTrustPolicy) {
         self.trust = trust
+        suspendBetweenReads = purpose == .logs || purpose == .request
         session = URLSession(
             configuration: URLSessionFactory.configuration(for: purpose),
             delegate: ClusterTrustDelegate(policy: trust), delegateQueue: nil
@@ -65,7 +67,7 @@ public final class URLSessionHTTPClient: TransportSession, Sendable {
                 throw APIError.transport(.invalidResponse)
             }
             return HTTPStreamResponse(
-                statusCode: response.statusCode, body: URLSessionByteStream(bytes: bytes),
+                statusCode: response.statusCode, body: URLSessionByteStream(bytes: bytes, suspendBetweenReads: suspendBetweenReads),
                 retryAfter: response.value(forHTTPHeaderField: "Retry-After")
             )
         } catch { throw delegate.authenticationFailure ?? transportError(error) }
@@ -82,14 +84,26 @@ private actor URLSessionByteStream: HTTPByteStream {
     private var iterator: URLSession.AsyncBytes.Iterator?
     private let task: URLSessionTask
     private var reading = false
+    private let suspendBetweenReads: Bool
 
-    init(bytes: URLSession.AsyncBytes) { iterator = bytes.makeAsyncIterator(); task = bytes.task }
+    init(bytes: URLSession.AsyncBytes, suspendBetweenReads: Bool) {
+        iterator = bytes.makeAsyncIterator()
+        task = bytes.task
+        self.suspendBetweenReads = suspendBetweenReads
+        if suspendBetweenReads { task.suspend() }
+    }
 
     func read() async throws -> Data? {
         guard !reading else { throw APIError.transport(.streamReadInProgress) }
         guard var current = iterator else { return nil }
         reading = true
-        defer { reading = false }
+        if suspendBetweenReads { task.resume() }
+        defer {
+            reading = false
+            // AsyncBytes offers no configurable queue size. Stop further ingress while the
+            // log consumer/UI is backpressured instead of buffering an entire fast response.
+            if suspendBetweenReads, iterator != nil { task.suspend() }
+        }
         return try await withTaskCancellationHandler {
             do {
                 // AsyncBytes already buffers internally. Do not wait for a full chunk: a single

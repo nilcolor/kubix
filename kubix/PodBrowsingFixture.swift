@@ -15,7 +15,8 @@ import KubixRuntime
         actions = AppActions(
             store: store, exec: PodFixtureExec(), authentication: authentication, surfaces: surfaces,
             configurations: PodFixtureConfiguration(), pods: WatchService(transports: { [transport] _ in transport }),
-            podDetails: PodDetailsService(transports: { [transport] _ in transport })
+            podDetails: PodDetailsService(transports: { [transport] _ in transport }),
+            logs: LogService(transports: { [transport] _ in transport })
         )
     }
 }
@@ -44,6 +45,8 @@ private struct PodFixtureConfiguration: AppConfigurationLoading {
 actor PodFixtureTransport: Transport {
     private(set) var requests: [APIRequest] = []
     private(set) var streams: [PodFixtureStream] = []
+    private(set) var logStreams: [PodFixtureStream] = []
+    private(set) var logRequests: [APIRequest] = []
 
     func data(for request: APIRequest) async throws -> Data {
         requests.append(request)
@@ -59,6 +62,17 @@ actor PodFixtureTransport: Transport {
     }
 
     func stream(for request: APIRequest, purpose: TransportPurpose) throws -> any HTTPByteStream {
+        if purpose == .logs {
+            guard request.path.count == 7, request.path[3] == "team", request.path[4] == "pods",
+                  ["alpha", "zulu"].contains(request.path[5]), request.path.last == "log",
+                  request.accept == "application/json",
+                  request.query.contains(where: { $0.name == "tailLines" && $0.value == "200" }) else { throw APIError.invalidRequest }
+            let stream = PodFixtureStream()
+            logStreams.append(stream)
+            logRequests.append(request)
+            stream.yield(Data((0..<400).map { "synthetic fixture line \($0)\n" }.joined().utf8))
+            return stream
+        }
         guard purpose == .watch, request.path.last == "pods" else { throw APIError.invalidRequest }
         let stream = PodFixtureStream()
         streams.append(stream)
@@ -116,18 +130,29 @@ final class PodFixtureStream: HTTPByteStream, @unchecked Sendable {
     private var chunks: [Data] = []
     private var pending: CheckedContinuation<Data?, any Error>?
     private var stopped = false
+    private var failure: APIError?
     var cancelled: Bool { lock.withLock { stopped } }
 
     func read() async throws -> Data? {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 lock.withLock {
-                    if stopped { continuation.resume(throwing: CancellationError()) } else if !chunks.isEmpty {
+                    if stopped { continuation.resume(throwing: CancellationError()) } else if let failure {
+                        continuation.resume(throwing: failure)
+                    } else if !chunks.isEmpty {
                         continuation.resume(returning: chunks.removeFirst())
                     } else { pending = continuation }
                 }
             }
         } onCancel: { self.cancel() }
+    }
+
+    func fail() {
+        lock.withLock {
+            failure = .transport(.connection)
+            pending?.resume(throwing: APIError.transport(.connection))
+            pending = nil
+        }
     }
 
     func yield(_ data: Data) {

@@ -18,6 +18,9 @@ public final class AppStore {
     public internal(set) var podSort: PodTablePresentation.Sort?
     public internal(set) var selectedPodUID: String?
     public internal(set) var execSessions: [ExecSession] = []
+    public internal(set) var logSessions: [LogSession] = []
+    public internal(set) var selectedLogSessionID: UUID?
+    public internal(set) var podLogDiagnostic: String?
     public internal(set) var authenticationSessions: [UUID: AuthSession] = [:]
     var authenticationSessionOrder: [UUID] = []
     public internal(set) var authSettings: AuthSettings

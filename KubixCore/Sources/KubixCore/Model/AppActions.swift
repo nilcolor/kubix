@@ -32,12 +32,18 @@ public final class AppActions {
     var podShellSelection: PodShellSelection?
     var podDetailTasks: [UUID: Task<Void, Never>] = [:]
     var podShellGuards: [UUID: PodShellSelection] = [:]
+    let logs: (any LogStreaming)?
+    var logTasks: [UUID: Task<Void, Never>] = [:]
+    var logAttempts: [UUID: UUID] = [:]
+    var podLogSelection: PodShellSelection?
+    var podLogGuards: [UUID: PodShellSelection] = [:]
 
     public init(
         store: AppStore, exec: any ExecSessionControlling,
         authentication: any AuthenticationControlling, surfaces: any TerminalSurfaceCreating,
         browser: (any BrowserOpening)? = nil, configurations: (any AppConfigurationLoading)? = nil,
-        pods: (any PodWatching)? = nil, podDetails: (any PodDetailsProviding)? = nil
+        pods: (any PodWatching)? = nil, podDetails: (any PodDetailsProviding)? = nil,
+        logs: (any LogStreaming)? = nil
     ) {
         self.store = store
         self.exec = exec
@@ -47,6 +53,7 @@ public final class AppActions {
         self.configurations = configurations
         self.pods = pods
         self.podDetails = podDetails
+        self.logs = logs
         progressTask = Task { [weak self, authentication] in
             let stream = await authentication.sessions()
             for await session in stream {
@@ -61,6 +68,7 @@ public final class AppActions {
         let session = ExecSession(target: target)
         store.execSessions.append(session)
         store.selectedExecSessionID = session.id
+        store.selectedLogSessionID = nil
         if stopped {
             finish(session.id, result: .cancelled)
         } else {
@@ -162,28 +170,6 @@ public final class AppActions {
         await authentication.cancel(operationID: operationID)
     }
 
-    /// Composition explicitly closes this owner, rather than relying on view dismantling.
-    public func shutdown() {
-        guard !stopped else { return }
-        stopped = true
-        cancelPods()
-        if store.connection != .idle { store.connection = .idle }
-        for session in store.execSessions { closeShell(session.id) }
-        progressTask?.cancel()
-        progressTask = nil
-        settingsTask?.cancel()
-        settingsTask = nil
-        for task in settingsTasks.values { task.cancel() }
-        for task in authenticationTasks.values { task.cancel() }
-        store.authenticationSessions = [:]
-        store.authenticationSessionOrder = []
-        store.authenticationDiagnostic = nil
-        presentationRevision += 1
-        configurationRevision += 1
-        presentationTask?.cancel()
-        presentationTask = nil
-    }
-
     private func start(_ session: ExecSession) {
         let attempt = UUID()
         attempts[session.id] = attempt
@@ -270,10 +256,34 @@ public final class AppActions {
         podTask?.cancel()
         for task in retiringPodTasks.values { task.cancel() }
         for task in podDetailTasks.values { task.cancel() }
+        for task in logTasks.values { task.cancel() }
     }
 }
 
 extension AppActions {
+    /// Composition explicitly closes this owner, rather than relying on view dismantling.
+    public func shutdown() {
+        guard !stopped else { return }
+        stopped = true
+        cancelPods()
+        if store.connection != .idle { store.connection = .idle }
+        for session in store.execSessions { closeShell(session.id) }
+        for session in store.logSessions { closeLog(session.id) }
+        progressTask?.cancel()
+        progressTask = nil
+        settingsTask?.cancel()
+        settingsTask = nil
+        for task in settingsTasks.values { task.cancel() }
+        for task in authenticationTasks.values { task.cancel() }
+        store.authenticationSessions = [:]
+        store.authenticationSessionOrder = []
+        store.authenticationDiagnostic = nil
+        presentationRevision += 1
+        configurationRevision += 1
+        presentationTask?.cancel()
+        presentationTask = nil
+    }
+
     /// Local codes are intentionally not accepted as remote exit codes.
     public func childTerminated(_ id: UUID) async {
         guard let index = index(id), !store.execSessions[index].isClosed else { return }
@@ -300,6 +310,7 @@ extension AppActions {
         let presentation = presentationTask
         let podWork = Array(retiringPodTasks.values) + (podTask.map { [$0] } ?? [])
         let detailWork = Array(podDetailTasks.values)
+        let logWork = Array(logTasks.values)
         shutdown()
         for task in pending { await task.value }
         for task in auth { _ = await task.result }
@@ -308,6 +319,7 @@ extension AppActions {
         await presentation?.value
         for task in podWork { await task.value }
         for task in detailWork { await task.value }
+        for task in logWork { await task.value }
     }
 
     static func authDiagnostic(_ error: any Error) -> String {

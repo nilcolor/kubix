@@ -4,6 +4,7 @@ public extension AppActions {
     func loadConfiguration() async {
         guard !stopped, let configurations else { return }
         cancelPodShellSelection()
+        pauseLogsForScopeChange()
         configurationRevision += 1
         let revision = configurationRevision
         let settingsVersion = settingsRevision
@@ -33,6 +34,7 @@ public extension AppActions {
     func selectShell(_ id: UUID) {
         guard store.execSessions.contains(where: { $0.id == id && !$0.isClosed }) else { return }
         store.selectedExecSessionID = id
+        store.selectedLogSessionID = nil
     }
 
     func saveAuthSettings() async {

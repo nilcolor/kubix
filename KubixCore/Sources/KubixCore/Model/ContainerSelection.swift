@@ -1,10 +1,10 @@
 import Foundation
 
-/// Logs is a future selection policy only; it does not start an unimplemented log service.
 public struct ContainerSelection: Equatable, Sendable {
     public let shell: [PodDetails.Container]
     public let logs: [PodDetails.Container]
     public let defaultShell: String?
+    public let defaultLog: PodDetails.Container?
     public var unavailableExplanation: String? {
         shell.isEmpty ? "No running regular container is available for a shell yet. Init and ephemeral containers are not shell targets." : nil
     }
@@ -13,6 +13,8 @@ public struct ContainerSelection: Equatable, Sendable {
         shell = details.containers.filter { $0.kind == .regular && $0.state == .running }
         logs = details.containers
         defaultShell = shell.first { $0.name == details.defaultContainer }?.name ?? shell.first?.name
+        defaultLog = logs.first { $0.kind == .regular && $0.name == details.defaultContainer }
+            ?? logs.first { $0.kind == .regular } ?? logs.first
     }
 }
 

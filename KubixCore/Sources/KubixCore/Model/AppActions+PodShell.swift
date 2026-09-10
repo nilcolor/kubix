@@ -74,6 +74,7 @@ extension AppActions {
     }
 
     func cancelPodShellSelection() {
+        cancelPodLogSelection()
         podSelectionGeneration = UUID()
         podShellSelection = nil
         store.containerPicker = nil
@@ -86,6 +87,7 @@ extension AppActions {
 
     func reconcilePodShellSelection() {
         if let selection = podShellSelection, !isCurrentPodSelection(selection) { cancelPodShellSelection() }
+        if let selection = podLogSelection, !isCurrentPodSelection(selection) { cancelPodShellSelection() }
     }
 
     func validatePodShell(_ id: UUID) throws {

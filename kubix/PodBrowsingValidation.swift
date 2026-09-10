@@ -44,13 +44,14 @@ import KubixCore
         do {
             try await until { children.allSatisfy { kill($0, 0) == -1 && errno == ESRCH } }
             guard fixture.surfaces.created.allSatisfy({ $0.freeCount == 1 }),
-                  await fixture.transport.streams.allSatisfy(\.cancelled) else { throw Failure.assertion }
+                  await fixture.transport.streams.allSatisfy(\.cancelled),
+                  await fixture.transport.logStreams.allSatisfy(\.cancelled) else { throw Failure.assertion }
             evidence["cleanup"] = "actions joined; streams cancelled; \(children.count) local cat children reaped; \(fixture.surfaces.created.count) surfaces freed exactly once"
         } catch {
             evidence["result"] = "failed"
             evidence["cleanup"] = "failed"
         }
-        evidence["scope"] = "synthetic only; production AppActions, WatchService and PodDetailsService; zero live config/auth/network/browser"
+        evidence["scope"] = "synthetic only; production AppActions, WatchService, PodDetailsService and LogService; zero live config/auth/network/browser; no log payload evidence"
         evidence["appPID"] = String(ProcessInfo.processInfo.processIdentifier)
         let destination = URL(fileURLWithPath: directory).appendingPathComponent("result.json")
         if let data = try? JSONEncoder().encode(evidence) { try? data.write(to: destination, options: .atomic) }
@@ -153,6 +154,8 @@ import KubixCore
         window.makeFirstResponder(views[0])
         try TerminalSmokeTest.type("synthetic-terminal\n", in: window)
         try await until { TerminalSmokeTest.viewport(views[0]).contains("synthetic-terminal") }
+        stage = "native log viewer and terminal preservation"
+        evidence["logs"] = try await PodLogNativeValidation.check(fixture, window: window, table: table)
         try actions.selectContext(named: "synthetic-second")
         actions.setPodFilter("alpha")
         actions.sortPods(.init(column: 0))
@@ -224,7 +227,7 @@ import KubixCore
     private static func field(_ placeholder: String, in window: NSWindow) -> NSTextField? {
         window.contentView.flatMap { descendants($0).compactMap { $0 as? NSTextField }.first { $0.placeholderString == placeholder } }
     }
-    private static func edit(_ value: String, placeholder: String, in window: NSWindow) async throws {
+    static func edit(_ value: String, placeholder: String, in window: NSWindow) async throws {
         guard let field = field(placeholder, in: window) else { throw Failure.assertion }
         field.selectText(nil)
         // AppKit installs/synchronizes its shared field editor on the next run-loop turn.
@@ -240,7 +243,7 @@ import KubixCore
               let editor = window.fieldEditor(false, for: field) as? NSTextView else { throw Failure.assertion }
         editor.doCommand(by: NSSelectorFromString("insertNewline:"))
     }
-    private static func until(_ condition: () async -> Bool) async throws {
+    static func until(_ condition: () async -> Bool) async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(12))
         while !(await condition()) {
             guard ContinuousClock.now < deadline else { throw Failure.timeout }
