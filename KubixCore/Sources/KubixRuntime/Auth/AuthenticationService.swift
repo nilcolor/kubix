@@ -64,6 +64,24 @@ public actor AuthenticationService: AuthenticationControlling, CredentialProvidi
         try await provider.update(settings: settings)
     }
 
+    public func presentation(for context: ResolvedContext) async -> AuthPluginPresentation {
+        do {
+            let plan = try await provider.prepare(context)
+            guard let plugin = plan.plugin else { return AuthPluginPresentation() }
+            do {
+                let binding = try AWSLoginBinding(context: context, plugin: plugin)
+                return AuthPluginPresentation(
+                    executable: plugin.executable.path, source: plugin.source,
+                    profile: binding.profile, canSignIn: true
+                )
+            } catch {
+                return AuthPluginPresentation(
+                    executable: plugin.executable.path, source: plugin.source, diagnostic: diagnostic(error)
+                )
+            }
+        } catch { return AuthPluginPresentation(diagnostic: diagnostic(error)) }
+    }
+
     public func sessions() -> AsyncStream<AuthSession> {
         let id = UUID()
         let (stream, continuation) = AsyncStream<AuthSession>.makeStream(bufferingPolicy: .bufferingNewest(64))

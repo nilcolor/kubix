@@ -4,27 +4,36 @@ import Foundation
 public final class AppActions {
     public let store: AppStore
     private let exec: any ExecSessionControlling
-    private let authentication: any AuthenticationControlling
+    let authentication: any AuthenticationControlling
     private let surfaces: any TerminalSurfaceCreating
+    let browser: (any BrowserOpening)?
+    let configurations: (any AppConfigurationLoading)?
+    var presentationRevision = 0
+    var configurationRevision = 0
+    var presentationTask: Task<Void, Never>?
     private var tasks: [UUID: Task<Void, Never>] = [:]
+    private var closingTasks: [UUID: Task<Void, Never>] = [:]
     private var attempts: [UUID: UUID] = [:]
     private var lifetimes: [UUID: TerminalSurfaceLifetime] = [:]
     private var progressTask: Task<Void, Never>?
     private var settingsTask: Task<Void, any Error>?
     private var settingsTasks: [UUID: Task<Void, any Error>] = [:]
     private var authenticationTasks: [UUID: Task<AcquiredCredential, any Error>] = [:]
-    private var settingsRevision = 0
+    var settingsRevision = 0
     private var authenticationRevision = 0
-    private var stopped = false
+    var stopped = false
 
     public init(
         store: AppStore, exec: any ExecSessionControlling,
-        authentication: any AuthenticationControlling, surfaces: any TerminalSurfaceCreating
+        authentication: any AuthenticationControlling, surfaces: any TerminalSurfaceCreating,
+        browser: (any BrowserOpening)? = nil, configurations: (any AppConfigurationLoading)? = nil
     ) {
         self.store = store
         self.exec = exec
         self.authentication = authentication
         self.surfaces = surfaces
+        self.browser = browser
+        self.configurations = configurations
         progressTask = Task { [weak self, authentication] in
             let stream = await authentication.sessions()
             for await session in stream {
@@ -41,6 +50,10 @@ public final class AppActions {
         store.selectedContext = context
         store.selectedNamespace = context.namespace
         store.namespaces = [context.namespace]
+        store.podName = ""
+        store.containerName = ""
+        resetSettingsDraft()
+        refreshPluginPresentation()
     }
 
     public func selectNamespace(_ namespace: String) throws {
@@ -54,6 +67,7 @@ public final class AppActions {
     public func openShell(target: ExecTarget) -> UUID {
         let session = ExecSession(target: target)
         store.execSessions.append(session)
+        store.selectedExecSessionID = session.id
         if stopped {
             finish(session.id, result: .cancelled)
         } else {
@@ -67,15 +81,26 @@ public final class AppActions {
         store.execSessions[index].isClosed = true
         finish(id, result: .cancelled)
         attempts.removeValue(forKey: id)
-        tasks.removeValue(forKey: id)?.cancel()
+        if let task = tasks.removeValue(forKey: id) {
+            task.cancel()
+            closingTasks[id] = Task { [weak self] in
+                await task.value
+                self?.closingTasks.removeValue(forKey: id)
+            }
+        }
         lifetimes.removeValue(forKey: id)?.close()
+        store.surfaceRevision += 1
+        if store.selectedExecSessionID == id {
+            store.selectedExecSessionID = store.execSessions.last(where: { !$0.isClosed })?.id
+        }
     }
 
     /// Local codes are intentionally not accepted as remote exit codes.
     public func childTerminated(_ id: UUID) async {
-        guard let index = index(id), !store.execSessions[index].isClosed,
-              !store.execSessions[index].state.isTerminal else { return }
-        await exec.childTerminated(sessionID: id)
+        guard let index = index(id), !store.execSessions[index].isClosed else { return }
+        if !store.execSessions[index].state.isTerminal { await exec.childTerminated(sessionID: id) }
+        lifetimes.removeValue(forKey: id)?.close()
+        store.surfaceRevision += 1
     }
 
     public func surface(for id: UUID) -> (any TerminalSurface)? { lifetimes[id]?.surface }
@@ -107,12 +132,15 @@ public final class AppActions {
         guard !stopped, revision == settingsRevision else { return }
         settingsTask = nil
         store.authSettings = settings
+        resetSettingsDraft()
+        refreshPluginPresentation()
     }
 
     public func signIn(context: ResolvedContext, useDeviceCode: Bool = false) async throws {
         try await authenticate { [authentication] in
             try await authentication.signIn(for: context, useDeviceCode: useDeviceCode)
         }
+        for session in store.execSessions where session.target.context == context { retryShell(session.id) }
     }
 
     public func retryAuthentication(operationID: UUID) async throws {
@@ -159,6 +187,10 @@ public final class AppActions {
         for task in authenticationTasks.values { task.cancel() }
         store.authenticationSessions = [:]
         store.authenticationDiagnostic = nil
+        presentationRevision += 1
+        configurationRevision += 1
+        presentationTask?.cancel()
+        presentationTask = nil
     }
 
     private func start(_ session: ExecSession) {
@@ -207,6 +239,7 @@ public final class AppActions {
             throw CancellationError()
         }
         lifetimes[session.id] = TerminalSurfaceLifetime(surface: surface)
+        store.surfaceRevision += 1
     }
 
     private func index(_ id: UUID) -> Int? { store.execSessions.firstIndex { $0.id == id } }
@@ -231,19 +264,37 @@ public final class AppActions {
         }
     }
 
-    private static func authDiagnostic(_ error: any Error) -> String {
-        if let error = error as? AuthenticationError { return error.errorDescription ?? "Authentication failed." }
-        if let error = error as? AuthError { return error.description }
-        if let error = error as? any AuthenticationDiagnosticProviding { return error.authenticationDiagnostic }
-        if error is CancellationError { return "Authentication was cancelled." }
-        return "Authentication failed. Check the configured plugin/profile and explicitly retry."
-    }
-
     deinit {
+        presentationTask?.cancel()
         progressTask?.cancel()
         settingsTask?.cancel()
         for task in settingsTasks.values { task.cancel() }
         for task in authenticationTasks.values { task.cancel() }
         for task in tasks.values { task.cancel() }
+    }
+}
+
+extension AppActions {
+    /// A native termination delegate must await owned work before allowing the process to exit.
+    public func shutdownAndWait() async {
+        let pending = Array(tasks.values) + Array(closingTasks.values)
+        let auth = Array(authenticationTasks.values)
+        let settings = Array(settingsTasks.values)
+        let progress = progressTask
+        let presentation = presentationTask
+        shutdown()
+        for task in pending { await task.value }
+        for task in auth { _ = await task.result }
+        for task in settings { _ = await task.result }
+        await progress?.value
+        await presentation?.value
+    }
+
+    static func authDiagnostic(_ error: any Error) -> String {
+        if let error = error as? AuthenticationError { return error.errorDescription ?? "Authentication failed." }
+        if let error = error as? AuthError { return error.description }
+        if let error = error as? any AuthenticationDiagnosticProviding { return error.authenticationDiagnostic }
+        if error is CancellationError { return "Authentication was cancelled." }
+        return "Authentication failed. Check the configured plugin/profile and explicitly retry."
     }
 }

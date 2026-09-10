@@ -38,11 +38,44 @@ final class LocalTerminalSession {
 
 struct TerminalView: NSViewRepresentable {
     let surface: GhosttySurfaceView
+    var isSelected = true
 
-    func makeNSView(context: Context) -> GhosttySurfaceView { surface }
-    func updateNSView(_ nsView: GhosttySurfaceView, context: Context) {}
+    func makeNSView(context: Context) -> GhosttySurfaceView {
+        surface.isHidden = !isSelected
+        return surface
+    }
+    func updateNSView(_ nsView: GhosttySurfaceView, context: Context) {
+        let wasHidden = nsView.isHidden
+        nsView.isHidden = !isSelected
+        if wasHidden && isSelected { nsView.window?.makeFirstResponder(nsView) }
+    }
 
     static func dismantleNSView(_ nsView: GhosttySurfaceView, coordinator: ()) {
         // The session alone owns teardown. Dismantling/rehosting must not free a live PTY.
     }
 }
+
+#if DEBUG
+struct TerminalSmokeView: View {
+    @State private var session: LocalTerminalSession?
+
+    var body: some View {
+        Group {
+            if let failure = session?.failure {
+                ContentUnavailableView("Terminal unavailable", systemImage: "exclamationmark.triangle", description: Text(failure))
+            } else if session?.isClosed == true {
+                ContentUnavailableView("Shell exited", systemImage: "terminal")
+            } else if let surface = session?.view {
+                TerminalView(surface: surface)
+            } else {
+                ProgressView("Starting terminal")
+            }
+        }
+        .frame(minWidth: 480, maxWidth: .infinity, minHeight: 320, maxHeight: .infinity)
+        .task {
+            if session == nil { session = LocalTerminalSession(configuration: TerminalSmokeTest.configuration) }
+            if let session { await TerminalSmokeTest.run(session) }
+        }
+    }
+}
+#endif

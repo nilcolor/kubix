@@ -8,6 +8,7 @@ public protocol AuthenticationDiagnosticProviding: Error {
 
 /// AppActions can subscribe and present Sign in/Retry/Cancel without importing runtime IO.
 public protocol AuthenticationControlling: Sendable {
+    func presentation(for context: ResolvedContext) async -> AuthPluginPresentation
     func update(settings: AuthSettings) async throws
     func acquire(for context: ResolvedContext) async throws -> AcquiredCredential
     func signIn(for context: ResolvedContext, useDeviceCode: Bool) async throws -> AcquiredCredential
@@ -16,4 +17,8 @@ public protocol AuthenticationControlling: Sendable {
     func cancel(operationID: UUID) async
     /// Always an explicit user action; terminal operations are never restarted automatically.
     func retry(operationID: UUID) async throws -> AcquiredCredential
+}
+
+public extension AuthenticationControlling {
+    func presentation(for context: ResolvedContext) async -> AuthPluginPresentation { AuthPluginPresentation() }
 }

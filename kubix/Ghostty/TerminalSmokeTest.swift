@@ -10,6 +10,7 @@ import Vision
 enum TerminalSmokeTest {
     private static var didRun = false
     private static let directory = ProcessInfo.processInfo.environment["KUBIX_TERMINAL_SMOKE_DIRECTORY"]
+    static var isEnabled: Bool { directory != nil }
     private static var stage = "startup"
     private static var evidence: [String: String] = [:]
 

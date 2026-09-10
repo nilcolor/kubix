@@ -1,33 +1,22 @@
+import KubixCore
 import SwiftUI
 
 struct ContentView: View {
-    @State private var session: LocalTerminalSession?
-
+    let composition: AppComposition
     var body: some View {
-        Group {
-            if let failure = session?.failure {
-                ContentUnavailableView("Terminal unavailable", systemImage: "exclamationmark.triangle", description: Text(failure))
-            } else if session?.isClosed == true {
-                ContentUnavailableView("Shell exited", systemImage: "terminal")
-            } else if let surface = session?.view {
-                TerminalView(surface: surface)
-            } else {
-                ProgressView("Starting terminal")
-            }
+        let store = composition.store
+        let actions = composition.actions
+        VStack(spacing: 0) {
+            ExecConnectView(store: store, actions: actions)
+            Divider()
+            ExecSessionDeck(store: store, actions: actions)
         }
-        .frame(minWidth: 480, maxWidth: .infinity, minHeight: 320, maxHeight: .infinity)
+        .frame(minWidth: 760, minHeight: 600)
+        .sheet(isPresented: Binding(get: { store.showingSettings }, set: { actions.setShowingSettings($0) })) {
+            AuthSettingsView(store: store, actions: actions)
+        }
         .task {
-            // SwiftUI may reconstruct ContentView freely; create the owned session only after mounting.
-            if session == nil {
-                #if DEBUG
-                session = LocalTerminalSession(configuration: TerminalSmokeTest.configuration)
-                #else
-                session = LocalTerminalSession()
-                #endif
-            }
-            #if DEBUG
-            if let session { await TerminalSmokeTest.run(session) }
-            #endif
+            if !store.hasLoadedConfiguration { await actions.loadConfiguration() }
         }
     }
 }

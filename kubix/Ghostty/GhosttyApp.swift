@@ -77,7 +77,31 @@ final class GhosttyApp {
 }
 
 final class TerminalAppDelegate: NSObject, NSApplicationDelegate {
+    private var terminating = false
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let composition = AppComposition.active else { return .terminateNow }
+        guard !terminating else { return .terminateLater }
+        terminating = true
+        Task {
+            await composition.shutdown()
+            GhosttyApp.shared.shutdown()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        #if DEBUG
+        return !TerminalSmokeTest.isEnabled
+        #else
+        return true
+        #endif
+    }
     func applicationDidBecomeActive(_ notification: Notification) { GhosttyApp.shared.setFocus(true) }
     func applicationDidResignActive(_ notification: Notification) { GhosttyApp.shared.setFocus(false) }
-    func applicationWillTerminate(_ notification: Notification) { GhosttyApp.shared.shutdown() }
+    func applicationWillTerminate(_ notification: Notification) {
+        AppComposition.active?.actions.shutdown()
+        GhosttyApp.shared.shutdown()
+    }
 }

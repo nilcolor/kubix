@@ -12,6 +12,7 @@ public struct TerminalConfiguration: Sendable, Equatable {
         case emptyCommand
         case relativeWorkingDirectory
         case conflictingInitialInput
+        case relativeExecutable
     }
 
     public let command: String?
@@ -21,6 +22,14 @@ public struct TerminalConfiguration: Sendable, Equatable {
     public let environment: [EnvironmentVariable]
 
     public static let loginShell = try! TerminalConfiguration()
+
+    public static func bridge(executablePath: String, endpoint: ExecBridgeEndpoint) throws -> Self {
+        guard executablePath.hasPrefix("/") else { throw ConfigurationError.relativeExecutable }
+        guard !executablePath.utf8.contains(0) else { throw ConfigurationError.invalidCString }
+        // Ghostty's explicit command is parsed as shell text, not an argv array.
+        let quoted = "'" + executablePath.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        return try Self(command: "\(quoted) --pty-bridge", environment: endpoint.environment, workingDirectory: "/")
+    }
 
     public init(
         command: String? = nil,

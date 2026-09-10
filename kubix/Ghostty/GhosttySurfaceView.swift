@@ -16,6 +16,7 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
     private var mouseTracking: NSTrackingArea?
     var onClose: (() -> Void)?
     var onFailure: (() -> Void)?
+    var onWindowClose: (() -> Void)?
 
     var interpretingKey = false
     var committedText: [String] = []
@@ -75,7 +76,7 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
             guard surface != nil else { throw SurfaceError.allocationFailed }
             updateGeometry()
             updateColorScheme()
-            window.makeFirstResponder(self)
+            if !isHidden { window.makeFirstResponder(self) }
             focusChanged()
         } catch {
             let report = onFailure
@@ -100,6 +101,7 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
         environment.removeAll()
         onClose = nil
         onFailure = nil
+        onWindowClose = nil
     }
 
     func requestClose() {
@@ -118,7 +120,7 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
 
     @objc private func windowClosing(_ notification: Notification) {
         guard let closing = notification.object as? NSWindow, closing === window else { return }
-        requestClose()
+        if let onWindowClose { onWindowClose() } else { requestClose() }
     }
 
     @objc private func focusChanged() {
