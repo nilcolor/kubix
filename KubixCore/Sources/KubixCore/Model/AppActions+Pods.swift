@@ -13,8 +13,6 @@ public extension AppActions {
         }
         store.selectedContext = context
         resetNamespaceSelection()
-        store.podName = ""
-        store.containerName = ""
         resetSettingsDraft()
         refreshPluginPresentation()
         refreshPods()
@@ -86,6 +84,7 @@ public extension AppActions {
     }
 
     func selectPod(uid: String?) {
+        if store.selectedPodUID != uid { cancelPodShellSelection() }
         store.selectedPodUID = uid
         reconcilePodSelection()
     }
@@ -102,6 +101,7 @@ extension AppActions {
     private func reconcilePodSelection() {
         let selected = store.podTable.selectedUID
         if store.selectedPodUID != selected { store.selectedPodUID = selected }
+        reconcilePodShellSelection()
     }
 
     func resetNamespaceSelection() {
@@ -114,6 +114,7 @@ extension AppActions {
     }
 
     func cancelPods() {
+        cancelPodShellSelection()
         podGeneration = UUID()
         guard let task = podTask else { return }
         podTask = nil
@@ -127,6 +128,10 @@ extension AppActions {
     }
 
     func applyPodUpdate(_ update: PodWatchUpdate) {
+        if let uid = store.selectedPodUID,
+           store.rows.first(where: { $0.id == uid }) != update.rows.first(where: { $0.id == uid }) {
+            cancelPodShellSelection()
+        }
         if store.rows != update.rows { store.rows = update.rows }
         if store.columns != update.columns {
             store.columns = update.columns

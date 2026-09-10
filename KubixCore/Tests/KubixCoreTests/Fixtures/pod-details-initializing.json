@@ -1,0 +1,11 @@
+{
+  "apiVersion": "v1", "kind": "Pod",
+  "metadata": { "uid": "synthetic-uid", "name": "synthetic-pod", "namespace": "team",
+    "annotations": { "kubectl.kubernetes.io/default-container": "setup" } },
+  "spec": { "containers": [ { "name": "web" } ], "initContainers": [ { "name": "setup" } ], "ephemeralContainers": [ { "name": "debugger" } ] },
+  "status": {
+    "containerStatuses": [ { "name": "web", "state": { "waiting": {} } } ],
+    "initContainerStatuses": [ { "name": "setup", "state": { "running": {} } } ],
+    "ephemeralContainerStatuses": [ { "name": "debugger", "state": { "running": {} } } ]
+  }
+}

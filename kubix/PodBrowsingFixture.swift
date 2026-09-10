@@ -14,7 +14,8 @@ import KubixRuntime
     init() {
         actions = AppActions(
             store: store, exec: PodFixtureExec(), authentication: authentication, surfaces: surfaces,
-            configurations: PodFixtureConfiguration(), pods: WatchService(transports: { [transport] _ in transport })
+            configurations: PodFixtureConfiguration(), pods: WatchService(transports: { [transport] _ in transport }),
+            podDetails: PodDetailsService(transports: { [transport] _ in transport })
         )
     }
 }
@@ -46,6 +47,7 @@ actor PodFixtureTransport: Transport {
 
     func data(for request: APIRequest) async throws -> Data {
         requests.append(request)
+        if request.accept == "application/json" { return try Self.details(request) }
         guard request.path.count == 5, request.path.prefix(3) == ["api", "v1", "namespaces"],
               request.path.last == "pods", request.accept == APIRequest.tableAccept,
               ["team", "other", "known", "empty", "forbidden"].contains(request.path[3]) else { throw APIError.invalidRequest }
@@ -64,6 +66,25 @@ actor PodFixtureTransport: Transport {
     }
 
     func webSocket(for request: APIRequest) throws -> any WebSocketConnection { throw APIError.invalidRequest }
+
+    private static func details(_ request: APIRequest) throws -> Data {
+        guard request.path.count == 6, request.path.prefix(3) == ["api", "v1", "namespaces"],
+              request.path[3] == "team", request.path[4] == "pods",
+              ["alpha", "zulu"].contains(request.path[5]), request.query.isEmpty else { throw APIError.invalidRequest }
+        let name = request.path[5]
+        let names = name == "alpha" ? ["web"] : ["web", "sidecar"]
+        return try JSONSerialization.data(withJSONObject: [
+            "apiVersion": "v1", "kind": "Pod",
+            "metadata": ["uid": name == "alpha" ? "uid-a" : "uid-z", "name": name, "namespace": "team",
+                         "annotations": ["kubectl.kubernetes.io/default-container": name == "alpha" ? "setup" : "sidecar"]],
+            "spec": ["containers": names.map { ["name": $0] }, "initContainers": [["name": "setup"]], "ephemeralContainers": [["name": "debugger"]]],
+            "status": [
+                "containerStatuses": names.map { ["name": $0, "state": ["running": [:]]] as [String: Any] },
+                "initContainerStatuses": [["name": "setup", "state": ["running": [:]]]],
+                "ephemeralContainerStatuses": [["name": "debugger", "state": ["running": [:]]]],
+            ],
+        ])
+    }
 
     static func page(namespace: String, second: Bool, empty: Bool) -> Data {
         let schema = second ? "null" : """

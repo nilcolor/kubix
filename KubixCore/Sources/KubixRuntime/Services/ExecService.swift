@@ -73,6 +73,7 @@ public actor ExecService: ExecSessionControlling {
         do {
             try Task.checkCancellation()
             let transport = try await transports(invocation.target.context)
+            try Task.checkCancellation()
             let request = try shellRequest(invocation.target, readOnlyValidation: invocation.readOnlyValidation)
             let connection = try await transport.webSocket(for: request.apiRequest)
             socket = connection

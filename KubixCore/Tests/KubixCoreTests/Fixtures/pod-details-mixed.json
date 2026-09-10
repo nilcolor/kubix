@@ -1,0 +1,25 @@
+{
+  "apiVersion": "v1",
+  "kind": "Pod",
+  "metadata": {
+    "uid": "synthetic-uid",
+    "name": "synthetic-pod",
+    "namespace": "team",
+    "annotations": { "kubectl.kubernetes.io/default-container": "sidecar" }
+  },
+  "spec": {
+    "containers": [ { "name": "web" }, { "name": "sidecar" }, { "name": "waiting" }, { "name": "terminated" }, { "name": "unknown" } ],
+    "initContainers": [ { "name": "setup" } ],
+    "ephemeralContainers": [ { "name": "debugger" } ]
+  },
+  "status": {
+    "containerStatuses": [
+      { "name": "web", "ready": false, "state": { "running": {} } },
+      { "name": "sidecar", "state": { "running": {} } },
+      { "name": "waiting", "state": { "waiting": {} } },
+      { "name": "terminated", "state": { "terminated": {} } }
+    ],
+    "initContainerStatuses": [ { "name": "setup", "state": { "running": {} } } ],
+    "ephemeralContainerStatuses": [ { "name": "debugger", "state": { "running": {} } } ]
+  }
+}

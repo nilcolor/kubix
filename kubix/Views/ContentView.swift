@@ -11,7 +11,6 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     ContextPicker(store: store, actions: actions)
                     NamespacePicker(store: store, actions: actions)
-                    ExecConnectView(store: store, actions: actions)
                     AuthProgressView(store: store, actions: actions)
                 }.padding(12)
             }.frame(minHeight: 140, idealHeight: 210, maxHeight: 260)
@@ -24,6 +23,11 @@ struct ContentView: View {
         .frame(minWidth: 760, minHeight: 600)
         .sheet(isPresented: Binding(get: { store.showingSettings }, set: { actions.setShowingSettings($0) })) {
             AuthSettingsView(store: store, actions: actions)
+        }
+        .sheet(item: Binding(get: { store.containerPicker }, set: { value in
+            if value == nil, let picker = store.containerPicker { actions.cancelPodShell(selectionID: picker.id) }
+        })) { picker in
+            ContainerPicker(presentation: picker, actions: actions)
         }
         .task {
             if !store.hasLoadedConfiguration { await actions.loadConfiguration() }

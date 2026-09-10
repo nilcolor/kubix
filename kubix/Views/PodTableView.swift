@@ -25,6 +25,15 @@ struct PodTableView: View {
                 Spacer(minLength: 0)
                 if presentation.state == .failed { Button("Retry pods") { actions.refreshPods() } }
             }
+            if store.isLoadingPodDetails {
+                HStack {
+                    ProgressView().controlSize(.small)
+                    Text("Loading fresh Pod details…").font(.caption)
+                }
+            }
+            if let diagnostic = store.podShellDiagnostic {
+                Text(diagnostic).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
+            }
             NativePodTable(presentation: presentation, actions: actions)
         }
         .padding(8)
@@ -39,7 +48,10 @@ struct NativePodTable: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(actions: actions) }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let table = NSTableView()
+        let table = PodNativeTable()
+        table.openShell = { [weak coordinator = context.coordinator] row, menu in
+            coordinator?.shellAction(row: row, menu: menu)
+        }
         table.identifier = NSUserInterfaceItemIdentifier("pod-table")
         table.delegate = context.coordinator
         table.dataSource = context.coordinator
@@ -69,6 +81,13 @@ struct NativePodTable: NSViewRepresentable {
         private var updating = false
 
         init(actions: AppActions) { self.actions = actions }
+
+        func shellAction(row: Int, menu: Bool) -> (@MainActor () -> Void)? {
+            guard let presentation, presentation.rows.indices.contains(row) else { return nil }
+            let uid = presentation.rows[row].id
+            if menu { return actions.podShellMenuAction(uid: uid) }
+            return { [actions] in actions.openPodShell(uid: uid) }
+        }
 
         func update(_ table: NSTableView, presentation next: PodTablePresentation) {
             guard presentation != next else { return }

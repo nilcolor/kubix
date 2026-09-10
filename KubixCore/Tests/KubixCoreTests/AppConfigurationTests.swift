@@ -40,19 +40,20 @@ private actor SnapshotLoader: AppConfigurationLoading {
     defer { actions.shutdown() }
     await actions.loadConfiguration()
     #expect(store.selectedContext?.name == "second")
-    #expect(actions.connectShell() == nil)
-    #expect(store.connectDiagnostic != nil && surfaces.created.isEmpty)
-    actions.setPodName("explicit-pod")
-    actions.setContainerName("regular")
+    actions.openPodShell()
+    #expect(store.podShellDiagnostic != nil && surfaces.created.isEmpty)
     actions.setNamespaceInput("known")
-    let id = try #require(actions.connectShell())
+    #expect(actions.commitNamespaceInput())
+    let id = actions.openShell(target: try ExecTarget(
+        context: #require(store.selectedContext), namespace: store.selectedNamespace, pod: "explicit-pod", container: "regular"
+    ))
     let original = store.execSessions[0].target
     snapshot.contexts = [try appContext()]
     snapshot.diagnostics = ["A configured context is unavailable."]
     await loader.set(snapshot)
     await actions.loadConfiguration()
     #expect(store.execSessions[0].target == original)
-    #expect(store.podName.isEmpty && store.containerName.isEmpty)
+    #expect(store.containerPicker == nil)
     #expect(store.configurationDiagnostics == snapshot.diagnostics)
     await auth.gate.open()
     try await appEventually { surfaces.created[id] != nil }

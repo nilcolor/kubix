@@ -14,6 +14,7 @@ final class AppComposition {
     let validationTransportFactory = ExecValidationTransportFactory()
     let isolatedVault: IsolatedAWSVaultRunner?
     let podValidation: PodBrowsingFixture?
+    let validationPods: ExecLivePodWatcher?
     #endif
 
     private convenience init() {
@@ -50,15 +51,9 @@ final class AppComposition {
         #endif
         let login = AWSLoginService()
         let authentication = AuthenticationService(provider: provider, login: login)
-        // The immutable context warning is also rendered beside every session and the connect form.
+        // The immutable context warning is also rendered beside every session and the context picker.
         #if DEBUG
-        if ExecLiveValidation.isEnabled {
-            registry = ContextTransportRegistry(factory: { [validationTransportFactory] context in
-                try await URLSessionTransport(
-                    context: context, credentials: authentication, factory: validationTransportFactory, warning: { _ in }
-                )
-            })
-        } else { registry = ContextTransportRegistry(credentials: authentication, warning: { _ in }) }
+        registry = Self.transportRegistry(authentication: authentication, factory: validationTransportFactory)
         #else
         registry = ContextTransportRegistry(credentials: authentication, warning: { _ in })
         #endif
@@ -67,13 +62,20 @@ final class AppComposition {
             return try await registry.transport(for: context)
         }
         let exec = Self.execService(transports: transports)
+        let pods: (any PodWatching)?
+        #if DEBUG
+        validationPods = ExecLiveValidation.isEnabled ? ExecLivePodWatcher(transports: transports) : nil
+        if let validationPods { pods = validationPods } else { pods = Self.podWatcher(transports: transports) }
+        #else
+        pods = Self.podWatcher(transports: transports)
+        #endif
         let factory = ExecSurfaceFactory()
         store = AppStore()
         actions = AppActions(
             store: store, exec: exec, authentication: authentication, surfaces: factory, browser: BrowserLauncher(),
             configurations: AppConfigurationLoader(
                 loader: KubeconfigLoader(environment: environment, homeDirectory: home), settings: settings
-            ), pods: Self.podWatcher(transports: transports)
+            ), pods: pods, podDetails: PodDetailsService(transports: transports)
         )
         factory.closeSession = { [weak actions] id in actions?.closeShell(id) }
         Self.active = self
@@ -103,8 +105,20 @@ final class AppComposition {
     }
 
     #if DEBUG
+    private static func transportRegistry(
+        authentication: AuthenticationService, factory: ExecValidationTransportFactory
+    ) -> ContextTransportRegistry {
+        if ExecLiveValidation.isEnabled {
+            return ContextTransportRegistry(factory: { context in
+                try await URLSessionTransport(context: context, credentials: authentication, factory: factory, warning: { _ in })
+            })
+        }
+        return ContextTransportRegistry(credentials: authentication, warning: { _ in })
+    }
+
     private init(fixture: PodBrowsingFixture) {
         podValidation = fixture
+        validationPods = nil
         isolatedVault = nil
         registry = nil
         store = fixture.store

@@ -26,7 +26,19 @@ import KubixCore
             evidence["storeRows"] = String(fixture.store.rows.count)
             evidence["nativeRows"] = String(NSApp.windows.compactMap { table(in: $0)?.numberOfRows }.first ?? -1)
             evidence["committedNamespace"] = fixture.store.selectedNamespace
+            evidence["shellPhase"] = PodShellNativeValidation.phase
+            evidence["pickerVisible"] = String(fixture.store.containerPicker != nil)
+            evidence["shellDiagnostic"] = fixture.store.podShellDiagnostic ?? "none"
+            evidence["shellRequests"] = String(await fixture.transport.requests.filter { $0.accept == "application/json" }.count)
+            evidence["attachedSheet"] = String(NSApp.windows.contains { $0.attachedSheet != nil })
         }
+        for view in fixture.surfaces.created {
+            if let surface = view.surface {
+                let pid = pid_t(ghostty_surface_foreground_pid(surface))
+                if pid > 0, !children.contains(pid) { children.append(pid) }
+            }
+        }
+        evidence["ownedChildPIDs"] = children.map(String.init).joined(separator: ",")
         await fixture.actions.shutdownAndWait()
         await fixture.authentication.finish()
         do {
@@ -38,7 +50,7 @@ import KubixCore
             evidence["result"] = "failed"
             evidence["cleanup"] = "failed"
         }
-        evidence["scope"] = "synthetic only; production AppActions and WatchService; zero live config/auth/network/browser"
+        evidence["scope"] = "synthetic only; production AppActions, WatchService and PodDetailsService; zero live config/auth/network/browser"
         evidence["appPID"] = String(ProcessInfo.processInfo.processIdentifier)
         let destination = URL(fileURLWithPath: directory).appendingPathComponent("result.json")
         if let data = try? JSONEncoder().encode(evidence) { try? data.write(to: destination, options: .atomic) }
@@ -126,10 +138,11 @@ import KubixCore
     private static func checkSessions(_ fixture: PodBrowsingFixture, window: NSWindow, table: NSTableView) async throws {
         stage = "stable session deck and minimum window"
         let actions = fixture.actions
-        guard let context = fixture.store.selectedContext else { throw Failure.assertion }
-        let target = try ExecTarget(context: context, namespace: "team", pod: "synthetic-terminal", container: "regular")
-        let first = actions.openShell(target: target)
-        let second = actions.openShell(target: target)
+        let ids = try await PodShellNativeValidation.open(fixture, window: window, table: table)
+        let first = ids[0]
+        let second = ids[1]
+        let targets = fixture.store.execSessions.map(\.target)
+        evidence["rowShells"] = "native Return opens single regular; right-click menu targets other row; stale picker cancelled; real sheet default/confirmation; fresh plain-JSON GET per flow"
         try await until { fixture.surfaces.created.count == 2 && fixture.surfaces.created.allSatisfy { $0.surface != nil } }
         guard let firstView = actions.surface(for: first) as? GhosttySurfaceView,
               let secondView = actions.surface(for: second) as? GhosttySurfaceView else { throw Failure.assertion }
@@ -158,7 +171,7 @@ import KubixCore
                   field("Namespace", in: window)?.visibleRect.height ?? 0 > 0 else { throw Failure.assertion }
         }
         stage = "session target identity and lifetime"
-        guard fixture.store.execSessions.allSatisfy({ $0.target == target }),
+        guard fixture.store.execSessions.map(\.target) == targets,
               actions.surface(for: first) === views[0], actions.surface(for: second) === views[1],
               views.allSatisfy({ $0.freeCount == 0 }) else { throw Failure.assertion }
         evidence["sessionsLayout"] = "two real Ghostty/local-cat surfaces; keyboard echo; stable targets/identity, zero frees through context/filter/sort; "

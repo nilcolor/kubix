@@ -18,12 +18,13 @@ final class ExecLiveTerminalChecks {
     func run() async throws {
         ExecLiveValidation.record("stage", "opening two real composed WebSocket/bridge/Ghostty sessions")
         let calls = await composition.validationProcess.calls
+        guard let pods = composition.validationPods else { throw ExecLiveValidation.Failure.configuration }
+        try await pods.select(target)
+        try composition.actions.selectNamespace(target.namespace)
+        composition.actions.refreshPods()
+        try await ExecLiveValidation.until { self.composition.store.rows.contains { $0.metadata.name == self.target.pod } }
         for _ in 0..<2 {
-            composition.actions.setNamespaceInput(target.namespace)
-            composition.actions.setPodName(target.pod)
-            composition.actions.setContainerName(target.container)
-            guard let id = composition.actions.connectShell() else { throw ExecLiveValidation.Failure.configuration }
-            sessions.append(id)
+            sessions.append(try await openRowShell())
         }
         for id in sessions {
             try await ExecLiveValidation.until {
@@ -53,6 +54,28 @@ final class ExecLiveTerminalChecks {
         try send("printf 'KUBIX_%s\\n' SECOND_SESSION\n", view: surfaces[1])
         try await marker("KUBIX_SECOND_SESSION", view: surfaces[1])
         try await exit(sessions[1], view: surfaces[1], code: 7)
+    }
+
+    private func openRowShell() async throws -> UUID {
+        let store = composition.store
+        guard let row = store.rows.first(where: { $0.metadata.name == target.pod }) else { throw ExecLiveValidation.Failure.targetChanged }
+        let count = store.execSessions.count
+        composition.actions.openPodShell(uid: row.id)
+        try await ExecLiveValidation.until {
+            if store.podShellDiagnostic != nil { throw ExecLiveValidation.Failure.targetChanged }
+            return store.containerPicker != nil || store.execSessions.count > count
+        }
+        if let picker = store.containerPicker {
+            guard picker.containers.contains(target.container) else { throw ExecLiveValidation.Failure.targetChanged }
+            composition.actions.confirmPodShell(selectionID: picker.id, container: target.container)
+        }
+        guard let session = store.execSessions.last, session.target == target else { throw ExecLiveValidation.Failure.targetChanged }
+        try await ExecLiveValidation.until {
+            guard let state = store.execSessions.first(where: { $0.id == session.id })?.state else { return false }
+            if state.isTerminal { throw ExecLiveValidation.Failure.shellFailed }
+            return state == .running
+        }
+        return session.id
     }
 
     private func probe(_ id: UUID, view: GhosttySurfaceView) async throws {

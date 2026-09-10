@@ -3,6 +3,7 @@ import Foundation
 public extension AppActions {
     func loadConfiguration() async {
         guard !stopped, let configurations else { return }
+        cancelPodShellSelection()
         configurationRevision += 1
         let revision = configurationRevision
         let settingsVersion = settingsRevision
@@ -14,8 +15,6 @@ public extension AppActions {
         let selectedName = store.selectedContext?.name ?? snapshot.preferredContext
         store.selectedContext = snapshot.contexts.first(where: { $0.name == selectedName }) ?? snapshot.contexts.first
         resetNamespaceSelection()
-        store.podName = ""
-        store.containerName = ""
         if settingsVersion == settingsRevision, let settings = snapshot.settings { store.authSettings = settings }
         store.isLoadingConfiguration = false
         store.hasLoadedConfiguration = true
@@ -23,8 +22,6 @@ public extension AppActions {
         refreshPluginPresentation()
     }
 
-    func setPodName(_ value: String) { store.podName = value }
-    func setContainerName(_ value: String) { store.containerName = value }
     func setNamespaceInput(_ value: String) { store.namespaceDraft = value; store.namespaceDiagnostic = nil }
     func setShowingSettings(_ value: Bool) {
         store.showingSettings = value
@@ -36,23 +33,6 @@ public extension AppActions {
     func selectShell(_ id: UUID) {
         guard store.execSessions.contains(where: { $0.id == id && !$0.isClosed }) else { return }
         store.selectedExecSessionID = id
-    }
-
-    @discardableResult
-    func connectShell() -> UUID? {
-        do {
-            guard let context = store.selectedContext else { throw KubeconfigError.unknownContext }
-            guard commitNamespaceInput() else { return nil }
-            let target = try ExecTarget(
-                context: context, namespace: store.selectedNamespace, pod: store.podName, container: store.containerName
-            )
-            try selectNamespace(target.namespace)
-            store.connectDiagnostic = nil
-            return openShell(target: target)
-        } catch {
-            store.connectDiagnostic = "Select a configured context and enter an explicit namespace, pod, and running regular container."
-            return nil
-        }
     }
 
     func saveAuthSettings() async {

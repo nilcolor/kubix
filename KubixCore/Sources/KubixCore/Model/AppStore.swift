@@ -30,9 +30,9 @@ public final class AppStore {
     public internal(set) var settingsDiagnostic: String?
     public internal(set) var showingSettings = false
     public internal(set) var useDeviceCode = false
-    public internal(set) var podName = ""
-    public internal(set) var containerName = ""
-    public internal(set) var connectDiagnostic: String?
+    public internal(set) var isLoadingPodDetails = false
+    public internal(set) var podShellDiagnostic: String?
+    public internal(set) var containerPicker: ContainerPickerPresentation?
     public internal(set) var selectedExecSessionID: UUID?
     public internal(set) var surfaceRevision = 0
 
