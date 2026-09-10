@@ -1,0 +1,102 @@
+name: kubix
+options:
+  bundleIdPrefix: com.nilcolor
+  deploymentTarget:
+    macOS: "14.0"
+  defaultConfig: Debug
+  createIntermediateGroups: true
+
+configs:
+  Debug: debug
+  Release: release
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    SDKROOT: macosx
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    # setup.sh builds a native-only xcframework, not a universal binary.
+    ONLY_ACTIVE_ARCH: YES
+    # Keep main.swift in the executable, including its pre-AppKit bridge branch.
+    ENABLE_DEBUG_DYLIB: NO
+    ENABLE_HARDENED_RUNTIME: YES
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    OTHER_CODE_SIGN_FLAGS: "--options runtime"
+    DEVELOPMENT_TEAM: ""
+    CLANG_CXX_LANGUAGE_STANDARD: "c++17"
+    CLANG_CXX_LIBRARY: "libc++"
+
+packages:
+  KubixCore:
+    path: KubixCore
+
+targets:
+  kubix:
+    type: application
+    platform: macOS
+    sources:
+      - path: kubix
+        excludes:
+          - Info.plist
+          - kubix.entitlements
+          - Resources/ghostty
+          - Resources/terminfo
+      # Folder references preserve extensionless files and the sibling layout.
+      - path: kubix/Resources/ghostty
+        type: folder
+        buildPhase: resources
+      - path: kubix/Resources/terminfo
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nilcolor.kubix
+        PRODUCT_NAME: kubix
+        INFOPLIST_FILE: kubix/Info.plist
+        CODE_SIGN_ENTITLEMENTS: kubix/kubix.entitlements
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        OTHER_LDFLAGS:
+          - "$(inherited)"
+          - "-lc++"
+        # The pinned upstream umbrella header omits its vt/* subheaders.
+        OTHER_SWIFT_FLAGS:
+          - "$(inherited)"
+          - "-Xcc"
+          - "-Wno-incomplete-umbrella"
+    dependencies:
+      - framework: GhosttyKit.xcframework
+        embed: false
+      - package: KubixCore
+        product: KubixCore
+      - package: KubixCore
+        product: KubixRuntime
+      - sdk: AppKit.framework
+      - sdk: Carbon.framework
+      - sdk: CoreGraphics.framework
+      - sdk: CoreText.framework
+      - sdk: Foundation.framework
+      - sdk: IOKit.framework
+      - sdk: Metal.framework
+      - sdk: MetalKit.framework
+      - sdk: QuartzCore.framework
+    postBuildScripts:
+      - name: Ad-hoc sign app
+        basedOnDependencyAnalysis: false
+        script: |
+          set -euo pipefail
+          /usr/bin/codesign --force --options runtime \
+            --entitlements "$SRCROOT/kubix/kubix.entitlements" \
+            --sign - "$CODESIGNING_FOLDER_PATH"
+
+schemes:
+  kubix:
+    build:
+      targets:
+        kubix: all
+    run:
+      config: Debug
+    archive:
+      config: Release
