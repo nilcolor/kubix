@@ -12,6 +12,7 @@ final class AppComposition {
     #if DEBUG
     let validationProcess = ExecValidationProcess()
     let validationTransportFactory = ExecValidationTransportFactory()
+    let isolatedVault: IsolatedAWSVaultRunner?
     #endif
 
     private init() {
@@ -21,7 +22,13 @@ final class AppComposition {
         let environment = ProcessInfo.processInfo.environment
         let resolver = PluginResolver(environment: environment, store: settings)
         #if DEBUG
-        let process: any ProcessRunning = ExecLiveValidation.isEnabled ? validationProcess : ProcessRunner()
+        isolatedVault = AWSVaultIsolationValidation.root.map {
+            IsolatedAWSVaultRunner(parent: $0.appendingPathComponent(".build"), profile: "synthetic-profile")
+        }
+        let process: any ProcessRunning
+        if let isolatedVault { process = isolatedVault } else {
+            process = ExecLiveValidation.isEnabled ? validationProcess : ProcessRunner()
+        }
         let provider = CredentialProvider(resolver: resolver, runner: CredentialRunner(process: process))
         #else
         let provider = CredentialProvider(resolver: resolver)
@@ -62,6 +69,9 @@ final class AppComposition {
     func shutdown() async {
         await actions.shutdownAndWait()
         await registry.shutdown()
+        #if DEBUG
+        try? await isolatedVault?.cleanup()
+        #endif
     }
 
     #if DEBUG

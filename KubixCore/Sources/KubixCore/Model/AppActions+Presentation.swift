@@ -75,12 +75,14 @@ public extension AppActions {
         try? await acquireCredentials(context: context)
     }
 
-    func openAuthorizationURL(operationID: UUID) async {
+    @discardableResult
+    func openAuthorizationURL(operationID: UUID) async -> Bool {
         guard !stopped, let session = store.authenticationSessions[operationID],
-              let url = AuthPresentation(session).authorizationURL else { return }
+              let url = AuthPresentation(session).authorizationURL else { return false }
         let opened = await browser?.open(url) ?? false
-        guard !stopped, store.authenticationSessions[operationID]?.state.isTerminal == false else { return }
+        guard !stopped, store.authenticationSessions[operationID]?.state.isTerminal == false else { return opened }
         store.authenticationDiagnostic = opened ? nil : "The browser could not be opened. Follow the live HTTPS instructions or retry with device-code sign-in."
+        return opened
     }
 }
 

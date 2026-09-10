@@ -18,8 +18,12 @@ struct ContentView: View {
         .task {
             if !store.hasLoadedConfiguration { await actions.loadConfiguration() }
             #if DEBUG
-            await AuthLoginValidation.run(composition: composition)
-            await ExecLiveValidation.run(composition: composition)
+            if AWSVaultIsolationValidation.root != nil {
+                await AWSVaultIsolationValidation.run(composition: composition)
+            } else {
+                await AuthLoginValidation.run(composition: composition)
+                await ExecLiveValidation.run(composition: composition)
+            }
             #endif
         }
     }

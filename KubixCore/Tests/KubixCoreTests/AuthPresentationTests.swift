@@ -94,19 +94,24 @@ import Testing
         session.append("http://synthetic.invalid/unsafe")
         await auth.emit(session)
         try await appEventually { store.authenticationSessions[session.id] != nil }
-        await actions.openAuthorizationURL(operationID: session.id)
+        let unsafe = await actions.openAuthorizationURL(operationID: session.id)
+        #expect(!unsafe)
         #expect(browser.urls.isEmpty)
         session.append(" https://synthetic.invalid/safe")
         await auth.emit(session)
         try await appEventually { store.authenticationSessions[session.id]?.authorizationURL != nil }
         #expect(browser.urls.isEmpty)
         browser.succeeds = false
-        await actions.openAuthorizationURL(operationID: session.id)
+        let failed = await actions.openAuthorizationURL(operationID: session.id)
+        #expect(!failed)
         #expect(browser.urls.count == 1)
         #expect(store.authenticationDiagnostic?.contains("browser could not be opened") == true)
+        browser.succeeds = true
+        let opened = await actions.openAuthorizationURL(operationID: session.id)
+        #expect(opened && store.authenticationDiagnostic == nil)
         await actions.cancelAuthentication(operationID: session.id)
-        await actions.openAuthorizationURL(operationID: session.id)
-        #expect(browser.urls.count == 1)
+        let cancelled = await actions.openAuthorizationURL(operationID: session.id)
+        #expect(!cancelled && browser.urls.count == 2)
         #expect(store.authenticationSessions[session.id]?.instructions.isEmpty == true)
     }
 
