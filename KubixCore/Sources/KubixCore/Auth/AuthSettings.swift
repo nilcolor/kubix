@@ -66,7 +66,8 @@ public enum AuthenticationError: Error, Equatable, Sendable, LocalizedError {
         switch self {
         case .invalidSettings: "Select absolute plugin paths, valid profile bindings, and a positive auth timeout (at most one day)."
         case .settingsUnavailable: "Authentication settings could not be loaded or saved."
-        case .unsupportedCertificate: "Client certificate authentication is not supported yet (including exec-returned certificates)."
+        case .unsupportedCertificate:
+            "Client certificate authentication (static or exec-returned) is unsupported in v0.1. Use bearer-token credentials."
         case .materialUnavailable: "The configured authentication material could not be read."
         case .missingAWSProfile: "Bind an already-configured AWS SSO profile before signing in. Profile setup is a prerequisite."
         case .conflictingAWSProfile: "AWS profile bindings conflict. Align the exec arguments, environment, and app settings."

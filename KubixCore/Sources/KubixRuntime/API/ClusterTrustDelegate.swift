@@ -151,7 +151,7 @@ public class ClusterTrustDelegate: NSObject, URLSessionDelegate, URLSessionTaskD
             }
         case NSURLAuthenticationMethodClientCertificate:
             // Kubernetes requests an optional certificate even for bearer authentication.
-            // Actual configured certificate credentials are rejected by the provider until Task 19.
+            // Configured static/exec certificate credentials are rejected before requests in bearer-only v0.1.
             completionHandler(.performDefaultHandling, nil)
         default: completionHandler(.performDefaultHandling, nil)
         }
