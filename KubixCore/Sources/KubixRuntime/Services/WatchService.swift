@@ -188,6 +188,7 @@ private struct PodWatchRun {
 
 private func podWatchError(_ error: any Error) -> APIError {
     if let error = error as? APIError { return error }
+    if error is CredentialAcquisitionFailure { return .podAuthentication }
     if error is AuthError || error is AuthenticationError || error is KubeconfigError { return .podAuthentication }
     if error is DecodingError { return .podSnapshot(.malformedTable) }
     return .transport(.invalidResponse)

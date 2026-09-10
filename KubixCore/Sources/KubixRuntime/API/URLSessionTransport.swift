@@ -140,7 +140,13 @@ public final class URLSessionTransport: Transport, Sendable {
     ) async throws -> Value {
         for attempt in 0...1 {
             try Task.checkCancellation()
-            let acquired = try await credentials.acquire(for: context)
+            let acquired: AcquiredCredential
+            do {
+                acquired = try await credentials.acquire(for: context)
+            } catch let failure as any AuthenticationDiagnosticProviding {
+                try Task.checkCancellation()
+                throw CredentialAcquisitionFailure(authenticationDiagnostic: failure.authenticationDiagnostic)
+            }
             try Task.checkCancellation()
             do { return try await operation(acquired) } catch let error as APIError {
                 guard error.httpCode == 401 else { throw error }
@@ -201,4 +207,10 @@ public final class URLSessionTransport: Transport, Sendable {
     private static func gate(_ cluster: KubeconfigCluster) throws {
         if let proxy = cluster.proxyURL, !proxy.isEmpty { throw KubeconfigError.unsupportedProxy }
     }
+}
+
+/// Marks sanitized plugin failures at acquisition, never failures of an authenticated request.
+struct CredentialAcquisitionFailure: Error, Sendable, LocalizedError, AuthenticationDiagnosticProviding {
+    let authenticationDiagnostic: String
+    var errorDescription: String? { authenticationDiagnostic }
 }

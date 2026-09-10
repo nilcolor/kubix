@@ -126,6 +126,13 @@ drafts or successes. Authentication recovery compares the acquired identity's
 immutable context/settings association and the captured pod generation, not an
 exec identity against a context-only cache key.
 
+The authenticated transport tags sanitized plugin-resolution/process failures only
+around credential acquisition. `WatchService` maps that tag to pod authentication
+failure, so explicit Retry can restart discovery after a nonzero configured-plugin
+exit. Network/API failures remain separate; cancellation and terminal 403 behavior
+are unchanged. The authentication session retains the safe process diagnostic,
+not credential stdout or terminal browser instructions.
+
 ### Privacy boundary
 
 Auth progress may contain secret-bearing verification URLs/device codes.
