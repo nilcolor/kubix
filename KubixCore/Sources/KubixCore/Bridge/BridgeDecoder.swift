@@ -15,6 +15,12 @@ public struct BridgeDecoder: Sendable, CustomStringConvertible, CustomDebugStrin
 
     public var bufferedByteCount: Int { header.count + payload.count }
 
+    /// A runtime reader can stop at each frame boundary, delivering valid preceding output
+    /// even when the next frame is malformed. This does not relax any framing validation.
+    public var bytesNeededForFrame: Int {
+        kind == nil ? BridgeFrame.headerByteCount - header.count : expectedLength - payload.count
+    }
+
     public mutating func append(_ bytes: Data) throws -> [BridgeFrame] {
         guard !closed else { throw BridgeProtocolError.decoderClosed }
         do {

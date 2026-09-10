@@ -3,6 +3,21 @@ import KubixCore
 import Testing
 
 @Suite struct BridgeProtocolTests {
+    @Test func frameBoundaryReadHintTracksHeaderAndPayloadWithoutChangingWireContract() throws {
+        var decoder = BridgeDecoder()
+        #expect(decoder.bytesNeededForFrame == 5)
+        #expect(try decoder.append(Data([2, 0])).isEmpty)
+        #expect(decoder.bytesNeededForFrame == 3)
+        #expect(try decoder.append(Data([0, 0, 3])).isEmpty)
+        #expect(decoder.bytesNeededForFrame == 3)
+        #expect(try decoder.append(Data([42])).isEmpty)
+        #expect(decoder.bytesNeededForFrame == 2)
+        #expect(try decoder.append(Data([43, 44])) == [.data(Data([42, 43, 44]))])
+        #expect(decoder.bytesNeededForFrame == 5)
+        #expect(try decoder.append(BridgeFrame.closeInput.encoded()) == [.closeInput])
+        #expect(decoder.bytesNeededForFrame == 5)
+    }
+
     @Test func wireTypesLengthsAndIntegerByteOrderAreExplicit() throws {
         let nonceBytes = Data(0..<32)
         let nonce = try BridgeNonce(bytes: nonceBytes)
