@@ -1,6 +1,8 @@
 import Foundation
 
-/// Local, per-context history. Never discovers namespaces from the cluster.
+/// Local, per-context history of namespaces the user typed. Discovery from the cluster is separate and
+/// optional — see `NamespaceDiscovery` — because listing namespaces is a permission many clusters deny,
+/// and typing a known name must keep working without it.
 public struct NamespaceSelection: Sendable {
     private var entered: [String: [String]] = [:]
 
@@ -22,6 +24,14 @@ public struct NamespaceSelection: Sendable {
         let configured = Self.defaultNamespace(for: context)
         let history = context.flatMap { entered[$0.name] } ?? []
         return (Self.isValid(configured) ? [configured] : []) + history.filter { $0 != configured }
+    }
+
+    /// A cluster's own list is complete, so it replaces local history rather than adding to it: a
+    /// namespace that has since been deleted should stop being offered. History is kept regardless, so
+    /// losing the permission later does not lose the names the user typed.
+    public func options(for context: ResolvedContext?, discovery: NamespaceDiscovery) -> [String] {
+        guard case .listed(let names) = discovery else { return suggestions(for: context) }
+        return Set(names.filter(Self.isValid)).sorted()
     }
 
     public mutating func remember(_ namespace: String, for context: ResolvedContext) throws {

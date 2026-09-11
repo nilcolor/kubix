@@ -20,7 +20,7 @@ public extension AppActions {
         if let context = store.selectedContext { try namespaceSelection.remember(namespace, for: context) }
         store.namespaceDraft = namespace
         store.namespaceDiagnostic = nil
-        store.namespaces = namespaceSelection.suggestions(for: store.selectedContext)
+        refreshNamespaceOptions()
         guard store.selectedNamespace != namespace else {
             if store.connection == .idle, isBrowsingPods { refreshPods() }
             return
@@ -105,7 +105,7 @@ extension AppActions {
         store.selectedNamespace = NamespaceSelection.defaultNamespace(for: store.selectedContext)
         store.namespaceDraft = store.selectedNamespace
         store.namespaceDiagnostic = nil
-        store.namespaces = namespaceSelection.suggestions(for: store.selectedContext)
+        refreshNamespaceOptions()
     }
 
     func cancelPods() {

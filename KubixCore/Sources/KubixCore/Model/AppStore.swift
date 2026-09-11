@@ -63,7 +63,8 @@ public final class AppStore {
         selectedContext = contexts.first
         selectedNamespace = NamespaceSelection.defaultNamespace(for: contexts.first)
         namespaceDraft = NamespaceSelection.defaultNamespace(for: contexts.first)
-        namespaces = NamespaceSelection().suggestions(for: contexts.first)
+        // A fresh store has asked no cluster anything, so the options are local history alone.
+        namespaces = NamespaceSelection().options(for: contexts.first, discovery: .unknown)
         self.authSettings = authSettings
         settingsDraft = AuthSettingsDraft(settings: authSettings, context: contexts.first)
     }

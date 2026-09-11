@@ -69,11 +69,14 @@ exec paths resolve against the kubeconfig file that supplied the entry.
 3. Choose **Pods** under a connected cluster's **Workload** group to list and
    watch its namespace. Exactly one watch runs at a time: choosing **Pods**
    under another connected cluster moves it.
-4. Pick a namespace from the selector, or type one and press Return. The list
-   is the context's namespace plus namespaces you have entered before; there is
-   **no namespace-list request or permission requirement**, so typing works
-   even when the list is empty. Typing alone is a draft — committing re-lists
-   only while **Pods** is selected on a connected cluster.
+4. Pick a namespace from the selector, or type one and press Return. Where the
+   cluster permits `list namespaces`, the selector holds the cluster's own
+   namespaces, refreshed when you open it (at most once every 30 seconds).
+   Where it does not, the selector falls back to the context's namespace plus
+   namespaces you have entered before, with no error: **namespace-list
+   permission is not required**, and typing a known name works either way.
+   Typing alone is a draft — committing re-lists only while **Pods** is
+   selected on a connected cluster.
 5. Use the **Search** field, **Wide**, column sorting, and arrow-key selection.
    Columns come from the server's Table schema. Pages are collected completely
    before watching; reconnecting/failed rows are explicitly last-known data.
@@ -192,12 +195,14 @@ Grant only the permissions appropriate to the intended namespace and actions:
 | Action | Core API resource | Kubernetes verbs used |
 | --- | --- | --- |
 | Connect (reachability probe) | `/version` | `get` (unnamespaced, no RBAC beyond the default public-info role) |
+| Namespace selector contents (optional) | `namespaces` | `list` (unnamespaced; denial costs only the dropdown contents) |
 | Pod table and live updates | `pods` | `list`, `watch` |
 | Fresh identity/container validation | `pods` | `get` |
 | Interactive shell | `pods/exec` | `get` (GET WebSocket upgrade) |
 | Container logs | `pods/log` | `get` |
 
-No namespace-list permission is needed. Shell access is powerful even though
+No namespace-list permission is needed; without it the selector simply falls
+back to typed entry and local history. Shell access is powerful even though
 the HTTP upgrade uses GET. A 403 is a permissions failure, not a reason to
 repeat browser login.
 

@@ -28,6 +28,7 @@ public extension AppActions {
         clusterGenerations[name] = UUID()
         store.clusters[index].state = .disconnected
         demotePodsSelection(of: name)
+        discardNamespaces(of: name)
         guard store.selectedContext?.name == name else { return }
         cancelPods()
         applyPodUpdate(PodWatchUpdate(rows: [], columns: nil, connection: .idle))
@@ -78,7 +79,12 @@ extension AppActions {
               store.clusters[index].context == context else { return }
         clusterTasks.removeValue(forKey: name)
         store.clusters[index].state = failure.map { .failed(reason: Self.connectReason($0)) } ?? .connected
-        if failure != nil { demotePodsSelection(of: name) }
+        if failure != nil {
+            demotePodsSelection(of: name)
+            discardNamespaces(of: name)
+            return
+        }
+        listNamespaces(context, resetting: true)
     }
 
     /// A reload that drops or redefines a cluster leaves its connect work pointless: the result can no
@@ -89,6 +95,10 @@ extension AppActions {
         }
         for context in contexts where !store.clusters.contains(where: { $0.context == context }) {
             retireClusterTask(context.name)
+            retireNamespaceTask(context.name)
+        }
+        for name in namespaceFetches.keys where !contexts.contains(where: { $0.name == name }) {
+            retireNamespaceTask(name)
         }
     }
 

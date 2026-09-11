@@ -14,11 +14,15 @@ public struct ClusterStatus: Identifiable, Equatable, Sendable {
 
     public let context: ResolvedContext
     public var state: State
+    public var namespaces: NamespaceDiscovery
     public var id: String { context.name }
 
-    public init(context: ResolvedContext, state: State = .disconnected) {
+    public init(
+        context: ResolvedContext, state: State = .disconnected, namespaces: NamespaceDiscovery = .unknown
+    ) {
         self.context = context
         self.state = state
+        self.namespaces = namespaces
     }
 
     /// A context keeps its state only while its whole snapshot is unchanged: a redefined server, user
@@ -26,7 +30,19 @@ public struct ClusterStatus: Identifiable, Equatable, Sendable {
     public static func reconcile(existing: [ClusterStatus], contexts: [ResolvedContext]) -> [ClusterStatus] {
         contexts.map { context in
             let carried = existing.first { $0.context == context }
-            return ClusterStatus(context: context, state: carried?.state ?? .disconnected)
+            return ClusterStatus(
+                context: context, state: carried?.state ?? .disconnected,
+                namespaces: carried?.namespaces ?? .unknown
+            )
         }
     }
+}
+
+/// What is known about a cluster's namespaces. `unknown` and `unavailable` are deliberately distinct:
+/// without that, a cluster that refused the list request could not be told from one never asked, and
+/// would be asked again every time the picker opened.
+public enum NamespaceDiscovery: Equatable, Sendable {
+    case unknown
+    case listed([String])
+    case unavailable
 }

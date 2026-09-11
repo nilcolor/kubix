@@ -32,6 +32,9 @@ import KubixCore
             evidence["shellDiagnostic"] = fixture.store.podShellDiagnostic ?? "none"
             evidence["shellRequests"] = String(await fixture.transport.requests.filter { $0.accept == "application/json" && $0.path.first == "api" }.count)
             evidence["attachedSheet"] = String(NSApp.windows.contains { $0.attachedSheet != nil })
+            evidence["clusters"] = fixture.store.clusters.map { "\($0.id)=\($0.state)/\($0.namespaces)" }
+                .joined(separator: " ")
+            evidence["namespaceRequests"] = String(await fixture.transport.namespaceRequests)
         }
         evidence["logViewportStage"] = PodLogViewportValidation.stage
         for (scenario, value) in PodLogViewportValidation.evidence { evidence["logViewport-\(scenario)"] = value }
@@ -81,16 +84,19 @@ import KubixCore
         stage = "explicit connect probes /version only"
         fixture.actions.connect(contextNamed: "synthetic-first")
         try await until { store.clusters.first?.state == .connected }
-        guard await fixture.transport.requests.map(\.path) == [["version"]],
-              store.clusters[1].state == .disconnected, table(in: window) == nil else { throw Failure.assertion }
-        evidence["connect"] = "Connect issues exactly one unnamespaced /version request, lists no pods, "
-            + "and leaves every other cluster disconnected"
+        try await until { store.clusters.first?.namespaces == .listed(["team", "other", "known", "empty"]) }
+        guard store.namespaces == ["empty", "known", "other", "team"] else { throw Failure.assertion }
+        guard await fixture.transport.requests.map(\.path) == [["version"], ["api", "v1", "namespaces"]],
+              store.clusters[1].state == .disconnected, store.clusters[1].namespaces == .unknown,
+              table(in: window) == nil else { throw Failure.assertion }
+        evidence["connect"] = "Connect issues exactly two unnamespaced requests — /version then the "
+            + "namespace list — lists no pods, and leaves every other cluster disconnected and unlisted"
 
         stage = "pods selection lists the committed namespace"
         fixture.actions.selectSidebar(.pods("synthetic-first"))
         try await until { table(in: window) != nil }
         guard let table = table(in: window) else { throw Failure.assertion }
-        try await until { await fixture.transport.requests.count == 3 }
+        try await until { await podPageRequests(fixture) == 2 }
         guard store.connection == .connecting, table.numberOfRows == 0, store.podTable.state == .connecting,
               store.selectedNamespace == "team" else { throw Failure.assertion }
         evidence["pagination"] = "native table empty/connecting during blocked second page, not a partial live list"
@@ -101,6 +107,7 @@ import KubixCore
         }
         evidence["rendering"] = "real NSTableView data-source cells render synthetic server-defined columns"
         try await checkTable(fixture, window: window, table: table)
+        try await checkNamespaceDiscovery(fixture, window: window)
         try await checkSessions(fixture, window: window, table: table)
         try await checkDraftsAndStates(fixture, window: window, table: table)
         stage = "1253-row encoded pagination, expiry and measured native events"
@@ -189,8 +196,9 @@ import KubixCore
         let beforeSwitch = await fixture.transport.requests.count
         actions.connect(contextNamed: "synthetic-second")
         try await until { fixture.store.clusters[1].state == .connected }
-        guard await fixture.transport.requests.count == beforeSwitch + 1,
-              await fixture.transport.requests.last?.path == ["version"],
+        try await until { await fixture.transport.requests.count == beforeSwitch + 2 }
+        guard await fixture.transport.requests.suffix(2).map(\.path)
+                == [["version"], ["api", "v1", "namespaces"]],
               fixture.store.sidebarSelection == .pods("synthetic-first") else { throw Failure.assertion }
         let liveStreams = await fixture.transport.streams.filter { !$0.cancelled }.count
         actions.selectSidebar(.pods("synthetic-second"))
@@ -221,6 +229,11 @@ import KubixCore
         }
     }
 
+    private enum Failure: Error { case assertion, timeout }
+}
+
+/// Namespace commit, error-state and auth-progress stages.
+@MainActor extension PodBrowsingValidation {
     private static func checkDraftsAndStates(_ fixture: PodBrowsingFixture, window: NSWindow, table: NSTableView) async throws {
         let store = fixture.store
         let actions = fixture.actions
@@ -232,7 +245,8 @@ import KubixCore
         guard store.selectedNamespace == "other", await fixture.transport.requests.count == count else { throw Failure.assertion }
         try submit(placeholder: "Namespace", in: window)
         try await until { store.connection == .live && store.selectedNamespace == "known" }
-        guard store.namespaces == ["other", "known"] else { throw Failure.assertion }
+        // A listed cluster shows the server's namespaces, not local history, however much was typed.
+        guard store.namespaces == ["empty", "known", "other", "team"] else { throw Failure.assertion }
         try await edit("bad/input", placeholder: "Namespace", in: window)
         try submit(placeholder: "Namespace", in: window)
         try await until { store.namespaceDiagnostic != nil }
@@ -259,6 +273,11 @@ import KubixCore
         evidence["auth"] = "synthetic progress and failed-plugin Retry retained; actual settings sheet opens/dismisses; successful auth does not retry forbidden pods"
     }
 
+    /// Pod pages only: the unnamespaced probe and namespace list share the same transport recorder.
+    private static func podPageRequests(_ fixture: PodBrowsingFixture) async -> Int {
+        await fixture.transport.requests.filter { $0.path.last == "pods" && $0.accept == APIRequest.tableAccept }.count
+    }
+
     private static func namespaceHeight(in window: NSWindow) -> CGFloat {
         field("Namespace", in: window)?.frame.height ?? 0
     }
@@ -267,8 +286,47 @@ import KubixCore
         guard let field = field("Namespace", in: window) else { return "absent" }
         return "\(field.className) \(Int(field.frame.width))x\(Int(field.frame.height)) visible \(Int(field.visibleRect.height))"
     }
+}
 
-    private enum Failure: Error { case assertion, timeout }
+/// Namespace discovery stages.
+@MainActor extension PodBrowsingValidation {
+    private static func checkNamespaceDiscovery(_ fixture: PodBrowsingFixture, window: NSWindow) async throws {
+        let store = fixture.store
+        stage = "namespace picker refresh throttle"
+        guard let box = field("Namespace", in: window) as? NSComboBox else { throw Failure.assertion }
+        let listed = await fixture.transport.namespaceRequests
+        guard (box.objectValues as? [String]) == ["empty", "known", "other", "team"] else { throw Failure.assertion }
+        // There is no programmatic pop-up, and a real one runs a nested tracking loop that would stall
+        // this driver, so the delegate is exercised through the notification AppKit posts for it.
+        for _ in 0..<3 {
+            NotificationCenter.default.post(name: NSComboBox.willPopUpNotification, object: box)
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        guard await fixture.transport.namespaceRequests == listed else { throw Failure.assertion }
+        evidence["namespaceThrottle"] = "picker holds the cluster's four listed namespaces; three "
+            + "will-pop-up notifications inside the 30s window add no request (delegate exercised, not a real pop-up)"
+
+        stage = "denied namespace listing falls back to typed entry"
+        await fixture.transport.failNamespaceList(.http(code: 403, resource: "namespaces"))
+        fixture.actions.connect(contextNamed: "synthetic-second")
+        try await until { store.clusters[1].namespaces == .unavailable }
+        guard store.clusters[1].state == .connected, store.authenticationDiagnostic == nil,
+              store.namespaceDiagnostic == nil else { throw Failure.assertion }
+        let denied = await fixture.transport.namespaceRequests
+        fixture.actions.selectSidebar(.pods("synthetic-second"))
+        try await until { store.connection == .live }
+        guard store.namespaces == ["other"], await fixture.transport.namespaceRequests == denied else {
+            throw Failure.assertion
+        }
+        NotificationCenter.default.post(name: NSComboBox.willPopUpNotification, object: box)
+        try await Task.sleep(for: .milliseconds(30))
+        guard await fixture.transport.namespaceRequests == denied else { throw Failure.assertion }
+        evidence["namespaceFallback"] = "a 403 list leaves the cluster connected with no diagnostic, the "
+            + "picker holding configured-plus-typed history, and no further namespace request from any path"
+        await fixture.transport.failNamespaceList(nil)
+        fixture.actions.selectSidebar(.pods("synthetic-first"))
+        try await until { store.connection == .live && store.selectedNamespace == "team" }
+    }
 }
 
 /// Native view and event helpers for the smoke above.

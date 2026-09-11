@@ -238,7 +238,8 @@ bookmarks; bookmarks also advance it but do not prove a healthy full lease.
 
 The native Table view handles server columns, Wide/search/sort/selection
 presentation. Initial configuration load is idle. Namespace drafts are committed
-explicitly; suggestions are local in-memory history, not namespace discovery.
+explicitly. Suggestions are local in-memory history until a cluster's own list
+arrives; see the namespace discovery section below.
 Refresh/context/reload cancels prior watch work and clears its presentation.
 Generation checks reject late publications.
 
@@ -270,6 +271,35 @@ pane is on screen, so the auth actions keyed to it always act on what the user
 is looking at. Committing a namespace re-lists only while `.pods` is selected on
 a connected cluster; otherwise it commits and starts nothing, because visible
 rows must never describe a namespace other than the committed one.
+
+### Namespace discovery
+
+`ClusterStatus.namespaces` is a per-cluster `NamespaceDiscovery`: `unknown` (not
+asked), `listed([String])` or `unavailable`. `unknown` and `unavailable` are
+distinct on purpose — without that, a cluster that refused the request could not
+be told from one never asked, and would be asked again every time the picker
+opened.
+
+`NamespaceListService` requests `/api/v1/namespaces` as a metadata-only Table and
+follows its cursor under a page and byte budget; exceeding either throws rather
+than returning a truncated list, because the caller *replaces* local history with
+a complete one. A listed result therefore wins over typed history, and history is
+still recorded so losing the permission later does not lose the names the user
+typed.
+
+A successful Connect lists once and clears any previous refusal — pressing Connect
+asks for the whole handshake again, permissions included. Otherwise the only
+refresh is the picker opening, throttled to 30 seconds by monotonic seconds, never
+wall-clock dates. `unavailable` is silent and never retried automatically: a denied
+list is a normal configuration, not a problem to report. The request goes through
+the per-context transport, so it can acquire credentials and surface sign-in like
+any other request; what it must never do is unseat the connection, so a listing
+failure leaves the cluster `connected` and only marks discovery `unavailable`.
+
+Results are keyed to the captured `ResolvedContext`, not the context name, so a
+reload that redefines a cluster under the same name discards a list computed
+against the old snapshot. The picker shows only the focused cluster's namespaces,
+so a background cluster finishing its list cannot replace what is on screen.
 
 Kubeconfig reload reconciles both through pure functions
 (`ClusterStatus.reconcile`, `SidebarSelection.reconcile`) applied by

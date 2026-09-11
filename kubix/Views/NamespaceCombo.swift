@@ -2,8 +2,9 @@ import AppKit
 import KubixCore
 import SwiftUI
 
-/// `NSComboBox` because the namespace has to be both pickable and typeable: the list is local history
-/// plus the configured namespace, so it can be empty, and typing must keep working when it is.
+/// `NSComboBox` because the namespace has to be both pickable and typeable: the list is the cluster's
+/// own namespaces where that is permitted and local history where it is not, so it can be empty, and
+/// typing must keep working when it is.
 struct NamespaceCombo: NSViewRepresentable {
     let store: AppStore
     let actions: AppActions
@@ -43,6 +44,12 @@ struct NamespaceCombo: NSViewRepresentable {
         @objc func commit(_ sender: NSComboBox) {
             actions.setNamespaceInput(sender.stringValue)
             actions.commitNamespaceInput()
+        }
+
+        /// The list is fetched when the picker is about to open rather than polled, so it is current
+        /// when it is read. The fetch is asynchronous, so a server-side change lands on the next open.
+        func comboBoxWillPopUp(_ notification: Notification) {
+            actions.refreshNamespaces()
         }
 
         func controlTextDidChange(_ notification: Notification) {

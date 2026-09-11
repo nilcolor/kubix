@@ -17,7 +17,8 @@ import KubixRuntime
             configurations: PodFixtureConfiguration(), pods: WatchService(transports: { [transport] _ in transport }),
             podDetails: PodDetailsService(transports: { [transport] _ in transport }),
             logs: LogService(transports: { [transport] _ in transport }),
-            probe: ClusterProbeService(transports: { [transport] _ in transport })
+            probe: ClusterProbeService(transports: { [transport] _ in transport }),
+            namespaces: NamespaceListService(transports: { [transport] _ in transport })
         )
     }
 }
@@ -54,8 +55,12 @@ actor PodFixtureTransport: Transport {
 
     /// Set before a Connect to make the next probe fail, for the driver's failure-then-Retry stage.
     var probeFailure: APIError?
+    /// Set before a Connect to deny the namespace list, for the driver's typed-entry fallback stage.
+    var namespaceFailure: APIError?
+    private(set) var namespaceRequests = 0
 
     func failNextProbe(_ error: APIError?) { probeFailure = error }
+    func failNamespaceList(_ error: APIError?) { namespaceFailure = error }
 
     func data(for request: APIRequest) async throws -> Data {
         requests.append(request)
@@ -65,6 +70,11 @@ actor PodFixtureTransport: Transport {
                 throw error
             }
             return Data(#"{"gitVersion":"v1.29.4-synthetic"}"#.utf8)
+        }
+        if request.path == ["api", "v1", "namespaces"] {
+            namespaceRequests += 1
+            if let error = namespaceFailure { throw error }
+            return Self.namespaceTable()
         }
         if request.accept == "application/json" { return try Self.details(request) }
         if request.path == ["api", "v1", "namespaces", "scale", "pods"] { return try await scalePage(request) }
@@ -100,6 +110,17 @@ actor PodFixtureTransport: Transport {
     }
 
     func webSocket(for request: APIRequest) throws -> any WebSocketConnection { throw APIError.invalidRequest }
+
+    /// The namespaces the fixture's pod pages accept, so a discovered name is also browsable.
+    static func namespaceTable() -> Data {
+        let rows = ["team", "other", "known", "empty"].map {
+            #"{"cells":["\#($0)","Active","9d"],"object":{"metadata":{"name":"\#($0)","uid":"ns-\#($0)"}}}"#
+        }.joined(separator: ",")
+        let table = #"{"apiVersion":"meta.k8s.io/v1","kind":"Table","metadata":{"resourceVersion":"1","continue":""},"#
+            + #""columnDefinitions":[{"name":"Name","type":"string"},{"name":"Status","type":"string"}],"#
+            + #""rows":[\#(rows)]}"#
+        return Data(table.utf8)
+    }
 
     private static func details(_ request: APIRequest) throws -> Data {
         guard request.path.count == 6, request.path.prefix(3) == ["api", "v1", "namespaces"],

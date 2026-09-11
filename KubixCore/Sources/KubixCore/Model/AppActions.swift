@@ -1,4 +1,14 @@
+import Dispatch
 import Foundation
+
+/// One cluster's namespace listing state: the attempt that owns it, the snapshot it was started for,
+/// and when it last succeeded, for the refresh throttle.
+struct NamespaceFetch {
+    var generation: UUID
+    var context: ResolvedContext
+    var task: Task<Void, Never>?
+    var succeededAt: TimeInterval?
+}
 
 @MainActor
 public final class AppActions {
@@ -27,6 +37,12 @@ public final class AppActions {
     var stopped = false
     let pods: (any PodWatching)?
     let probe: (any ClusterProbing)?
+    let namespaceListing: (any NamespaceListing)?
+    /// Monotonic seconds, never wall-clock dates, so a clock change or a sleep/wake cannot make the
+    /// namespace refresh throttle fire early or never.
+    let monotonicNow: @Sendable () -> TimeInterval
+    var namespaceFetches: [String: NamespaceFetch] = [:]
+    var retiringNamespaceTasks: [UUID: Task<Void, Never>] = [:]
     var clusterGenerations: [String: UUID] = [:]
     var clusterTasks: [String: Task<Void, Never>] = [:]
     var retiringClusterTasks: [UUID: Task<Void, Never>] = [:]
@@ -50,7 +66,11 @@ public final class AppActions {
         authentication: any AuthenticationControlling, surfaces: any TerminalSurfaceCreating,
         browser: (any BrowserOpening)? = nil, configurations: (any AppConfigurationLoading)? = nil,
         pods: (any PodWatching)? = nil, podDetails: (any PodDetailsProviding)? = nil,
-        logs: (any LogStreaming)? = nil, probe: (any ClusterProbing)? = nil
+        logs: (any LogStreaming)? = nil, probe: (any ClusterProbing)? = nil,
+        namespaces: (any NamespaceListing)? = nil,
+        monotonicNow: @escaping @Sendable () -> TimeInterval = {
+            TimeInterval(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000
+        }
     ) {
         self.store = store
         self.exec = exec
@@ -60,6 +80,8 @@ public final class AppActions {
         self.configurations = configurations
         self.pods = pods
         self.probe = probe
+        namespaceListing = namespaces
+        self.monotonicNow = monotonicNow
         self.podDetails = podDetails
         self.logs = logs
         progressTask = Task { [weak self, authentication] in
@@ -226,6 +248,8 @@ public final class AppActions {
         for task in retiringPodTasks.values { task.cancel() }
         for task in clusterTasks.values { task.cancel() }
         for task in retiringClusterTasks.values { task.cancel() }
+        for fetch in namespaceFetches.values { fetch.task?.cancel() }
+        for task in retiringNamespaceTasks.values { task.cancel() }
         for task in podDetailTasks.values { task.cancel() }
         for task in logTasks.values { task.cancel() }
     }
@@ -282,6 +306,7 @@ extension AppActions {
         guard !stopped else { return }
         stopped = true
         cancelClusterWork()
+        cancelNamespaceWork()
         cancelPods()
         if store.connection != .idle { store.connection = .idle }
         for session in store.execSessions { closeShell(session.id) }
@@ -328,6 +353,7 @@ extension AppActions {
         let presentation = presentationTask
         let podWork = Array(retiringPodTasks.values) + (podTask.map { [$0] } ?? [])
         let clusterWork = Array(clusterTasks.values) + Array(retiringClusterTasks.values)
+            + namespaceFetches.values.compactMap(\.task) + Array(retiringNamespaceTasks.values)
         let detailWork = Array(podDetailTasks.values)
         let logWork = Array(logTasks.values)
         shutdown()

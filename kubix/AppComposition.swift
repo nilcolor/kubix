@@ -73,7 +73,8 @@ final class AppComposition {
             configurations: AppConfigurationLoader(
                 loader: KubeconfigLoader(environment: environment, homeDirectory: home), settings: settings
             ), pods: pods, podDetails: PodDetailsService(transports: transports), logs: LogService(transports: transports),
-            probe: Self.clusterProbe(transports: transports)
+            probe: Self.clusterProbe(transports: transports),
+            namespaces: Self.namespaceListing(transports: transports)
         )
         factory.closeSession = { [weak actions] id in actions?.closeShell(id) }
         Self.active = self
@@ -101,6 +102,16 @@ final class AppComposition {
         if ExecLiveValidation.isEnabled || AuthLoginValidation.isEnabled || AWSVaultIsolationValidation.root != nil { return nil }
         #endif
         return ClusterProbeService(transports: transports)
+    }
+
+    private static func namespaceListing(
+        transports: @escaping ExecService.TransportFactory
+    ) -> (any NamespaceListing)? {
+        #if DEBUG
+        // The constrained exec/auth drivers must not gain an unnamespaced request implicitly.
+        if ExecLiveValidation.isEnabled || AuthLoginValidation.isEnabled || AWSVaultIsolationValidation.root != nil { return nil }
+        #endif
+        return NamespaceListService(transports: transports)
     }
 
     private static func podWatcher(transports: @escaping ExecService.TransportFactory) -> (any PodWatching)? {
