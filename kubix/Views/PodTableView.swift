@@ -9,7 +9,10 @@ struct PodTableView: View {
         let presentation = store.podTable
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top) {
-                if presentation.state == .connecting { ProgressView().controlSize(.small) }
+                // A listed snapshot is still waiting on its watch, so the spinner stays until live.
+                if presentation.state == .connecting || presentation.state == .listed {
+                    ProgressView().controlSize(.small)
+                }
                 Text(presentation.message)
                     .foregroundStyle(presentation.state == .failed ? Color.orange : Color.secondary)
                     .font(.caption).textSelection(.enabled)

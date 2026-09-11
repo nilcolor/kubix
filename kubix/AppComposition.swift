@@ -49,6 +49,9 @@ final class AppComposition {
         #else
         let provider = CredentialProvider(resolver: resolver)
         #endif
+        // The interactive login shell can take seconds to load version managers; start reading PATH
+        // now so that cost is spent while the window draws, not inside the user's first Connect.
+        Task { await resolver.warmBaseline() }
         let login = AWSLoginService()
         let authentication = AuthenticationService(provider: provider, login: login)
         // The immutable context warning is also rendered beside every session and the context picker.

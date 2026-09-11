@@ -79,7 +79,10 @@ exec paths resolve against the kubeconfig file that supplied the entry.
    selected on a connected cluster.
 5. Use the **Search** field, **Wide**, column sorting, and arrow-key selection.
    Columns come from the server's Table schema. Pages are collected completely
-   before watching; reconnecting/failed rows are explicitly last-known data.
+   before watching, and a complete list says **Listed** while its watch is still
+   being established — an idle namespace can wait about a minute for the
+   apiserver's first bookmark, and those rows are already correct.
+   Reconnecting/failed rows are explicitly last-known data.
    **Retry pods** uses the committed target, not an unfinished namespace draft.
 6. **Disconnect** abandons that cluster's watch. Running shells and log tails
    are not closed: they keep their original context, namespace, pod and

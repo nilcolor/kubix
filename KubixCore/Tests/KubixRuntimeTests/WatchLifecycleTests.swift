@@ -111,7 +111,8 @@ import Testing
         defer { owner.actions.shutdown() }
         owner.start()
         try await watchEventually { await transport.streams.count == 1 && owner.clock.deadlines == [330] }
-        #expect(owner.store.connection == .connecting && owner.store.rows.count == 1)
+        // The snapshot is installed and its row is already correct; only the watch is outstanding.
+        #expect(owner.store.connection == .listed && owner.store.rows.count == 1)
         if cancellation { await owner.stop() } else {
             owner.clock.advance(to: 330)
             try await watchEventually { owner.clock.deadlines == [331] }

@@ -81,7 +81,8 @@ private struct PodWatchRun {
             try Task.checkCancellation()
             guard let version = snapshot.resourceVersion else { throw APIError.podSnapshot(.missingResourceVersion) }
             let decision = state.installSnapshot(rows: snapshot.rows, columns: snapshot.columns, resourceVersion: version)
-            if case .watch = decision { await publish(.connecting) }
+            // The snapshot is installed and complete; only live updates are still outstanding.
+            if case .watch = decision { await publish(.listed) }
             return decision
         } catch {
             try Task.checkCancellation()

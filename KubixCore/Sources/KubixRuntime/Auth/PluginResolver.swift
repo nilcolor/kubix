@@ -85,9 +85,9 @@ public actor PluginResolver {
         guard !configuration.command.isEmpty, !configuration.command.contains("\0") else { throw AuthError.invalidExecCommand }
         let settings = try await settings()
         let version = revision
-        if cachedBaseline == nil || cachedBaseline?.isCancelled == true {
-            cachedBaseline = try owner.make { [shell, environment] _ in await shell.baseline(environment: environment) }
-        }
+        // Must keep throwing here: a shut-down owner cannot make the operation, and the force-unwrap
+        // below would otherwise trap instead of surfacing the shutdown.
+        try startBaseline()
         let baseline: ShellPathResult
         do { baseline = try await cachedBaseline!.value() } catch {
             try owner.checkOpen()
@@ -119,6 +119,16 @@ public actor PluginResolver {
             executable: URL(fileURLWithPath: selected), environment: effective, settings: settings,
             source: selection.source, baselineDiagnostic: baseline.diagnostic
         )
+    }
+
+    /// Starts the login-shell PATH probe without waiting for it. Composition calls this at launch so
+    /// an interactive shell that takes seconds to load its version managers is read while the user is
+    /// still looking at the sidebar, rather than inside the first Connect.
+    public func warmBaseline() { try? startBaseline() }
+
+    private func startBaseline() throws {
+        guard cachedBaseline == nil || cachedBaseline?.isCancelled == true else { return }
+        cachedBaseline = try owner.make { [shell, environment] _ in await shell.baseline(environment: environment) }
     }
 
     public func shutdown() async {

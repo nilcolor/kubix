@@ -1,7 +1,11 @@
 import Foundation
 
 public enum PodConnection: Equatable, Sendable {
-    case idle, connecting, live, failed(APIError)
+    /// `listed` is a complete snapshot whose watch has not been established yet. It is distinct from
+    /// `connecting` because the rows are already correct and current: an apiserver defers a quiet
+    /// watch's response until its first bookmark, about a minute on an idle namespace, and calling
+    /// that "connecting" tells the user nothing has arrived while a correct list is on screen.
+    case idle, connecting, listed, live, failed(APIError)
 }
 
 public struct PodWatchUpdate: Equatable, Sendable {

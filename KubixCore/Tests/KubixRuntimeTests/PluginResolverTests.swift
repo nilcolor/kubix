@@ -216,3 +216,17 @@ actor PausedShell: ShellPathProviding {
     )
     #expect(try await resolver.resolve(runtimeExec(command: "aws")).executable.path == "/discovered/bin/aws")
 }
+
+@Test func warmingTheBaselineRunsTheShellOnceAndIsReusedByResolution() async throws {
+    let shell = CountingShell()
+    let resolver = PluginResolver(
+        environment: ["PATH": "/inherited"], store: MemoryAuthSettingsStore(),
+        shell: shell, files: Executables(paths: ["/baseline1/plugin"])
+    )
+    await resolver.warmBaseline()
+    await resolver.warmBaseline()
+    let resolved = try await resolver.resolve(runtimeExec())
+    // The probe a launch already paid for is the one resolution uses.
+    #expect(await shell.count == 1)
+    #expect(resolved.environment["PATH"]?.hasPrefix("/baseline1") == true)
+}

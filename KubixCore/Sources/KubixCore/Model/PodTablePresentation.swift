@@ -22,7 +22,7 @@ public struct PodTablePresentation: Equatable, Sendable {
     }
 
     public enum State: Equatable, Sendable {
-        case idle, connecting, failed, empty, filteredEmpty, live
+        case idle, connecting, listed, failed, empty, filteredEmpty, live
     }
 
     public let columns: [Column]
@@ -102,6 +102,9 @@ public struct PodTablePresentation: Equatable, Sendable {
             return (.connecting, total == 0
                 ? "Connecting — waiting for a complete pod list and watch."
                 : "Reconnecting — \(total) last-known pods; updates are not live.")
+        case .listed:
+            let counted = total == 0 ? "no pods in this namespace" : "\(visible) of \(total) pods"
+            return (.listed, "Listed — \(counted). Waiting for live updates to start.")
         case .failed(let error):
             let prefix = error.httpCode == 403 ? "Forbidden: pods. Check access to this namespace. " : ""
             let stale = total == 0 ? "" : " Showing \(total) last-known pods; updates are not live."

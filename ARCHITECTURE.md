@@ -257,6 +257,17 @@ bookmarks; bookmarks also advance it but do not prove a healthy full lease.
   relist does not reset failed-session budgets. Cancellation stops the owner
   without fabricating a server failure.
 
+A complete snapshot whose watch is not yet established publishes `listed`, not `connecting`. The
+distinction is not cosmetic: an apiserver defers a quiet watch's response until its first bookmark, so
+an idle namespace measured 62 seconds between an installed, correct, empty list and `live`, and even a
+busy one has been measured at 12 seconds. Calling that `connecting` tells the user nothing has arrived
+while correct rows are on screen. `connecting` keeps its meaning — no complete snapshot yet, and any
+rows shown are last-known and possibly stale.
+
+The login-shell PATH probe is started at composition rather than on first use, because an interactive
+shell loading version managers takes seconds and that cost otherwise lands inside the user's first
+Connect.
+
 The native Table view handles server columns, Wide/search/sort/selection
 presentation. Initial configuration load is idle. Namespace drafts are committed
 explicitly. Suggestions are local in-memory history until a cluster's own list

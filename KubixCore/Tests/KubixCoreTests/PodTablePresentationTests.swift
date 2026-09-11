@@ -127,3 +127,29 @@ private func present(
         filter: filter, wide: wide, sort: sort, selectedUID: selected
     )
 }
+
+@Suite struct ListedStateTests {
+    /// A quiet watch's response is deferred by the apiserver until its first bookmark — about a minute
+    /// on an idle namespace — so the snapshot must not be described as if nothing had arrived.
+    @Test func aListedSnapshotReadsAsCompleteRatherThanConnecting() throws {
+        let table = try presentationTable(cells: [#"["zulu"]"#, #"["alpha"]"#])
+        let rows = try table.rows.map(PodRow.init)
+
+        let listed = PodTablePresentation(rows: rows, columns: table.columnDefinitions, connection: .listed)
+        #expect(listed.state == .listed)
+        #expect(listed.message == "Listed — 2 of 2 pods. Waiting for live updates to start.")
+        #expect(listed.rows.count == 2)
+
+        let empty = PodTablePresentation(rows: [], columns: table.columnDefinitions, connection: .listed)
+        #expect(empty.message == "Listed — no pods in this namespace. Waiting for live updates to start.")
+
+        let filtered = PodTablePresentation(
+            rows: rows, columns: table.columnDefinitions, connection: .listed, filter: "alpha"
+        )
+        #expect(filtered.message == "Listed — 1 of 2 pods. Waiting for live updates to start.")
+
+        // Reconnecting still means the rows may be stale; listing means they are not.
+        let reconnecting = PodTablePresentation(rows: rows, columns: table.columnDefinitions, connection: .connecting)
+        #expect(reconnecting.message.contains("last-known"))
+    }
+}
