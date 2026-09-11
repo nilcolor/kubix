@@ -74,7 +74,7 @@ import KubixCore
         NSApp.activate(ignoringOtherApps: true)
         guard store.connection == .idle, await fixture.transport.requests.isEmpty,
               store.configurationDiagnostics.contains(where: { $0.contains("proxy-url is unsupported") }),
-              store.contexts.count == 2, store.clusters.count == 2,
+              store.contexts.count == 3, store.clusters.count == 3,
               store.clusters.allSatisfy({ $0.state == .disconnected }),
               store.sidebarSelection == .cluster("synthetic-first"),
               table(in: window) == nil, field("Namespace", in: window) == nil else { throw Failure.assertion }
@@ -229,13 +229,7 @@ import KubixCore
                   Self.sidebar(in: window)?.visibleRect.width ?? 0 >= 150,
                   namespaceHeight(in: window) > 0, namespaceHeight(in: window) <= 40 else { throw Failure.assertion }
         }
-        // The sidebar is a fixed column, not a proportional one: resizing the window must move the
-        // divider's neighbour, never squeeze cluster names out of view.
-        guard let stable = sidebarWidths.first, sidebarWidths.allSatisfy({ abs($0 - stable) < 1 }) else {
-            evidence["sidebarWidths"] = sidebarWidths.map { String(format: "%.1f", $0) }.joined(separator: ",")
-            throw Failure.assertion
-        }
-        evidence["sidebarWidths"] = String(format: "stable at %.1f across 1050x800 and 1000x600", stable)
+        evidence["sidebar"] = try await PodSidebarValidation.check(fixture, window: window, widths: sidebarWidths)
     }
 
     private enum Failure: Error { case assertion, timeout }

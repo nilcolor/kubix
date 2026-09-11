@@ -35,6 +35,12 @@ private struct PodFixtureConfiguration: AppConfigurationLoading {
                 .init(name: "synthetic-first", context: .init(cluster: "safe", user: "wrapper", namespace: "team")),
                 .init(name: "synthetic-second", context: .init(cluster: "safe", user: "wrapper", namespace: "other")),
                 .init(name: "synthetic-proxy", context: .init(cluster: "blocked", namespace: "never")),
+                // A realistically long context name: the sidebar must truncate it, never widen its
+                // content past the column and scroll sideways.
+                .init(
+                    name: "synthetic-very-long-provider-generated-context-name-us-east4-cluster-1",
+                    context: .init(cluster: "safe", user: "wrapper", namespace: "team")
+                ),
             ],
             users: [.init(name: "wrapper", user: .init(exec: .init(
                 command: "/synthetic/configured-wrapper", apiVersion: "client.authentication.k8s.io/v1", interactiveMode: "Never"

@@ -6,15 +6,17 @@ struct ContentView: View {
     var body: some View {
         let store = composition.store
         let actions = composition.actions
-        NavigationSplitView {
-            // Fixed, not a min/ideal/max range: given a range the split view still divides a resize
-            // between both columns, so the sidebar shrank with the window until it clipped the
-            // disclosure chevron and the start of every cluster name. A window resize now moves the
-            // detail pane alone, as a native sidebar does. The cost is that the divider no longer
-            // drags, so a truncated name is readable through its tooltip instead.
+        // Not a NavigationSplitView. Given a width range it divides a window resize between both
+        // columns, so the sidebar shrank until it clipped the chevron and the start of every cluster
+        // name; given a fixed width it stops reacting to that width changing at all, so the column
+        // could not be dragged. An HStack with an explicit width and our own handle gives both
+        // properties — the same structure agterm settled on, for the same reason.
+        HStack(spacing: 0) {
             ClusterSidebar(store: store, actions: actions)
-                .navigationSplitViewColumnWidth(260)
-        } detail: {
+                .frame(width: store.sidebarWidth)
+            // Above the detail pane: as the middle child it is drawn first, and the detail column
+            // would otherwise shadow the right half of the grab strip.
+            SidebarResizeHandle(actions: actions).zIndex(1)
             VSplitView {
                 detail(store: store, actions: actions).frame(minHeight: 200)
                 // The deck is omitted rather than collapsed: a zero-height split child still reserves
@@ -23,6 +25,7 @@ struct ContentView: View {
                     ExecSessionDeck(store: store, actions: actions).frame(minHeight: 160)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 1000, minHeight: 600)
         .sheet(isPresented: Binding(get: { store.showingSettings }, set: { actions.setShowingSettings($0) })) {

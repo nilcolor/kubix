@@ -120,3 +120,37 @@ private actor ClusterTestLoader: AppConfigurationLoading {
         return snapshot
     }
 }
+
+@Suite @MainActor struct SidebarWidthTests {
+    private func actions(_ store: AppStore) -> AppActions {
+        AppActions(store: store, exec: AppTestExec(), authentication: AppTestAuth(), surfaces: AppTestSurfaces())
+    }
+
+    @Test func widthClampsToBoundsAndIgnoresNonsense() throws {
+        let store = AppStore()
+        let actions = actions(store)
+        defer { actions.shutdown() }
+        #expect(store.sidebarWidth == AppStore.sidebarWidthDefault)
+
+        actions.setSidebarWidth(300)
+        #expect(store.sidebarWidth == 300)
+        actions.setSidebarWidth(10)
+        #expect(store.sidebarWidth == AppStore.sidebarWidthMinimum)
+        actions.setSidebarWidth(5_000)
+        #expect(store.sidebarWidth == AppStore.sidebarWidthMaximum)
+
+        // A drag can hand over a non-finite value when a gesture is cancelled mid-flight.
+        actions.setSidebarWidth(.nan)
+        #expect(store.sidebarWidth == AppStore.sidebarWidthMaximum)
+        actions.setSidebarWidth(.infinity)
+        #expect(store.sidebarWidth == AppStore.sidebarWidthMaximum)
+    }
+
+    @Test func aStoppedOwnerIgnoresAResize() throws {
+        let store = AppStore()
+        let actions = actions(store)
+        actions.shutdown()
+        actions.setSidebarWidth(400)
+        #expect(store.sidebarWidth == AppStore.sidebarWidthDefault)
+    }
+}

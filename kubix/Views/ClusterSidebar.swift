@@ -12,6 +12,8 @@ struct ClusterSidebar: View {
                     ClusterSection(cluster: cluster, actions: actions)
                 }
             }
+            // Explicit, because the sidebar look is no longer inherited from a NavigationSplitView.
+            .listStyle(.sidebar)
             .onKeyPress(.return) { connectSelected() }
             Divider()
             SidebarFooter(store: store, actions: actions)
@@ -78,7 +80,7 @@ private struct ClusterRow: View {
     var body: some View {
         HStack(spacing: 6) {
             StateDot(state: cluster.state)
-            Text(cluster.context.name).lineLimit(1).truncationMode(.middle).help(cluster.context.name)
+            Text(cluster.context.name).lineLimit(1).help(cluster.context.name)
             if cluster.context.cluster.insecureSkipTLSVerify == true {
                 Image(systemName: "lock.open.trianglebadge.exclamationmark")
                     .foregroundStyle(.red)
@@ -170,5 +172,34 @@ private extension ClusterStatus.State {
     var isFailed: Bool {
         if case .failed = self { return true }
         return false
+    }
+}
+
+/// Drags the pinned sidebar column. The same shape agterm uses, including the two traps its comments
+/// record: the width follows the **absolute** cursor position rather than accumulated translation,
+/// because the handle moves with the width and translation would feed back on itself; and the strip is
+/// wider than the line it draws, or there is nothing to grab.
+struct SidebarResizeHandle: View {
+    let actions: AppActions
+
+    var body: some View {
+        Rectangle()
+            .fill(Color(nsColor: .separatorColor))
+            .frame(width: 1)
+            .frame(maxHeight: .infinity)
+            .overlay { strip }
+    }
+
+    private var strip: some View {
+        Color.clear
+            .frame(width: 12)
+            .contentShape(Rectangle())
+            .onHover { inside in
+                if inside { NSCursor.resizeLeftRight.set() } else { NSCursor.arrow.set() }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .onChanged { value in actions.setSidebarWidth(value.location.x) }
+            )
     }
 }
