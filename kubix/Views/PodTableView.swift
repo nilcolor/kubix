@@ -8,16 +8,6 @@ struct PodTableView: View {
     var body: some View {
         let presentation = store.podTable
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Pods").font(.headline)
-                Button("Logs") { actions.openPodLogs() }.disabled(presentation.selectedUID == nil)
-                TextField("Filter visible columns", text: Binding(get: { store.podFilter }, set: { actions.setPodFilter($0) }))
-                    .accessibilityIdentifier("pod-filter")
-                if !store.podFilter.isEmpty { Button("Clear") { actions.setPodFilter("") } }
-                Toggle("Wide", isOn: Binding(get: { store.podWide }, set: { actions.setPodWide($0) }))
-                    .toggleStyle(.checkbox)
-                    .help("Show all server columns, including priority columns")
-            }
             HStack(alignment: .top) {
                 if presentation.state == .connecting { ProgressView().controlSize(.small) }
                 Text(presentation.message)
@@ -40,7 +30,6 @@ struct PodTableView: View {
             }
             NativePodTable(presentation: presentation, actions: actions)
         }
-        .padding(8)
     }
 }
 

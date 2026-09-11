@@ -1,22 +1,14 @@
 import Foundation
 
 public extension AppActions {
+    /// Focus only. Discovery now belongs to an explicit `Pods` selection on a connected cluster, so
+    /// choosing a context can no longer trigger credentials, a browser prompt, or a watch.
     func selectContext(named name: String) throws {
         guard let context = store.contexts.first(where: { $0.name == name }) else {
             throw KubeconfigError.unknownContext
         }
         guard !stopped else { return }
-        if store.selectedContext == context {
-            refreshPluginPresentation()
-            if store.connection == .idle { refreshPods() }
-            return
-        }
-        pauseLogsForScopeChange()
-        store.selectedContext = context
-        resetNamespaceSelection()
-        resetSettingsDraft()
-        refreshPluginPresentation()
-        refreshPods()
+        focus(context)
     }
 
     func selectNamespace(_ namespace: String) throws {
@@ -30,11 +22,17 @@ public extension AppActions {
         store.namespaceDiagnostic = nil
         store.namespaces = namespaceSelection.suggestions(for: store.selectedContext)
         guard store.selectedNamespace != namespace else {
-            if store.connection == .idle { refreshPods() }
+            if store.connection == .idle, isBrowsingPods { refreshPods() }
             return
         }
         pauseLogsForScopeChange()
         store.selectedNamespace = namespace
+        guard isBrowsingPods else {
+            // Visible rows must never describe a namespace other than the committed one.
+            cancelPods()
+            applyPodUpdate(PodWatchUpdate(rows: [], columns: nil, connection: .idle))
+            return
+        }
         refreshPods()
     }
 
@@ -60,12 +58,6 @@ public extension AppActions {
     @discardableResult
     func commitNamespaceInput() -> Bool {
         do { try selectNamespace(store.namespaceDraft); return true } catch { return false }
-    }
-
-    func reloadSelectedPods() {
-        let previousGeneration = podGeneration
-        guard commitNamespaceInput() else { return }
-        if podGeneration == previousGeneration { refreshPods() }
     }
 
     func setPodFilter(_ value: String) {

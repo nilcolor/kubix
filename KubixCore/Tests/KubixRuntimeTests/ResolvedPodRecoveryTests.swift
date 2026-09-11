@@ -22,6 +22,7 @@ import Testing
         defer { actions.shutdown() }
         try await actions.updateAuthSettings(settings)
         try actions.selectNamespace("committed-team")
+        actions.refreshPods()
         try await watchEventually { await probe.targets.count == 1 }
         await actions.authenticateSelectedContext()
         try await watchEventually { store.authenticationSessions.values.contains { $0.state == .failed } }

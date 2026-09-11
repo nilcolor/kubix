@@ -6,21 +6,19 @@ struct ContentView: View {
     var body: some View {
         let store = composition.store
         let actions = composition.actions
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
-                    ContextPicker(store: store, actions: actions)
-                    NamespacePicker(store: store, actions: actions)
-                    AuthProgressView(store: store, actions: actions)
-                }.padding(12)
-            }.frame(minHeight: 140, idealHeight: 210, maxHeight: 260)
-            Divider()
+        NavigationSplitView {
+            ClusterSidebar(store: store, actions: actions)
+        } detail: {
             VSplitView {
-                PodTableView(store: store, actions: actions).frame(minHeight: 140)
-                ExecSessionDeck(store: store, actions: actions).frame(minHeight: 160)
-            }.layoutPriority(1)
+                detail(store: store, actions: actions).frame(minHeight: 200)
+                // The deck is omitted rather than collapsed: a zero-height split child still reserves
+                // its divider, and an empty placeholder is not worth a sixth of a fresh window.
+                if hasSessions(store) {
+                    ExecSessionDeck(store: store, actions: actions).frame(minHeight: 160)
+                }
+            }
         }
-        .frame(minWidth: 760, minHeight: 600)
+        .frame(minWidth: 1000, minHeight: 600)
         .sheet(isPresented: Binding(get: { store.showingSettings }, set: { actions.setShowingSettings($0) })) {
             AuthSettingsView(store: store, actions: actions)
         }
@@ -43,6 +41,23 @@ struct ContentView: View {
                 await ExecLiveValidation.run(composition: composition)
             }
             #endif
+        }
+    }
+
+    private func hasSessions(_ store: AppStore) -> Bool {
+        !store.logSessions.isEmpty || store.execSessions.contains { !$0.isClosed }
+    }
+
+    @ViewBuilder private func detail(store: AppStore, actions: AppActions) -> some View {
+        if let selection = store.sidebarSelection,
+           let cluster = store.clusters.first(where: { $0.id == selection.clusterName }) {
+            if case .pods = selection, cluster.state == .connected {
+                PodsPane(store: store, actions: actions)
+            } else {
+                ClusterPane(cluster: cluster, store: store, actions: actions)
+            }
+        } else {
+            ContentUnavailableView("Select a cluster", systemImage: "server.rack")
         }
     }
 }

@@ -5,6 +5,8 @@ import Observation
 @Observable @MainActor
 public final class AppStore {
     public internal(set) var contexts: [ResolvedContext]
+    public internal(set) var clusters: [ClusterStatus]
+    public internal(set) var sidebarSelection: SidebarSelection?
     public internal(set) var selectedContext: ResolvedContext?
     public internal(set) var namespaces: [String]
     public internal(set) var selectedNamespace: String
@@ -56,6 +58,8 @@ public final class AppStore {
 
     public init(contexts: [ResolvedContext] = [], authSettings: AuthSettings = AuthSettings()) {
         self.contexts = contexts
+        clusters = contexts.map { ClusterStatus(context: $0) }
+        sidebarSelection = contexts.first.map { .cluster($0.name) }
         selectedContext = contexts.first
         selectedNamespace = NamespaceSelection.defaultNamespace(for: contexts.first)
         namespaceDraft = NamespaceSelection.defaultNamespace(for: contexts.first)

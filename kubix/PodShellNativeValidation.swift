@@ -43,7 +43,8 @@ import KubixCore
         phase = "confirmed second session"
         try await until { store.execSessions.count == 2 && store.execSessions[1].state == .running && window.attachedSheet == nil }
         guard store.execSessions[1].target.pod == "zulu", store.execSessions[1].target.container == "sidecar" else { throw Failure.assertion }
-        let requests = await fixture.transport.requests.filter { $0.accept == "application/json" }
+        // The unnamespaced /version probe shares this Accept header; only pod details are counted here.
+        let requests = await fixture.transport.requests.filter { $0.accept == "application/json" && $0.path.first == "api" }
         guard requests.count == 3, requests.map({ $0.path.last }) == ["alpha", "zulu", "zulu"] else { throw Failure.assertion }
         return store.execSessions.map(\.id)
     }

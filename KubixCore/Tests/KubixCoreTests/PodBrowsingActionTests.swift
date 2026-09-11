@@ -62,22 +62,40 @@ import Testing
         #expect(store.podSort == nil)
     }
 
-    @Test func draftEditsNeverStartPodsAndExplicitReloadCommitsOnlyOnce() async throws {
+    @Test func draftEditsNeverStartPodsAndACommitListsOnlyWhileBrowsingPods() async throws {
         let probe = PodActionProbe()
+        let cluster = ClusterTestProbe()
+        await cluster.open()
         let store = AppStore(contexts: [try appContext()])
-        let actions = AppActions(store: store, exec: AppTestExec(), authentication: AppTestAuth(), surfaces: AppTestSurfaces(), pods: probe)
+        let actions = AppActions(
+            store: store, exec: AppTestExec(), authentication: AppTestAuth(), surfaces: AppTestSurfaces(),
+            pods: probe, probe: cluster
+        )
         defer { actions.shutdown() }
+
         for value in ["k", "known", "bad/input"] { actions.setNamespaceInput(value) }
         #expect(await probe.callbacks.isEmpty)
-        actions.reloadSelectedPods()
+        #expect(!actions.commitNamespaceInput())
         #expect(store.namespaceDiagnostic != nil && store.selectedNamespace == "first-namespace")
         #expect(await probe.callbacks.isEmpty)
+
+        // Committing a valid namespace on a cluster row is not a request to connect and list.
         actions.setNamespaceInput("known")
-        actions.reloadSelectedPods()
-        try await appEventually { await probe.callbacks.count == 1 }
+        #expect(actions.commitNamespaceInput())
         #expect(store.selectedNamespace == "known" && store.namespaces.contains("known"))
+        #expect(await probe.callbacks.isEmpty)
+        #expect(store.connection == .idle)
+
+        actions.connect(contextNamed: "first")
+        try await appEventually { store.clusters[0].state == .connected }
+        actions.selectSidebar(.pods("first"))
+        try await appEventually { await probe.callbacks.count == 1 }
+        actions.setNamespaceInput("other")
+        #expect(actions.commitNamespaceInput())
+        try await appEventually { await probe.callbacks.count == 2 }
+        #expect(await probe.targets.map(\.namespace) == ["known", "other"])
         await actions.shutdownAndWait()
-        #expect(await probe.ended == 1)
+        #expect(await probe.ended == 2)
     }
 
     @Test(arguments: [APIError.podAuthentication, .http(code: 401, resource: "pods"), .http(code: 403, resource: "pods")])
@@ -111,6 +129,7 @@ import Testing
         let work = Task { try await actions.acquireCredentials(context: first) }
         try await appEventually { await auth.acquisitions.count == 1 }
         try actions.selectContext(named: "second")
+        actions.refreshPods()
         try await appEventually { await probe.callbacks.count == 1 }
         await probe.emit(.init(rows: [], columns: nil, connection: .failed(.podAuthentication)))
         await auth.gate.open()

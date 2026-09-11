@@ -133,6 +133,7 @@ import Testing
         owner.start()
         try await watchEventually { await transport.requests.count == page }
         try owner.actions.selectContext(named: "second")
+        owner.start()
         try await watchEventually { owner.store.connection == .live }
         #expect(await transport.cancelledPages == 1)
         #expect(await transport.requests.count == page + 1)
@@ -151,6 +152,7 @@ import Testing
         owner.start()
         try await watchEventually { first.isWaiting }
         try owner.actions.selectNamespace("another-team")
+        owner.start()
         try await watchEventually { owner.clock.deadlines == [1] }
         #expect(first.cancelled && owner.store.rows.map(\.id) == ["uid-2"])
         owner.actions.refreshPods()
@@ -179,6 +181,7 @@ import Testing
         owner.start()
         try await watchEventually { await gate.isWaiting }
         try owner.actions.selectContext(named: "second")
+        owner.start()
         try await watchEventually { owner.store.connection == .live && owner.store.rows.map(\.id) == ["uid-2"] }
         await gate.open()
         await owner.stop()

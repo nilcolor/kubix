@@ -190,7 +190,10 @@ import Testing
         try await actions.updateAuthSettings(settings)
     }
 
-    func start() throws { try actions.selectNamespace("committed-team") }
+    func start() throws {
+        try actions.selectNamespace("committed-team")
+        actions.refreshPods()
+    }
 }
 
 private actor PluginRecoveryWatcher: PodWatching {

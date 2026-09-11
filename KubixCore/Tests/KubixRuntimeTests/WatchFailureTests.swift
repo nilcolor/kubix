@@ -54,6 +54,7 @@ import Testing
         #expect(await transport.requests.isEmpty)
         owner.actions.setNamespaceInput("known-restricted")
         #expect(owner.actions.commitNamespaceInput())
+        owner.start()
         try await watchEventually { owner.store.connection == .failed(.http(code: code, resource: "pods")) }
         #expect(owner.store.selectedNamespace == "known-restricted")
         #expect(await transport.requests.count == 1)

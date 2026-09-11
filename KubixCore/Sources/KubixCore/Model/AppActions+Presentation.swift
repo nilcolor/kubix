@@ -14,8 +14,14 @@ public extension AppActions {
         guard !stopped, revision == configurationRevision else { return }
         store.contexts = snapshot.contexts
         store.configurationDiagnostics = snapshot.diagnostics
-        let selectedName = store.selectedContext?.name ?? snapshot.preferredContext
-        store.selectedContext = snapshot.contexts.first(where: { $0.name == selectedName }) ?? snapshot.contexts.first
+        store.clusters = ClusterStatus.reconcile(existing: store.clusters, contexts: snapshot.contexts)
+        let selection = SidebarSelection.reconcile(
+            store.sidebarSelection, clusters: store.clusters, preferred: snapshot.preferredContext
+        )
+        store.sidebarSelection = selection
+        store.selectedContext = selection.flatMap { current in
+            store.clusters.first { $0.id == current.clusterName }?.context
+        }
         resetNamespaceSelection()
         if settingsVersion == settingsRevision, committedSettingsVersion == committedSettingsRevision,
            let settings = snapshot.settings { store.authSettings = settings }

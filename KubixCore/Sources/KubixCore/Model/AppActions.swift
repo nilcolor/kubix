@@ -26,6 +26,10 @@ public final class AppActions {
     private var authenticationRevision = 0
     var stopped = false
     let pods: (any PodWatching)?
+    let probe: (any ClusterProbing)?
+    var clusterGenerations: [String: UUID] = [:]
+    var clusterTasks: [String: Task<Void, Never>] = [:]
+    var retiringClusterTasks: [UUID: Task<Void, Never>] = [:]
     var podTask: Task<Void, Never>?
     var retiringPodTasks: [UUID: Task<Void, Never>] = [:]
     var podGeneration = UUID()
@@ -46,7 +50,7 @@ public final class AppActions {
         authentication: any AuthenticationControlling, surfaces: any TerminalSurfaceCreating,
         browser: (any BrowserOpening)? = nil, configurations: (any AppConfigurationLoading)? = nil,
         pods: (any PodWatching)? = nil, podDetails: (any PodDetailsProviding)? = nil,
-        logs: (any LogStreaming)? = nil
+        logs: (any LogStreaming)? = nil, probe: (any ClusterProbing)? = nil
     ) {
         self.store = store
         self.exec = exec
@@ -55,6 +59,7 @@ public final class AppActions {
         self.browser = browser
         self.configurations = configurations
         self.pods = pods
+        self.probe = probe
         self.podDetails = podDetails
         self.logs = logs
         progressTask = Task { [weak self, authentication] in
@@ -64,49 +69,6 @@ public final class AppActions {
                 self?.receive(session)
             }
         }
-    }
-
-    @discardableResult
-    public func openShell(target: ExecTarget) -> UUID {
-        let session = ExecSession(target: target)
-        store.execSessions.append(session)
-        store.selectedExecSessionID = session.id
-        store.selectedLogSessionID = nil
-        if stopped {
-            finish(session.id, result: .cancelled)
-        } else {
-            start(session)
-        }
-        return session.id
-    }
-
-    public func closeShell(_ id: UUID) {
-        podShellGuards.removeValue(forKey: id)
-        guard let index = index(id), !store.execSessions[index].isClosed else { return }
-        store.execSessions[index].isClosed = true
-        finish(id, result: .cancelled)
-        attempts.removeValue(forKey: id)
-        if let task = tasks.removeValue(forKey: id) {
-            task.cancel()
-            closingTasks[id] = Task { [weak self] in
-                await task.value
-                self?.closingTasks.removeValue(forKey: id)
-            }
-        }
-        lifetimes.removeValue(forKey: id)?.close()
-        store.surfaceRevision += 1
-        if store.selectedExecSessionID == id {
-            store.selectedExecSessionID = store.execSessions.last(where: { !$0.isClosed })?.id
-        }
-    }
-
-    public func retryShell(_ id: UUID) {
-        guard !stopped, let index = index(id), !store.execSessions[index].isClosed,
-              case .finished(.failed(.authentication)) = store.execSessions[index].state else { return }
-        do { try validatePodShell(id) } catch { closeShell(id); return }
-        tasks.removeValue(forKey: id)?.cancel()
-        store.execSessions[index].state = .authenticating
-        start(store.execSessions[index])
     }
 
     public func updateAuthSettings(_ settings: AuthSettings) async throws {
@@ -262,8 +224,55 @@ public final class AppActions {
         for task in tasks.values { task.cancel() }
         podTask?.cancel()
         for task in retiringPodTasks.values { task.cancel() }
+        for task in clusterTasks.values { task.cancel() }
+        for task in retiringClusterTasks.values { task.cancel() }
         for task in podDetailTasks.values { task.cancel() }
         for task in logTasks.values { task.cancel() }
+    }
+}
+
+public extension AppActions {
+    @discardableResult
+    func openShell(target: ExecTarget) -> UUID {
+        let session = ExecSession(target: target)
+        store.execSessions.append(session)
+        store.selectedExecSessionID = session.id
+        store.selectedLogSessionID = nil
+        if stopped {
+            finish(session.id, result: .cancelled)
+        } else {
+            start(session)
+        }
+        return session.id
+    }
+
+    func closeShell(_ id: UUID) {
+        podShellGuards.removeValue(forKey: id)
+        guard let index = index(id), !store.execSessions[index].isClosed else { return }
+        store.execSessions[index].isClosed = true
+        finish(id, result: .cancelled)
+        attempts.removeValue(forKey: id)
+        if let task = tasks.removeValue(forKey: id) {
+            task.cancel()
+            closingTasks[id] = Task { [weak self] in
+                await task.value
+                self?.closingTasks.removeValue(forKey: id)
+            }
+        }
+        lifetimes.removeValue(forKey: id)?.close()
+        store.surfaceRevision += 1
+        if store.selectedExecSessionID == id {
+            store.selectedExecSessionID = store.execSessions.last(where: { !$0.isClosed })?.id
+        }
+    }
+
+    func retryShell(_ id: UUID) {
+        guard !stopped, let index = index(id), !store.execSessions[index].isClosed,
+              case .finished(.failed(.authentication)) = store.execSessions[index].state else { return }
+        do { try validatePodShell(id) } catch { closeShell(id); return }
+        tasks.removeValue(forKey: id)?.cancel()
+        store.execSessions[index].state = .authenticating
+        start(store.execSessions[index])
     }
 }
 
@@ -272,6 +281,7 @@ extension AppActions {
     public func shutdown() {
         guard !stopped else { return }
         stopped = true
+        cancelClusterWork()
         cancelPods()
         if store.connection != .idle { store.connection = .idle }
         for session in store.execSessions { closeShell(session.id) }
@@ -317,6 +327,7 @@ extension AppActions {
         let progress = progressTask
         let presentation = presentationTask
         let podWork = Array(retiringPodTasks.values) + (podTask.map { [$0] } ?? [])
+        let clusterWork = Array(clusterTasks.values) + Array(retiringClusterTasks.values)
         let detailWork = Array(podDetailTasks.values)
         let logWork = Array(logTasks.values)
         shutdown()
@@ -326,6 +337,7 @@ extension AppActions {
         for task in settings { _ = await task.result }
         await progress?.value
         await presentation?.value
+        for task in clusterWork { await task.value }
         for task in podWork { await task.value }
         for task in detailWork { await task.value }
         for task in logWork { await task.value }

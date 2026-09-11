@@ -27,11 +27,13 @@ extension AppStoreTests {
         #expect(!changed.value)
         #expect(store.rows == value.rows && store.columns == value.columns && store.connection == .live)
         try actions.selectNamespace("new")
+        actions.refreshPods()
         try await appEventually { await probe.callbacks.count == 2 }
         #expect(changed.value && store.rows.isEmpty && store.connection == .connecting)
         await probe.emit(value)
         #expect(store.rows.isEmpty && store.connection == .connecting)
         try actions.selectContext(named: "second")
+        actions.refreshPods()
         try await appEventually { await probe.callbacks.count == 3 }
         await probe.emit(value, call: 1)
         #expect(store.rows.isEmpty)

@@ -236,11 +236,49 @@ bookmarks; bookmarks also advance it but do not prove a healthy full lease.
   relist does not reset failed-session budgets. Cancellation stops the owner
   without fabricating a server failure.
 
-The native Table view handles server columns, Wide/filter/sort/selection
+The native Table view handles server columns, Wide/search/sort/selection
 presentation. Initial configuration load is idle. Namespace drafts are committed
 explicitly; suggestions are local in-memory history, not namespace discovery.
 Refresh/context/reload cancels prior watch work and clears its presentation.
 Generation checks reject late publications.
+
+### Per-cluster connection versus the single active watch
+
+`AppStore.clusters` holds one `ClusterStatus` per resolved context, each carrying
+that context's immutable snapshot and a state of disconnected/connecting/
+connected/failed. Its failure carries a rendered reason string, not an
+`APIError`: credential acquisition, unsupported kubeconfig shapes and transport
+errors all reach it without a common error type.
+
+**Connect is one unnamespaced `GET /version`.** `ClusterProbeService` issues it
+through the same per-context `Transport` a watch would use, so credentials are
+acquired transport-side and a plugin can still request browser approval; the
+transport never opens a browser itself. Success therefore means credentials were
+accepted and the apiserver answered — never that any namespaced resource is
+authorized. A pods 403 is reported in the pods pane of a still-connected
+cluster. Connect attempts are generation-keyed per cluster, so a superseded
+probe cannot write its outcome, and probe tasks are cancelled and joined by
+shutdown like every other owned task.
+
+**Many clusters may be connected; exactly one watch runs.** `SidebarSelection`
+is `.cluster(name)` or `.pods(name)`; grouping rows such as `Workload` are not
+selection cases, so they cannot reach a watch. `.pods` on a connected cluster is
+the only route into discovery, and moving it between clusters cancels and joins
+the previous watch before starting one. Selecting a cluster row is focus alone:
+`selectedContext` means "the cluster in focus", which is also the cluster whose
+pane is on screen, so the auth actions keyed to it always act on what the user
+is looking at. Committing a namespace re-lists only while `.pods` is selected on
+a connected cluster; otherwise it commits and starts nothing, because visible
+rows must never describe a namespace other than the committed one.
+
+Kubeconfig reload reconciles both through pure functions
+(`ClusterStatus.reconcile`, `SidebarSelection.reconcile`) applied by
+`AppActions`: a context keeps its state only while its whole snapshot is
+unchanged, a removed context drops out, and a `.pods` selection whose cluster is
+no longer connected falls back to that cluster's pane. Disconnect abandons the
+cluster's watch and never its sessions — a running shell keeps the context,
+namespace, pod and container it was opened against, and log tails pause as they
+do for any scope change.
 
 ## Fresh selection and session lifecycles
 

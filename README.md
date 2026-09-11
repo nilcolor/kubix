@@ -58,19 +58,30 @@ environment. Missing files in a multi-file list are skipped; duplicate named
 entries across files use the first definition. File references and relative
 exec paths resolve against the kubeconfig file that supplied the entry.
 
-1. Launch and choose a resolvable context. Invalid or unsupported contexts have
-   configuration diagnostics rather than silently activating.
-2. Enter a known namespace, or choose a configured/previously entered suggestion.
-   The initial namespace is the context's namespace, otherwise `default`.
-   There is **no namespace-list request or permission requirement**.
-3. Commit the namespace with Return or **Load pods** / **Refresh pods**. Initial load and
-   **Reload kubeconfig** leave discovery idle; selecting a context also starts
-   discovery. Merely typing a namespace is not a context change.
-4. Use **Wide**, local filtering, column sorting, and arrow-key selection.
+1. Launch. The sidebar lists every resolvable context and **nothing is
+   connected**: no credentials are acquired and no request is made. Invalid or
+   unsupported contexts have configuration diagnostics under the list rather
+   than silently activating.
+2. **Connect** a cluster — the button on its sidebar row, its context menu, or
+   Return on the selected row. Connect acquires credentials, which may start
+   browser sign-in, and then makes one unnamespaced `GET /version` request.
+   It does not list pods. Selecting a cluster row only shows its pane.
+3. Choose **Pods** under a connected cluster's **Workload** group to list and
+   watch its namespace. Exactly one watch runs at a time: choosing **Pods**
+   under another connected cluster moves it.
+4. Pick a namespace from the selector, or type one and press Return. The list
+   is the context's namespace plus namespaces you have entered before; there is
+   **no namespace-list request or permission requirement**, so typing works
+   even when the list is empty. Typing alone is a draft — committing re-lists
+   only while **Pods** is selected on a connected cluster.
+5. Use the **Search** field, **Wide**, column sorting, and arrow-key selection.
    Columns come from the server's Table schema. Pages are collected completely
    before watching; reconnecting/failed rows are explicitly last-known data.
    **Retry pods** uses the committed target, not an unfinished namespace draft.
-5. Press Return on a row or use **Shell** on its context menu. Kubix fetches
+6. **Disconnect** abandons that cluster's watch. Running shells and log tails
+   are not closed: they keep their original context, namespace, pod and
+   container, and tails pause as they do for any scope change.
+7. Press Return on a row or use **Shell** on its context menu. Kubix fetches
    fresh Pod details and checks the row UID before selecting a container.
    Only **running regular containers** are eligible; readiness is not required.
    Multiple eligible containers get a picker, preferring an eligible
@@ -119,7 +130,7 @@ when an HTTPS fallback is available, and complete approval yourself.
 The recovery model is Lens-style **manual Retry**: if the plugin starts browser
 approval but exits unsuccessfully, finish approval and choose **Retry
 authentication**. Kubix does not detect browser completion and run a login loop.
-Retry belongs to the original operation/context even if the picker has changed.
+Retry belongs to the original operation/context even if the sidebar selection has changed.
 Successful Authenticate/Retry resumes authentication-failed discovery only for
 the matching context/settings and unchanged committed namespace. It does not
 commit a namespace draft, resume another context, or retry a 403. **Retry pods**
@@ -180,6 +191,7 @@ Grant only the permissions appropriate to the intended namespace and actions:
 
 | Action | Core API resource | Kubernetes verbs used |
 | --- | --- | --- |
+| Connect (reachability probe) | `/version` | `get` (unnamespaced, no RBAC beyond the default public-info role) |
 | Pod table and live updates | `pods` | `list`, `watch` |
 | Fresh identity/container validation | `pods` | `get` |
 | Interactive shell | `pods/exec` | `get` (GET WebSocket upgrade) |
@@ -188,6 +200,12 @@ Grant only the permissions appropriate to the intended namespace and actions:
 No namespace-list permission is needed. Shell access is powerful even though
 the HTTP upgrade uses GET. A 403 is a permissions failure, not a reason to
 repeat browser login.
+
+**Connected is not authorized.** The Connect probe proves only that credentials
+were accepted and the apiserver answered. Pod access is per namespace, so a 403
+on pods is reported in the pods pane of a cluster that stays connected. On a
+cluster that allows anonymous access to `/version`, Connect can also succeed
+where nothing else is permitted.
 
 Exec requires **actual negotiation of `v5.channel.k8s.io` by the API server and
 every intermediary**. There is no older-protocol fallback and no Kubernetes

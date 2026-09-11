@@ -30,7 +30,7 @@ import KubixCore
             evidence["shellPhase"] = PodShellNativeValidation.phase
             evidence["pickerVisible"] = String(fixture.store.containerPicker != nil)
             evidence["shellDiagnostic"] = fixture.store.podShellDiagnostic ?? "none"
-            evidence["shellRequests"] = String(await fixture.transport.requests.filter { $0.accept == "application/json" }.count)
+            evidence["shellRequests"] = String(await fixture.transport.requests.filter { $0.accept == "application/json" && $0.path.first == "api" }.count)
             evidence["attachedSheet"] = String(NSApp.windows.contains { $0.attachedSheet != nil })
         }
         evidence["logViewportStage"] = PodLogViewportValidation.stage
@@ -65,24 +65,34 @@ import KubixCore
 
     private static func check(_ fixture: PodBrowsingFixture) async throws {
         let store = fixture.store
-        try await until { NSApp.windows.contains { table(in: $0) != nil } }
-        guard let window = NSApp.windows.first(where: { table(in: $0) != nil }), let table = table(in: window) else {
-            throw Failure.assertion
-        }
+        try await until { NSApp.windows.contains { sidebar(in: $0) != nil } }
+        guard let window = NSApp.windows.first(where: { sidebar(in: $0) != nil }) else { throw Failure.assertion }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         guard store.connection == .idle, await fixture.transport.requests.isEmpty,
               store.configurationDiagnostics.contains(where: { $0.contains("proxy-url is unsupported") }),
-              store.contexts.count == 2 else { throw Failure.assertion }
-        evidence["initial"] = "idle; unsupported proxy diagnostic; blocked context excluded before auth; no automatic requests"
+              store.contexts.count == 2, store.clusters.count == 2,
+              store.clusters.allSatisfy({ $0.state == .disconnected }),
+              store.sidebarSelection == .cluster("synthetic-first"),
+              table(in: window) == nil, field("Namespace", in: window) == nil else { throw Failure.assertion }
+        evidence["initial"] = "sidebar rendered with 2 disconnected clusters; unsupported proxy diagnostic; "
+            + "blocked context excluded before auth; no pod table, namespace field or request before an explicit Connect"
 
-        stage = "namespace typing and submission"
-        try await edit("team", placeholder: "Namespace", in: window)
-        try await until { store.namespaceDraft == "team" }
-        guard await fixture.transport.requests.isEmpty else { throw Failure.assertion }
-        try submit(placeholder: "Namespace", in: window)
-        try await until { await fixture.transport.requests.count == 2 }
-        guard store.connection == .connecting, table.numberOfRows == 0, store.podTable.state == .connecting else { throw Failure.assertion }
+        stage = "explicit connect probes /version only"
+        fixture.actions.connect(contextNamed: "synthetic-first")
+        try await until { store.clusters.first?.state == .connected }
+        guard await fixture.transport.requests.map(\.path) == [["version"]],
+              store.clusters[1].state == .disconnected, table(in: window) == nil else { throw Failure.assertion }
+        evidence["connect"] = "Connect issues exactly one unnamespaced /version request, lists no pods, "
+            + "and leaves every other cluster disconnected"
+
+        stage = "pods selection lists the committed namespace"
+        fixture.actions.selectSidebar(.pods("synthetic-first"))
+        try await until { table(in: window) != nil }
+        guard let table = table(in: window) else { throw Failure.assertion }
+        try await until { await fixture.transport.requests.count == 3 }
+        guard store.connection == .connecting, table.numberOfRows == 0, store.podTable.state == .connecting,
+              store.selectedNamespace == "team" else { throw Failure.assertion }
         evidence["pagination"] = "native table empty/connecting during blocked second page, not a partial live list"
         try await until { store.connection == .live && table.numberOfRows == 2 }
         guard table.tableColumns.map(\.title) == ["Workload", "Count", "Flag"],
@@ -131,11 +141,11 @@ import KubixCore
         try await until { store.podSort?.column == 3 }
         actions.setPodWide(false)
         try await until { table.tableColumns.count == 3 && table.sortDescriptors.isEmpty }
-        try await edit("alpha", placeholder: "Filter visible columns", in: window)
+        try await edit("alpha", placeholder: "Search", in: window)
         try await until { table.numberOfRows == 1 && store.selectedPodUID == nil }
-        try await edit("missing", placeholder: "Filter visible columns", in: window)
+        try await edit("missing", placeholder: "Search", in: window)
         try await until { store.podTable.state == .filteredEmpty && table.numberOfRows == 0 }
-        try await edit("", placeholder: "Filter visible columns", in: window)
+        try await edit("", placeholder: "Search", in: window)
         try await until { table.numberOfRows == 2 && store.selectedPodUID == nil }
         evidence["wideFilter"] = "5 dynamic columns including duplicate names; hidden sort reset; real TextField filtering clears invisible UID"
 
@@ -161,30 +171,54 @@ import KubixCore
         try await until { TerminalSmokeTest.viewport(views[0]).contains("synthetic-terminal") }
         stage = "native log viewer and terminal preservation"
         evidence["logs"] = try await PodLogNativeValidation.check(fixture, window: window, table: table)
-        try actions.selectContext(named: "synthetic-second")
+        try await checkClusterSwitchAndLayout(fixture, window: window, views: views, selected: second)
+        stage = "session target identity and lifetime"
+        guard fixture.store.execSessions.map(\.target) == targets,
+              actions.surface(for: first) === views[0], actions.surface(for: second) === views[1],
+              views.allSatisfy({ $0.freeCount == 0 }) else { throw Failure.assertion }
+        evidence["sessionsLayout"] = "two real Ghostty/local-cat surfaces; keyboard echo; stable targets/identity, "
+            + "zero frees through cluster switch/filter/sort; sidebar, table and terminal usable at 1050x800 and 1000x600"
+        actions.setPodFilter("")
+    }
+
+    private static func checkClusterSwitchAndLayout(
+        _ fixture: PodBrowsingFixture, window: NSWindow, views: [GhosttySurfaceView], selected: UUID
+    ) async throws {
+        let actions = fixture.actions
+        stage = "second cluster connect and single-watch switch"
+        let beforeSwitch = await fixture.transport.requests.count
+        actions.connect(contextNamed: "synthetic-second")
+        try await until { fixture.store.clusters[1].state == .connected }
+        guard await fixture.transport.requests.count == beforeSwitch + 1,
+              await fixture.transport.requests.last?.path == ["version"],
+              fixture.store.sidebarSelection == .pods("synthetic-first") else { throw Failure.assertion }
+        let liveStreams = await fixture.transport.streams.filter { !$0.cancelled }.count
+        actions.selectSidebar(.pods("synthetic-second"))
+        try await until { fixture.store.connection == .live && fixture.store.selectedNamespace == "other" }
+        guard await fixture.transport.streams.filter({ !$0.cancelled }).count == liveStreams,
+              fixture.store.sidebarSelection == .pods("synthetic-second") else { throw Failure.assertion }
+        evidence["clusterSwitch"] = "connecting a second cluster adds one /version request and no watch; "
+            + "moving Pods cancels the first cluster's stream and leaves exactly one live watch"
+        guard let switched = Self.table(in: window) else { throw Failure.assertion }
         actions.setPodFilter("alpha")
         actions.sortPods(.init(column: 0))
-        actions.selectShell(second)
+        actions.selectShell(selected)
         stage = "default and minimum window layout"
-        for size in [NSSize(width: 1050, height: 800), NSSize(width: 760, height: 600)] {
+        for size in [NSSize(width: 1050, height: 800), NSSize(width: 1000, height: 600)] {
             window.setContentSize(size)
             try await Task.sleep(for: .milliseconds(150))
             window.contentView?.layoutSubtreeIfNeeded()
             if let namespace = field("Namespace", in: window) { namespace.scrollToVisible(namespace.bounds) }
             window.displayIfNeeded()
-            evidence["layout-\(Int(size.width))"] = "table \(table.enclosingScrollView?.visibleRect.height ?? 0); "
-                + "terminal \(views[1].visibleRect.width)x\(views[1].visibleRect.height); namespace \(field("Namespace", in: window)?.visibleRect.height ?? 0)"
-            guard table.enclosingScrollView?.visibleRect.height ?? 0 >= 70,
-                  views[1].visibleRect.height >= 60, views[1].visibleRect.width >= 700,
-                  field("Namespace", in: window)?.visibleRect.height ?? 0 > 0 else { throw Failure.assertion }
+            evidence["layout-\(Int(size.width))"] = "table \(switched.enclosingScrollView?.visibleRect.height ?? 0); "
+                + "terminal \(views[1].visibleRect.width)x\(views[1].visibleRect.height); "
+                + "namespace \(namespaceMetrics(in: window)); "
+                + "sidebar \(Self.sidebar(in: window)?.visibleRect.width ?? 0)"
+            guard switched.enclosingScrollView?.visibleRect.height ?? 0 >= 70,
+                  views[1].visibleRect.height >= 60, views[1].visibleRect.width >= 600,
+                  Self.sidebar(in: window)?.visibleRect.width ?? 0 >= 150,
+                  namespaceHeight(in: window) > 0, namespaceHeight(in: window) <= 40 else { throw Failure.assertion }
         }
-        stage = "session target identity and lifetime"
-        guard fixture.store.execSessions.map(\.target) == targets,
-              actions.surface(for: first) === views[0], actions.surface(for: second) === views[1],
-              views.allSatisfy({ $0.freeCount == 0 }) else { throw Failure.assertion }
-        evidence["sessionsLayout"] = "two real Ghostty/local-cat surfaces; keyboard echo; stable targets/identity, zero frees through context/filter/sort; "
-            + "table and terminal usable at 1050x800 and 760x600"
-        actions.setPodFilter("")
     }
 
     private static func checkDraftsAndStates(_ fixture: PodBrowsingFixture, window: NSWindow, table: NSTableView) async throws {
@@ -225,7 +259,27 @@ import KubixCore
         evidence["auth"] = "synthetic progress and failed-plugin Retry retained; actual settings sheet opens/dismisses; successful auth does not retry forbidden pods"
     }
 
+    private static func namespaceHeight(in window: NSWindow) -> CGFloat {
+        field("Namespace", in: window)?.frame.height ?? 0
+    }
+
+    private static func namespaceMetrics(in window: NSWindow) -> String {
+        guard let field = field("Namespace", in: window) else { return "absent" }
+        return "\(field.className) \(Int(field.frame.width))x\(Int(field.frame.height)) visible \(Int(field.visibleRect.height))"
+    }
+
+    private enum Failure: Error { case assertion, timeout }
+}
+
+/// Native view and event helpers for the smoke above.
+@MainActor extension PodBrowsingValidation {
     private static func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+    /// SwiftUI's List is itself an NSTableView, so the sidebar is the one that is not the pod table.
+    private static func sidebar(in window: NSWindow) -> NSTableView? {
+        window.contentView.flatMap {
+            descendants($0).compactMap { $0 as? NSTableView }.first { $0.identifier?.rawValue != "pod-table" }
+        }
+    }
     private static func table(in window: NSWindow) -> NSTableView? {
         window.contentView.flatMap { descendants($0).compactMap { $0 as? NSTableView }.first { $0.identifier?.rawValue == "pod-table" } }
     }
@@ -255,6 +309,5 @@ import KubixCore
             try await Task.sleep(for: .milliseconds(20))
         }
     }
-    private enum Failure: Error { case assertion, timeout }
 }
 #endif

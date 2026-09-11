@@ -16,7 +16,8 @@ import KubixRuntime
             store: store, exec: PodFixtureExec(), authentication: authentication, surfaces: surfaces,
             configurations: PodFixtureConfiguration(), pods: WatchService(transports: { [transport] _ in transport }),
             podDetails: PodDetailsService(transports: { [transport] _ in transport }),
-            logs: LogService(transports: { [transport] _ in transport })
+            logs: LogService(transports: { [transport] _ in transport }),
+            probe: ClusterProbeService(transports: { [transport] _ in transport })
         )
     }
 }
@@ -51,8 +52,20 @@ actor PodFixtureTransport: Transport {
     private(set) var scaleWatchVersions: [String] = []
     private var scaleRelisted = false
 
+    /// Set before a Connect to make the next probe fail, for the driver's failure-then-Retry stage.
+    var probeFailure: APIError?
+
+    func failNextProbe(_ error: APIError?) { probeFailure = error }
+
     func data(for request: APIRequest) async throws -> Data {
         requests.append(request)
+        if request.path == ["version"] {
+            if let error = probeFailure {
+                probeFailure = nil
+                throw error
+            }
+            return Data(#"{"gitVersion":"v1.29.4-synthetic"}"#.utf8)
+        }
         if request.accept == "application/json" { return try Self.details(request) }
         if request.path == ["api", "v1", "namespaces", "scale", "pods"] { return try await scalePage(request) }
         guard request.path.count == 5, request.path.prefix(3) == ["api", "v1", "namespaces"],
