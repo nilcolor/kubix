@@ -14,6 +14,7 @@ public extension AppActions {
         guard !stopped, revision == configurationRevision else { return }
         store.contexts = snapshot.contexts
         store.configurationDiagnostics = snapshot.diagnostics
+        retireClusterWork(notMatching: snapshot.contexts)
         store.clusters = ClusterStatus.reconcile(existing: store.clusters, contexts: snapshot.contexts)
         let selection = SidebarSelection.reconcile(
             store.sidebarSelection, clusters: store.clusters, preferred: snapshot.preferredContext

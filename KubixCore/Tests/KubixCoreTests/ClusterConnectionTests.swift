@@ -226,15 +226,36 @@ import Testing
         await actions.shutdownAndWait()
     }
 
-    @Test func aReloadThatRemovesOrRedefinesAConnectedClusterStopsItsWatch() async throws {
-        let probe = ClusterTestProbe()
+    @Test func connectIsANoOpWithoutAProbeOrForAnUnknownCluster() async throws {
         let pods = PodActionProbe()
-        let loader = ReloadableClusterLoader(contexts: [try appContext(), try appContext("second")])
+        let (store, actions) = makeActions(probe: nil, pods: pods, contexts: [try appContext()])
+        defer { actions.shutdown() }
+        actions.connect(contextNamed: "first")
+        actions.connect(contextNamed: "missing")
+        actions.disconnect(contextNamed: "missing")
+        #expect(store.clusters[0].state == .disconnected)
+        #expect(await pods.callbacks.isEmpty)
+        await actions.shutdownAndWait()
+    }
+}
+
+@Suite @MainActor struct ClusterReloadTests {
+    private func makeActions(
+        probe: ClusterTestProbe, loader: ReloadableClusterLoader, pods: PodActionProbe
+    ) -> (AppStore, AppActions) {
         let store = AppStore()
         let actions = AppActions(
             store: store, exec: AppTestExec(), authentication: AppTestAuth(), surfaces: AppTestSurfaces(),
             configurations: loader, pods: pods, probe: probe
         )
+        return (store, actions)
+    }
+
+    @Test func aReloadThatRemovesOrRedefinesAConnectedClusterStopsItsWatch() async throws {
+        let probe = ClusterTestProbe()
+        let pods = PodActionProbe()
+        let loader = ReloadableClusterLoader(contexts: [try appContext(), try appContext("second")])
+        let (store, actions) = makeActions(probe: probe, loader: loader, pods: pods)
         defer { actions.shutdown() }
         await probe.open()
         await actions.loadConfiguration()
@@ -256,11 +277,7 @@ import Testing
     @Test func aConnectedClusterWhoseSnapshotChangedReturnsToDisconnected() async throws {
         let probe = ClusterTestProbe()
         let loader = ReloadableClusterLoader(contexts: [try appContext()])
-        let store = AppStore()
-        let actions = AppActions(
-            store: store, exec: AppTestExec(), authentication: AppTestAuth(), surfaces: AppTestSurfaces(),
-            configurations: loader, pods: PodActionProbe(), probe: probe
-        )
+        let (store, actions) = makeActions(probe: probe, loader: loader, pods: PodActionProbe())
         defer { actions.shutdown() }
         await probe.open()
         await actions.loadConfiguration()
@@ -277,16 +294,26 @@ import Testing
         await actions.shutdownAndWait()
     }
 
-    @Test func connectIsANoOpWithoutAProbeOrForAnUnknownCluster() async throws {
-        let pods = PodActionProbe()
-        let (store, actions) = makeActions(probe: nil, pods: pods, contexts: [try appContext()])
+    @Test func aProbeCannotReportOnASnapshotItNeverRanAgainst() async throws {
+        let probe = ClusterTestProbe()
+        let loader = ReloadableClusterLoader(contexts: [try appContext()])
+        let (store, actions) = makeActions(probe: probe, loader: loader, pods: PodActionProbe())
         defer { actions.shutdown() }
+        await actions.loadConfiguration()
         actions.connect(contextNamed: "first")
-        actions.connect(contextNamed: "missing")
-        actions.disconnect(contextNamed: "missing")
+        try await appEventually { await probe.contexts.count == 1 }
+
+        // "first" is redefined while its probe is in flight: same name, different server.
+        await loader.replace(contexts: [try redefinedContext("first")])
+        await actions.loadConfiguration()
         #expect(store.clusters[0].state == .disconnected)
-        #expect(await pods.callbacks.isEmpty)
+
+        // Letting the probe finish and joining it is what proves the result was discarded rather
+        // than merely delayed: without the snapshot check it lands as connected or failed here.
+        await probe.open()
         await actions.shutdownAndWait()
+        #expect(store.clusters[0].state == .disconnected)
+        #expect(await probe.contexts.count == 1)
     }
 }
 

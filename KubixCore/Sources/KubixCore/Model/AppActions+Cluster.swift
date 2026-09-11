@@ -13,9 +13,9 @@ public extension AppActions {
         clusterTasks[name] = Task { [weak self] in
             do {
                 try await probe.probe(context: context)
-                self?.finishConnect(name, generation: generation, failure: nil)
+                self?.finishConnect(context, generation: generation, failure: nil)
             } catch {
-                self?.finishConnect(name, generation: generation, failure: error)
+                self?.finishConnect(context, generation: generation, failure: error)
             }
         }
     }
@@ -68,12 +68,28 @@ extension AppActions {
         refreshPluginPresentation()
     }
 
-    func finishConnect(_ name: String, generation: UUID, failure: (any Error)?) {
+    /// The probe is only an answer about the snapshot it ran against: a kubeconfig reload can redefine
+    /// a context under the same name, and a result from the old definition must not describe the new
+    /// one. The generation alone cannot catch that, because it is keyed by the name that survived.
+    func finishConnect(_ context: ResolvedContext, generation: UUID, failure: (any Error)?) {
+        let name = context.name
         guard !stopped, clusterGenerations[name] == generation,
-              let index = store.clusters.firstIndex(where: { $0.id == name }) else { return }
+              let index = store.clusters.firstIndex(where: { $0.id == name }),
+              store.clusters[index].context == context else { return }
         clusterTasks.removeValue(forKey: name)
         store.clusters[index].state = failure.map { .failed(reason: Self.connectReason($0)) } ?? .connected
         if failure != nil { demotePodsSelection(of: name) }
+    }
+
+    /// A reload that drops or redefines a cluster leaves its connect work pointless: the result can no
+    /// longer be written, so the request and its transport are held for nothing.
+    func retireClusterWork(notMatching contexts: [ResolvedContext]) {
+        for name in clusterTasks.keys where !contexts.contains(where: { $0.name == name }) {
+            retireClusterTask(name)
+        }
+        for context in contexts where !store.clusters.contains(where: { $0.context == context }) {
+            retireClusterTask(context.name)
+        }
     }
 
     /// A `Pods` selection cannot outlive its cluster's connection: it would keep showing a table for a
