@@ -167,3 +167,37 @@ import Testing
         #expect(throws: AuthenticationError.invalidSettings) { try draft.applying(to: settings, context: context) }
     }
 }
+
+@Suite @MainActor struct FocusedAuthSessionTests {
+    @Test func onlyTheFocusedClustersSessionsAreShown() async throws {
+        let first = try appContext()
+        let second = try appContext("second")
+        let auth = AppTestAuth()
+        await auth.gate.open()
+        let store = AppStore(contexts: [first, second])
+        let actions = AppActions(
+            store: store, exec: AppTestExec(), authentication: auth, surfaces: AppTestSurfaces()
+        )
+        defer { actions.shutdown() }
+        // The owner subscribes asynchronously, and a yield before that is dropped.
+        try await appEventually { await auth.subscriberCount == 1 }
+
+        for context in [first, second] {
+            await auth.emit(AuthSession(
+                credentialIdentity: try CredentialIdentity(from: context), provider: "Credential plugin",
+                state: .succeeded
+            ))
+        }
+        try await appEventually { store.visibleAuthenticationSessions.count == 2 }
+
+        // Two clusters' finished sign-ins look identical in the UI, so showing both reads as a
+        // duplicate of the focused one.
+        #expect(store.focusedAuthenticationSessions.count == 1)
+        #expect(store.focusedAuthenticationSessions.first?.credentialIdentity.belongs(to: first, settings: store.authSettings) == true)
+
+        try actions.selectContext(named: "second")
+        #expect(store.focusedAuthenticationSessions.count == 1)
+        #expect(store.focusedAuthenticationSessions.first?.credentialIdentity.belongs(to: second, settings: store.authSettings) == true)
+        await actions.shutdownAndWait()
+    }
+}

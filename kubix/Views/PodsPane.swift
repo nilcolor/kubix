@@ -64,7 +64,7 @@ private struct AuthSessionBanner: View {
     let actions: AppActions
 
     var body: some View {
-        if !store.visibleAuthenticationSessions.isEmpty || store.authenticationDiagnostic != nil {
+        if !store.focusedAuthenticationSessions.isEmpty || store.authenticationDiagnostic != nil {
             AuthProgressView(store: store, actions: actions)
                 .padding(8)
                 .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))

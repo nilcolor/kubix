@@ -55,6 +55,14 @@ public final class AppStore {
         )
     }
 
+    /// Only the focused cluster's sessions. Every cluster's credential work lands in one list, so an
+    /// unscoped view shows another cluster's finished sign-in beside this one's and reads as a
+    /// duplicate — the rows are identical apart from an identity the user cannot see.
+    public var focusedAuthenticationSessions: [AuthSession] {
+        guard let context = selectedContext else { return [] }
+        return visibleAuthenticationSessions.filter { $0.credentialIdentity.belongs(to: context, settings: authSettings) }
+    }
+
     public var visibleAuthenticationSessions: [AuthSession] {
         var completed = Set<CredentialIdentity>()
         let newestFirst = authenticationSessionOrder.reversed().compactMap { authenticationSessions[$0] }.filter {

@@ -9,14 +9,14 @@ struct AuthProgressView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if store.selectedContext?.user?.exec != nil, !store.visibleAuthenticationSessions.isEmpty {
+            if store.selectedContext?.user?.exec != nil, !store.focusedAuthenticationSessions.isEmpty {
                 Text("Complete any browser approval, then choose Retry authentication if the plugin reports a failure.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if let diagnostic = store.authenticationDiagnostic {
                 Text(diagnostic).foregroundStyle(.orange).textSelection(.enabled)
             }
-            ForEach(store.visibleAuthenticationSessions, id: \.id) { session in
+            ForEach(store.focusedAuthenticationSessions, id: \.id) { session in
                 progress(AuthPresentation(session))
             }
         }
