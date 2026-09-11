@@ -11,7 +11,7 @@ import Testing
     )
     let resolved = try await resolver.resolve(runtimeExec(command: "aws"))
     #expect(resolved.executable.path == "/synthetic/mise/shims/aws")
-    #expect(resolved.environment["PATH"] == "/synthetic/mise/shims:/usr/bin:/bin")
+    #expect(resolved.environment["PATH"] == "/synthetic/mise/shims:/usr/bin:/bin:/opt/homebrew/bin:/usr/local/bin")
     #expect(resolved.source == "effective PATH")
 }
 
@@ -27,7 +27,7 @@ import Testing
     #expect(plugin.executable.path == "/shims/plugin")
     #expect(plugin.environment["VALUE"] == "kubeconfig")
     #expect(plugin.environment["KEEP"] == "yes")
-    #expect(plugin.environment["PATH"] == "/shims:/exec")
+    #expect(plugin.environment["PATH"] == "/shims:/exec:/opt/homebrew/bin:/usr/local/bin")
     let relativePath = runtimeExec(env: [ExecEnvironmentVariable(name: "PATH", value: ":relative:")])
     let empty = testResolver(files: Executables(paths: ["relative/plugin", "/plugin"]))
     await #expect(throws: PluginDiagnostic.self) { try await empty.resolve(relativePath) }
@@ -61,7 +61,8 @@ import Testing
     } catch let error as PluginDiagnostic {
         #expect(error.installHint == config.installHint)
         #expect(error.action == "Configure Plugin Path")
-        #expect(error.searchedPath == "/tools")
+        // Standard install locations are part of the search, so the diagnostic must name them too.
+        #expect(error.searchedPath == "/tools:/opt/homebrew/bin:/usr/local/bin")
         #expect(error.source == "effective PATH")
         #expect(!String(reflecting: error).contains("synthetic-secret"))
     }
@@ -91,13 +92,14 @@ actor CountingShell: ShellPathProviding {
     #expect(await shell.count == 2)
     #expect(await store.load() == settings)
     #expect(first.executable != changed.executable)
-    #expect(changed.environment["PATH"] == "/baseline2")
+    #expect(changed.environment["PATH"] == "/baseline2:/opt/homebrew/bin:/usr/local/bin")
 }
 
-@Test func shellPathUsesBoundedLoginBaselineAndSurfacesFallback() async throws {
+@Test func shellPathUsesBoundedInteractiveLoginBaselineAndSurfacesFallback() async throws {
     let fake = FakeProcess { request, _ in
-        #expect(request.arguments == ["-lc", "printf '\\036%s\\037' \"$PATH\""])
-        #expect(request.timeout == 2)
+        // Interactive, because Homebrew/mise/asdf/rbenv live in .zshrc, which -lc never reads.
+        #expect(request.arguments == ["-ilc", "printf '\\036%s\\037' \"$PATH\""])
+        #expect(request.timeout == 10)
         return ProcessResult(stdout: Data("startup noise\u{1e}/baseline/bin\u{1f}".utf8), exitCode: 0)
     }
     let shell = ShellPath(runner: fake)
@@ -182,4 +184,35 @@ actor PausedShell: ShellPathProviding {
     #expect(await shell.count == 1)
     #expect(await store.load() == AuthSettings())
     await #expect(throws: AuthError.invalidExecCommand) { try await resolver.resolve(runtimeExec(command: "plugin\0suffix")) }
+}
+
+@Test func standardInstallDirectoriesAreSearchedLastSoAFinderLaunchStillResolves() async throws {
+    let home = "/Users/synthetic"
+    let directories = PluginResolver.standardDirectories(["HOME": home])
+    #expect(directories == ["/opt/homebrew/bin", "/usr/local/bin", "\(home)/.local/bin"])
+    // A relative or absent HOME cannot contribute a search directory.
+    #expect(PluginResolver.standardDirectories(["HOME": "relative/home"]).count == 2)
+    #expect(PluginResolver.standardDirectories([:]).count == 2)
+}
+
+@Test func aPluginOnlyInAStandardDirectoryResolvesWhenDiscoveryFindsNothing() async throws {
+    let resolver = PluginResolver(
+        environment: ["PATH": "/usr/bin:/bin", "HOME": "/Users/synthetic"],
+        store: MemoryAuthSettingsStore(), shell: FixedShell(path: "/usr/bin:/bin"),
+        files: Executables(paths: ["/opt/homebrew/bin/aws"])
+    )
+    let resolved = try await resolver.resolve(runtimeExec(command: "aws"))
+    #expect(resolved.executable.path == "/opt/homebrew/bin/aws")
+    #expect(resolved.source == "effective PATH")
+    #expect(resolved.environment["PATH"]
+        == "/usr/bin:/bin:/opt/homebrew/bin:/usr/local/bin:/Users/synthetic/.local/bin")
+}
+
+@Test func aDiscoveredPluginIsNeverShadowedByAStandardDirectory() async throws {
+    let resolver = PluginResolver(
+        environment: ["PATH": "/discovered/bin"], store: MemoryAuthSettingsStore(),
+        shell: FixedShell(path: "/discovered/bin"),
+        files: Executables(paths: ["/discovered/bin/aws", "/opt/homebrew/bin/aws"])
+    )
+    #expect(try await resolver.resolve(runtimeExec(command: "aws")).executable.path == "/discovered/bin/aws")
 }

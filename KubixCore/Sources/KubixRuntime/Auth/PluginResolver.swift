@@ -99,7 +99,8 @@ public actor PluginResolver {
         var effective = environment
         effective["PATH"] = baseline.path
         for variable in configuration.env ?? [] { effective[variable.name] = variable.value }
-        let path = (settings.searchDirectories + [effective["PATH"] ?? ""]).joined(separator: ":")
+        let path = (settings.searchDirectories + [effective["PATH"] ?? ""]
+            + Self.standardDirectories(environment)).joined(separator: ":")
         effective["PATH"] = path
         if let userName, let binding = settings.awsProfiles[userName] {
             let invocation = try AWSInvocation(configuration: configuration)
@@ -123,6 +124,15 @@ public actor PluginResolver {
     public func shutdown() async {
         await owner.shutdown()
         cachedBaseline = nil
+    }
+
+    /// Appended last, after the kubeconfig's own command, any configured override and the discovered
+    /// PATH, so a deliberate choice always wins. They exist so a Finder launch still finds a normally
+    /// installed plugin when shell discovery recovers nothing — a shell whose setup is TTY-guarded, or
+    /// one whose flags this probe does not speak.
+    static func standardDirectories(_ environment: [String: String]) -> [String] {
+        let home = environment["HOME"].flatMap { $0.hasPrefix("/") ? $0 : nil }
+        return ["/opt/homebrew/bin", "/usr/local/bin"] + (home.map { ["\($0)/.local/bin"] } ?? [])
     }
 
     private func executable(

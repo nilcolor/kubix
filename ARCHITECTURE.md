@@ -140,6 +140,27 @@ Network/API failures remain separate; cancellation and terminal 403 behavior
 are unchanged. The authentication session retains the safe process diagnostic,
 not credential stdout or terminal browser instructions.
 
+### Launching outside a terminal
+
+A Finder-launched app inherits none of the user's shell environment: `PATH` is the
+bare system default, so no tool manager's shims and no Homebrew prefix are
+visible, and a configured plugin that resolves perfectly from a terminal cannot be
+found. `ShellPath` therefore probes an **interactive** login shell — `-ilc`, not
+`-lc` — because Homebrew, mise, asdf and rbenv are configured in `.zshrc`, which a
+login shell never reads. The probe is marker-framed so an rc file that prints does
+not corrupt the result, bounded at ten seconds (measured against a real shell
+loading version managers, not chosen for symmetry with unrelated drain bounds),
+and cached per settings revision so the cost is paid once. Failure falls back to
+the inherited PATH with a surfaced diagnostic.
+
+`PluginResolver` then appends `/opt/homebrew/bin`, `/usr/local/bin` and
+`~/.local/bin` after the discovered PATH, so a normally installed plugin resolves
+even when the probe recovers nothing — a shell whose setup is TTY-guarded, or one
+whose flags the probe does not speak. They are last, so the kubeconfig's own
+command, a configured override and the discovered PATH all win first. Because the
+effective environment is part of a credential's cache key, changing what the
+search path contains invalidates previously cached credentials once.
+
 ### Privacy boundary
 
 Auth progress may contain secret-bearing verification URLs/device codes.

@@ -172,9 +172,19 @@ This app-only settings sheet provides:
 - An optional already-configured AWS SSO profile/session binding, keyed by
   kubeconfig **user**, for supported direct AWS invocations.
 
-The resolver first tries a two-second, best-effort login-shell PATH discovery.
-It does not recover interactive-only `.zshrc`/mise/asdf activation. Use stable
-shim directories or an absolute executable when necessary. Kubeconfig `exec.env`
+The resolver first tries a ten-second, best-effort **interactive** login-shell
+PATH discovery (`$SHELL -ilc`), so Homebrew, mise, asdf and rbenv setup written
+in `.zshrc` is recovered even when the app is launched from Finder and inherits
+none of your terminal's environment. The result is cached until settings change.
+It still cannot recover setup an rc file guards behind a TTY check, and it runs
+your interactive shell configuration in a short-lived subprocess to read `PATH`
+only.
+
+If discovery recovers nothing usable, `/opt/homebrew/bin`, `/usr/local/bin` and
+`~/.local/bin` are searched last, after the kubeconfig's own command, any
+configured override, and the discovered PATH — so a normally installed plugin
+still resolves from a Finder launch, and a deliberate choice is never shadowed.
+Use stable shim directories or an absolute executable when necessary. Kubeconfig `exec.env`
 overrides the inherited/recovered environment; app search directories are then
 prepended. Bare commands search absolute PATH entries only. Overrides take
 precedence over configured absolute/relative paths.
