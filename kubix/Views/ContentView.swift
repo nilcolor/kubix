@@ -7,7 +7,13 @@ struct ContentView: View {
         let store = composition.store
         let actions = composition.actions
         NavigationSplitView {
+            // Fixed, not a min/ideal/max range: given a range the split view still divides a resize
+            // between both columns, so the sidebar shrank with the window until it clipped the
+            // disclosure chevron and the start of every cluster name. A window resize now moves the
+            // detail pane alone, as a native sidebar does. The cost is that the divider no longer
+            // drags, so a truncated name is readable through its tooltip instead.
             ClusterSidebar(store: store, actions: actions)
+                .navigationSplitViewColumnWidth(260)
         } detail: {
             VSplitView {
                 detail(store: store, actions: actions).frame(minHeight: 200)

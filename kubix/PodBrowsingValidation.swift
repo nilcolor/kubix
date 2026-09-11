@@ -212,6 +212,7 @@ import KubixCore
         actions.sortPods(.init(column: 0))
         actions.selectShell(selected)
         stage = "default and minimum window layout"
+        var sidebarWidths: [CGFloat] = []
         for size in [NSSize(width: 1050, height: 800), NSSize(width: 1000, height: 600)] {
             window.setContentSize(size)
             try await Task.sleep(for: .milliseconds(150))
@@ -222,11 +223,19 @@ import KubixCore
                 + "terminal \(views[1].visibleRect.width)x\(views[1].visibleRect.height); "
                 + "namespace \(namespaceMetrics(in: window)); "
                 + "sidebar \(Self.sidebar(in: window)?.visibleRect.width ?? 0)"
+            sidebarWidths.append(Self.sidebar(in: window)?.visibleRect.width ?? 0)
             guard switched.enclosingScrollView?.visibleRect.height ?? 0 >= 70,
                   views[1].visibleRect.height >= 60, views[1].visibleRect.width >= 600,
                   Self.sidebar(in: window)?.visibleRect.width ?? 0 >= 150,
                   namespaceHeight(in: window) > 0, namespaceHeight(in: window) <= 40 else { throw Failure.assertion }
         }
+        // The sidebar is a fixed column, not a proportional one: resizing the window must move the
+        // divider's neighbour, never squeeze cluster names out of view.
+        guard let stable = sidebarWidths.first, sidebarWidths.allSatisfy({ abs($0 - stable) < 1 }) else {
+            evidence["sidebarWidths"] = sidebarWidths.map { String(format: "%.1f", $0) }.joined(separator: ",")
+            throw Failure.assertion
+        }
+        evidence["sidebarWidths"] = String(format: "stable at %.1f across 1050x800 and 1000x600", stable)
     }
 
     private enum Failure: Error { case assertion, timeout }

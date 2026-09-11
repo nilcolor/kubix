@@ -16,7 +16,6 @@ struct ClusterSidebar: View {
             Divider()
             SidebarFooter(store: store, actions: actions)
         }
-        .frame(minWidth: 220, idealWidth: 260)
     }
 
     private var selection: Binding<SidebarSelection?> {
@@ -79,7 +78,7 @@ private struct ClusterRow: View {
     var body: some View {
         HStack(spacing: 6) {
             StateDot(state: cluster.state)
-            Text(cluster.context.name).lineLimit(1).truncationMode(.middle)
+            Text(cluster.context.name).lineLimit(1).truncationMode(.middle).help(cluster.context.name)
             if cluster.context.cluster.insecureSkipTLSVerify == true {
                 Image(systemName: "lock.open.trianglebadge.exclamationmark")
                     .foregroundStyle(.red)

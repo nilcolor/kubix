@@ -8,7 +8,9 @@ struct PodsPane: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                NamespaceCombo(store: store, actions: actions).frame(width: 240, height: 22)
+                // Flexible, not fixed: a hard width here becomes part of the detail pane's minimum,
+                // which the split view then takes out of the sidebar column.
+                NamespaceCombo(store: store, actions: actions).frame(minWidth: 150, maxWidth: 240, minHeight: 22, maxHeight: 22)
                 Toggle("Wide", isOn: Binding(get: { store.podWide }, set: { actions.setPodWide($0) }))
                     .toggleStyle(.checkbox)
                     .help("Show all server columns, including priority columns")
@@ -24,6 +26,9 @@ struct PodsPane: View {
             PodTableView(store: store, actions: actions)
         }
         .padding(10)
+        // The detail pane must claim the slack, or the split view hands every extra point to the
+        // sidebar and its width tracks the window instead of staying put.
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -48,7 +53,7 @@ private struct PodSearchField: View {
         .padding(.vertical, 3)
         .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .textBackgroundColor)))
         .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(nsColor: .separatorColor)))
-        .frame(width: 240)
+        .frame(minWidth: 130, maxWidth: 240)
     }
 }
 
