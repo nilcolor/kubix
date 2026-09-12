@@ -1,6 +1,6 @@
 ---
 worth: yes
-where: KubixCore/Sources/KubixCore/Model/PodTablePresentation.swift:82
+where: KubixCore/Sources/KubixCore/Model/PodTablePresentation.swift:98
 added: 2026-09-11
 ---
 # Age sorts lexically, so 2d comes before 44h
@@ -22,7 +22,7 @@ Keep the existing rule that no column *name* gets special treatment — "Server 
 pod-specific column names, define the display and sort keys". The schema-agnostic fix is to recognise a
 duration-shaped string cell (`^\d+(\.\d+)?(ns|us|µs|ms|s|m|h|d|y)$`, and kubectl's compound forms like
 `3d4h`) and compare those as durations, with a mixed duration/non-duration pair still falling back to
-text so `compare` stays a total order — the comment at line 74 is there because mixing comparison
+text so `compare` stays a total order — the comment at line 90 is there because mixing comparison
 strategies per pair can form sort cycles, and that hazard applies to this change.
 
 `ColumnDefinition.type` does not help: kubectl's Age column is declared `type: "string"` like any other.

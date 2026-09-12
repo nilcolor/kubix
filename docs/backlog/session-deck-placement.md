@@ -1,6 +1,6 @@
 ---
 worth: later
-where: kubix/Views/ContentView.swift:17
+where: kubix/Views/ExecSessionDeck.swift:11
 added: 2026-09-11
 ---
 # shells and logs have no place in the new layout
@@ -9,10 +9,13 @@ The wireframe behind the UI shell redesign (docs/plans/20260911-ui-shell-redesig
 terminals or log tails, and those are the app's actual point — so the redesign cannot proceed past
 layout without deciding where they go.
 
-Current shape: a `VSplitView` under the detail pane, with the deck omitted entirely until a session
-exists (the redesign fixed the empty-state height, so a fresh launch no longer reserves it). The deck's
-tab strip is still a horizontal `ScrollView` of plain `Button`s with an `xmark` beside each, selection
-shown only by `fontWeight`; it is not a tab control and does not look like one.
+Current shape (2026-09-12): no split view. `ContentView` measures the detail pane and gives the deck a
+fraction of its height (`ContentView.swift:18`), with one pods-pane instance whose height shrinks —
+putting the pane in both branches of the conditional gave it two identities and dropped the table's
+selection when the first shell opened. A `DeckResizeHandle` drags the fraction, and the deck is omitted
+entirely until a session exists. The deck's tab strip is still a horizontal `ScrollView` of plain
+`Button`s with an `xmark` beside each, selection shown only by `fontWeight`; it is not a tab control
+and does not look like one.
 
 **Unresolved:** tabs inside the detail pane, a collapsible bottom drawer, or detached windows per
 session. Detached windows fit "a shell is a long-lived thing you keep while browsing elsewhere" — which

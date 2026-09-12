@@ -1,6 +1,6 @@
 ---
 worth: yes
-where: KubixCore/Sources/KubixCore/Model/PodTablePresentation.swift:104
+where: KubixCore/Sources/KubixCore/Model/PodTablePresentation.swift:120
 added: 2026-09-11
 ---
 # "Reconnecting" spins for a long time without saying why or for how long

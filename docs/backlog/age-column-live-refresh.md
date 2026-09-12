@@ -1,6 +1,6 @@
 ---
 worth: later
-where: KubixCore/Sources/KubixCore/Model/PodTablePresentation.swift:65
+where: KubixCore/Sources/KubixCore/Model/PodTablePresentation.swift:66
 added: 2026-09-11
 ---
 # assess computing Age locally so it ticks instead of freezing

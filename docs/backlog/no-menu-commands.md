@@ -1,6 +1,6 @@
 ---
 worth: yes
-where: kubix/KubixApp.swift:6
+where: kubix/KubixApp.swift:7
 added: 2026-09-11
 ---
 # no menu bar commands, no Settings scene, no keyboard shortcuts

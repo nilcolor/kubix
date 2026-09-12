@@ -9,20 +9,20 @@ orange (or red) `Text` by whichever view owns it:
 
 | state | rendered in |
 | --- | --- |
-| `configurationDiagnostics` | `ContextPicker` |
-| `namespaceDiagnostic` | `NamespacePicker` |
-| `pluginPresentation.diagnostic` | `AuthProgressView` |
+| `configurationDiagnostics` | `ClusterSidebar` footer |
+| `namespaceDiagnostic` | `PodsPane` |
+| `pluginPresentation.diagnostic` | `ClusterPane`'s plugin section |
 | `authenticationDiagnostic` | `AuthProgressView` |
 | `settingsDiagnostic` | `AuthSettingsView` (sheet) |
 | `podShellDiagnostic` | `PodTableView` |
 | `podLogDiagnostic` | `PodTableView` |
 | `PodTablePresentation.message` when `.failed` | `PodTableView` |
 
-Plus `insecureSkipTLSVerify` warnings duplicated inline in three views.
+Plus `insecureSkipTLSVerify` warnings duplicated inline in four views (`ClusterPane`, `ClusterSidebar`,
+`ExecSessionDeck`, `LogView`).
 
-Consequences today: the top three live inside a `ScrollView` capped at 260pt, so they can be scrolled
-out of sight; nothing is dismissible; nothing carries a severity or a timestamp, so you cannot tell a
-stale message from a live one; and two unrelated failures render as two anonymous orange paragraphs in
+Consequences today: nothing is dismissible; nothing carries a severity or a timestamp, so you cannot
+tell a stale message from a live one; and two unrelated failures render as two anonymous orange paragraphs in
 different parts of the window. This is the other half of the "no idea why" complaint in
 [[opaque-reconnecting-state]] — the app frequently *is* explaining itself, somewhere the user is not
 looking.
@@ -36,4 +36,7 @@ Constraint that must survive: auth instructions, verification URLs, device codes
 stdout stay transient and stay out of diagnostics. A unified store with history is exactly the shape
 that would accidentally retain them, so whatever lands here must keep that boundary explicit.
 
-Best done alongside the UI shell redesign (docs/plans/20260911-ui-shell-redesign.md), which has to find a home for this anyway.
+**Rechecked 2026-09-12** after the UI shell redesign, which moved four of these to new homes without
+reducing their number — the redesign found each message a place rather than one path. The auth banner
+above the pods table now appears only for sessions that still want something, so a finished sign-in no
+longer occupies that space; every other channel is unchanged.
