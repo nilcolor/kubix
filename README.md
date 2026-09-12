@@ -94,6 +94,12 @@ exec paths resolve against the kubeconfig file that supplied the entry.
    `kubectl.kubernetes.io/default-container` annotation. This annotation does
    not require the `kubectl` executable.
 
+A shell's pane closes itself when the remote command exits, since a finished
+session cannot be reconnected and its pane holds nothing usable; a nonzero exit
+leaves its code beside the table, so a container without a usable shell does not
+disappear without explanation. A **failed** session keeps its pane, which carries
+the reason and **Retry shell**.
+
 The shell runs `bash` if available, otherwise `sh`, via `env` with
 `TERM=xterm-256color`. The container needs `env` and `sh`; `bash` is optional. Running
 shells keep their original context/namespace/pod/container and stable session ID

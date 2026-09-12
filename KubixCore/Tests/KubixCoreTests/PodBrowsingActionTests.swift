@@ -183,3 +183,59 @@ import Testing
         await actions.shutdownAndWait()
     }
 }
+
+@Suite @MainActor struct ExecSessionClosureTests {
+    private struct Running {
+        let store: AppStore
+        let actions: AppActions
+        let exec: AppTestExec
+        let session: UUID
+    }
+
+    private func running() async throws -> Running {
+        let exec = AppTestExec()
+        let auth = AppTestAuth()
+        await auth.gate.open()
+        let store = AppStore(contexts: [try appContext()])
+        let actions = AppActions(store: store, exec: exec, authentication: auth, surfaces: AppTestSurfaces())
+        let session = actions.openShell(target: try appTarget())
+        try await appEventually { store.execSessions.first?.state == .running }
+        return Running(store: store, actions: actions, exec: exec, session: session)
+    }
+
+    @Test func aRemoteExitClosesItsOwnPane() async throws {
+        let running = try await running()
+        let (store, actions, exec, session) = (running.store, running.actions, running.exec, running.session)
+        defer { actions.shutdown() }
+
+        await exec.complete(session, .exited(code: 0))
+        try await appEventually { store.execSessions.allSatisfy(\.isClosed) }
+        // A clean exit needs no explanation left behind.
+        #expect(store.podShellDiagnostic == nil)
+        #expect(store.selectedExecSessionID == nil)
+        await actions.shutdownAndWait()
+    }
+
+    @Test func aNonzeroExitClosesThePaneButLeavesTheReason() async throws {
+        let running = try await running()
+        let (store, actions, exec, session) = (running.store, running.actions, running.exec, running.session)
+        defer { actions.shutdown() }
+
+        await exec.complete(session, .exited(code: 126))
+        try await appEventually { store.execSessions.allSatisfy(\.isClosed) }
+        // Otherwise a container without a shell exits at once and takes its only explanation along.
+        #expect(store.podShellDiagnostic?.contains("exited with code 126") == true)
+        await actions.shutdownAndWait()
+    }
+
+    @Test func afailureKeepsItsPaneBecauseItCarriesTheReasonAndRetry() async throws {
+        let running = try await running()
+        let (store, actions, exec, session) = (running.store, running.actions, running.exec, running.session)
+        defer { actions.shutdown() }
+
+        await exec.complete(session, .failed(.api(.podAuthentication)))
+        try await appEventually { store.execSessions.first?.state.isTerminal == true }
+        #expect(store.execSessions.contains { $0.id == session && !$0.isClosed })
+        await actions.shutdownAndWait()
+    }
+}

@@ -224,7 +224,20 @@ public final class AppActions {
         store.execSessions[index].state = state
     }
 
-    private func finish(_ id: UUID, result: ExecSessionResult) { update(id, state: .finished(result)) }
+    private func finish(_ id: UUID, result: ExecSessionResult) {
+        update(id, state: .finished(result))
+        guard case .exited(let code) = result, index(id).map({ !store.execSessions[$0].isClosed }) == true else {
+            return
+        }
+        // A finished shell's pane holds nothing usable and cannot be reconnected, so it closes itself.
+        // Only a *remote* exit qualifies: a failure keeps its pane, which carries the reason and Retry.
+        // A nonzero code leaves a note, so a container without a shell does not exit within a second
+        // and take its only explanation with it.
+        if code != 0, let target = index(id).map({ store.execSessions[$0].target }) {
+            store.podShellDiagnostic = "Shell in \(target.pod)/\(target.container) exited with code \(code)."
+        }
+        closeShell(id)
+    }
 
     private func receive(_ session: AuthSession) {
         guard !stopped, store.authenticationSessions[session.id]?.state.isTerminal != true else { return }
