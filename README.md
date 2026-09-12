@@ -125,6 +125,12 @@ local executables with your user privileges, not inside a sandbox. Install and
 configure each provider's tools and account/profile setup separately; Kubix does
 not bundle cloud CLIs or configure cloud accounts.
 
+A cluster whose kubeconfig user carries `client-certificate-data`/`client-key-data` — which is the
+default for `orbstack`, `docker-desktop` and most local clusters — cannot be connected. That is a
+signing constraint with a measured explanation in
+[ARCHITECTURE.md](ARCHITECTURE.md#why-client-certificates-are-not-supported-measured-2026-09-12), not
+a missing parser. A ServiceAccount token in a `token:` or `tokenFile:` user works today instead.
+
 Supported authentication is `token`, `tokenFile`, and **token-returning**
 ExecCredential `client.authentication.k8s.io/v1` or `v1beta1` plugins. Deliberately
 anonymous contexts are possible. A selected malformed credential does not fall

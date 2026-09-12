@@ -75,6 +75,49 @@ rejects certificate-bearing credentials. Client identity import, keychain
 integration, certificate rotation, and handshake validation are deferred.
 Server trust is separate and implemented.
 
+#### Why client certificates are not supported (measured 2026-09-12)
+
+This is a signing constraint, not an unwritten feature. The design for it exists —
+`docs/plans/completed/20260909-kubix-v01-walking-skeleton.md`, "Client-certificate identity" — and
+it cannot run under this app's signature. Do not re-investigate without re-running the probe below;
+the conclusion depends entirely on how the app is signed.
+
+`URLSession` answers a client-certificate challenge with `URLCredential(identity:…)`, so a
+`SecIdentity` is required. A `SecIdentity` can only come from a keychain query or `SecPKCS12Import`;
+there is no `SecIdentityCreate(certificate, key)`. Probed inside the real ad-hoc signed, non-sandboxed
+app bundle:
+
+| call | result |
+| --- | --- |
+| `SecItemAdd`, `kSecUseDataProtectionKeychain: true` | `-34018` errSecMissingEntitlement |
+| `SecItemAdd` certificate, default keychain | ok |
+| **`SecItemAdd` private key, default keychain** | **`-34018` errSecMissingEntitlement** |
+| `SecCertificateCreateWithData`, `SecKeyCreateWithData` | ok — parsing was never the problem |
+
+A private key cannot be stored at all, so no keychain route to a `SecIdentity` exists. The data
+protection keychain needs App Sandbox or a team-issued `keychain-access-groups` entitlement; sandboxing
+is incompatible with reading the user's kubeconfig, spawning their credential plugin, and the PTY
+bridge's unix sockets.
+
+Three ways out, and why they are not taken:
+
+- **A real signing identity.** A Developer ID plus a provisioning profile carrying
+  `keychain-access-groups` makes the data protection keychain work, after which the recorded design
+  applies unchanged and nothing deprecated is needed. This is the clean route, and it is a
+  distribution task rather than a code one.
+- **Deprecated legacy-keychain APIs** — `SecKeychainCreate`, `SecItemImport`,
+  `SecIdentityCreateWithCertificate` — into an app-owned keychain file. This is the only route that
+  avoids the entitlement today, and it was rejected deliberately: deprecated Security APIs are not
+  worth a testing convenience.
+- **A second TLS stack** (for example swift-nio-ssl) taking PEM directly, with no keychain at all.
+  Rejected as disproportionate: it would duplicate requests, streaming watches and the
+  `v5.channel.k8s.io` upgrade for one authentication method.
+
+**What to do instead.** Local clusters ship client-certificate users by default, which is why
+`orbstack` and `docker-desktop` appear broken rather than unsupported. A ServiceAccount token in a
+`token:` or `tokenFile:` user works today with no code change and does not expire, which also removes
+repeated browser sign-in from a test loop.
+
 ### Acquisition and login
 
 `PluginResolver` combines inherited environment, cached best-effort login-shell
