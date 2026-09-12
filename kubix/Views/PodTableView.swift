@@ -43,6 +43,29 @@ struct PodTableView: View {
     private var textInset: CGFloat { PodsPane.inset }
 }
 
+/// Centres its label vertically: an `NSTextField` returned straight to the table is stretched to the
+/// row and draws its single line against the top edge, which is what made the rows look top-heavy.
+final class PodCellView: NSTableCellView {
+    private let label = NSTextField(labelWithString: "")
+
+    init() {
+        super.init(frame: .zero)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.lineBreakMode = .byTruncatingTail
+        addSubview(label)
+        textField = label
+        NSLayoutConstraint.activate([
+            // 2pt restores the bearing a bare NSTextField cell had, so the column keeps the x the
+            // pane's inset is matched to.
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError("not decoded") }
+}
+
 /// NSTableView supports runtime-defined columns on macOS 14, including repeated server labels.
 struct NativePodTable: NSViewRepresentable {
     let presentation: PodTablePresentation
@@ -64,7 +87,9 @@ struct NativePodTable: NSViewRepresentable {
         table.allowsColumnReordering = false
         table.usesAlternatingRowBackgroundColors = true
         table.columnAutoresizingStyle = .noColumnAutoresizing
-        table.rowHeight = 24
+        // A bare text field stretched to the row draws its text at the top; the cell view centres it,
+        // and a row with room to breathe is easier to scan than one sized to the glyphs.
+        table.rowHeight = 30
         // Explicit, not .automatic: the row inset is what the pane's own inset has to match.
         table.style = .inset
         let scroll = NSScrollView()
@@ -133,13 +158,11 @@ struct NativePodTable: NSViewRepresentable {
                   let column = presentation.columns.firstIndex(where: { String($0.id) == tableColumn.identifier.rawValue }),
                   presentation.rows.indices.contains(row) else { return nil }
             let identifier = NSUserInterfaceItemIdentifier("pod-cell")
-            let field = tableView.makeView(withIdentifier: identifier, owner: nil) as? NSTextField
-                ?? NSTextField(labelWithString: "")
-            field.identifier = identifier
-            field.lineBreakMode = .byTruncatingTail
-            field.stringValue = presentation.rows[row].cells[column]
-            field.toolTip = field.stringValue
-            return field
+            let cell = tableView.makeView(withIdentifier: identifier, owner: nil) as? PodCellView ?? PodCellView()
+            cell.identifier = identifier
+            cell.textField?.stringValue = presentation.rows[row].cells[column]
+            cell.toolTip = cell.textField?.stringValue
+            return cell
         }
 
         func tableViewSelectionDidChange(_ notification: Notification) {

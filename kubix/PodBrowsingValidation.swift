@@ -102,7 +102,7 @@ import KubixCore
         evidence["pagination"] = "native table empty/connecting during blocked second page, not a partial live list"
         try await until { store.connection == .live && table.numberOfRows == 2 }
         guard table.tableColumns.map(\.title) == ["Workload", "Count", "Flag"],
-              (table.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTextField)?.stringValue == "zulu" else {
+              (table.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTableCellView)?.textField?.stringValue == "zulu" else {
             throw Failure.assertion
         }
         evidence["rendering"] = "real NSTableView data-source cells render synthetic server-defined columns"
@@ -120,7 +120,7 @@ import KubixCore
         stage = "native selection sort and headerless watch"
         table.sortDescriptors = [NSSortDescriptor(key: "1", ascending: true)]
         try await until {
-            store.podSort?.column == 1 && (table.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTextField)?.stringValue == "alpha"
+            store.podSort?.column == 1 && (table.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTableCellView)?.textField?.stringValue == "alpha"
         }
         window.makeFirstResponder(table)
         table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)

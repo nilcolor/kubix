@@ -43,12 +43,29 @@ import KubixCore
     /// column all start at the same x, or the eye reads the column as broken.
     static func checkPaneAlignment(window: NSWindow, table: NSTableView) throws -> String {
         guard let namespace = namespaceField(in: window),
-              let cell = table.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTextField,
+              let cell = (table.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTableCellView)?.textField,
               let content = window.contentView else { throw Failure.misaligned }
         let namespaceX = namespace.convert(namespace.bounds, to: content).minX
         let cellX = cell.convert(cell.bounds, to: content).minX
-        guard abs(namespaceX - cellX) <= 1 else { throw Failure.misaligned }
-        return String(format: "namespace control and first cell text share x = %.1f", namespaceX)
+        guard abs(namespaceX - cellX) <= 1 else {
+            throw Failure.measured(String(format: "namespace %.1f vs cell %.1f", namespaceX, cellX))
+        }
+
+        // The label must sit in the middle of its row, not against the top edge, and the row must
+        // have room around it: a stretched text field draws its single line at the top.
+        guard let row = cell.superview else { throw Failure.misaligned }
+        let rowHeight = row.bounds.height
+        let above = cell.frame.minY - row.bounds.minY
+        let below = rowHeight - cell.frame.maxY
+        guard rowHeight >= 26, above >= 4, abs(above - below) <= 1 else {
+            throw Failure.measured(String(
+                format: "host %.1f, label %.1f, above %.1f, below %.1f", rowHeight, cell.frame.height, above, below
+            ))
+        }
+        return String(
+            format: "leading x %.1f shared; label centred in a %.0fpt row (%.1f above, %.1f below)",
+            namespaceX, rowHeight, above, below
+        )
     }
 
     private static func namespaceField(in window: NSWindow) -> NSTextField? {
@@ -70,6 +87,7 @@ import KubixCore
         case resizedWithWindow([CGFloat])
         case contentWiderThanColumn(CGFloat)
         case misaligned
+        case measured(String)
     }
 }
 #endif

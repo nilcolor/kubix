@@ -45,7 +45,7 @@ import KubixCore
 
     private static func cells(_ table: NSTableView) -> Set<String> {
         Set((0..<table.numberOfRows).compactMap {
-            (table.view(atColumn: 0, row: $0, makeIfNecessary: true) as? NSTextField)?.stringValue
+            (table.view(atColumn: 0, row: $0, makeIfNecessary: true) as? NSTableCellView)?.textField?.stringValue
         })
     }
 
