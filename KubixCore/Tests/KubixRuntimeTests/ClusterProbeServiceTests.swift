@@ -18,8 +18,8 @@ import Testing
             return transport
         }
 
-        try await service.probe(context: context)
-        try await service.probe(context: context)
+        #expect(try await service.probe(context: context) == "v1.29.4")
+        #expect(try await service.probe(context: context) == "v1.29.4")
 
         #expect(await factories.value == 2)
         let requests = await session.requests
@@ -35,12 +35,13 @@ import Testing
         #expect(await session.socketRequests.isEmpty)
     }
 
-    @Test func anUnreadableBodyStillMeansReachable() async throws {
+    @Test func anUnreadableBodyStillMeansReachableWithoutAVersion() async throws {
         let session = ScriptedTransportSession { _, _ in
             HTTPDataResponse(statusCode: 200, body: Data("not json at all".utf8))
         }
         let service = ClusterProbeService { [transport = try await testTransport(session: session)] _ in transport }
-        try await service.probe(context: try transportConfiguration().resolve())
+        // A server that answers is reachable; only the displayed version is missing.
+        #expect(try await service.probe(context: try transportConfiguration().resolve()) == nil)
         #expect(await session.requests.count == 1)
     }
 
@@ -53,7 +54,7 @@ import Testing
         }
         let service = ClusterProbeService { [transport = try await testTransport(session: session)] _ in transport }
         do {
-            try await service.probe(context: try transportConfiguration().resolve())
+            _ = try await service.probe(context: try transportConfiguration().resolve())
             Issue.record("HTTP failure was accepted as reachable")
         } catch let error as APIError {
             #expect(error.httpCode == code)
@@ -73,7 +74,7 @@ import Testing
         }
         let service = ClusterProbeService { [transport = try await testTransport(session: session)] _ in transport }
         do {
-            try await service.probe(context: try transportConfiguration().resolve())
+            _ = try await service.probe(context: try transportConfiguration().resolve())
             Issue.record("HTTP failure was accepted as reachable")
         } catch let error as APIError {
             #expect(error.httpCode == 502)
@@ -89,7 +90,7 @@ import Testing
         let transport = try await testTransport(session: session, credentials: TransportCredentials(certificate: true))
         let service = ClusterProbeService { _ in transport }
         await #expect(throws: AuthenticationError.unsupportedCertificate) {
-            try await service.probe(context: try transportConfiguration().resolve())
+            _ = try await service.probe(context: try transportConfiguration().resolve())
         }
         #expect(await session.requests.isEmpty)
     }
@@ -99,7 +100,7 @@ import Testing
         let transport = try await testTransport(session: session)
         let service = ClusterProbeService { _ in transport }
         let context = try transportConfiguration().resolve()
-        let task = Task { try await service.probe(context: context) }
+        let task = Task { _ = try await service.probe(context: context) }
         task.cancel()
         await #expect(throws: CancellationError.self) { try await task.value }
         #expect(await session.requests.isEmpty)

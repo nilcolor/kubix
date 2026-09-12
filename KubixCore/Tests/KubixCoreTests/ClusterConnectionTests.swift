@@ -30,6 +30,9 @@ import Testing
 
         await probe.open()
         try await appEventually { store.clusters[0].state == .connected }
+        // The version the pane shows comes from the same probe, not a second request.
+        #expect(store.clusters[0].serverVersion == "v1.30.0-test")
+        #expect(store.clusters[1].serverVersion == nil)
         #expect(await pods.callbacks.isEmpty)
         #expect(store.connection == .idle)
         await actions.shutdownAndWait()
@@ -350,13 +353,14 @@ actor ClusterTestProbe: ClusterProbing {
 
     func open() async { await gate.open() }
 
-    func probe(context: ResolvedContext) async throws {
+    func probe(context: ResolvedContext) async throws -> String? {
         contexts.append(context)
         do { try await gate.wait() } catch {
             cancellations += 1
             throw error
         }
         if let failure { throw failure.error }
+        return "v1.30.0-test"
     }
 }
 

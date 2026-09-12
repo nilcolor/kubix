@@ -8,8 +8,10 @@ struct ClusterSidebar: View {
     var body: some View {
         VStack(spacing: 0) {
             List(selection: selection) {
-                ForEach(store.clusters) { cluster in
-                    ClusterSection(cluster: cluster, actions: actions)
+                Section("Clusters") {
+                    ForEach(store.clusters) { cluster in
+                        ClusterSection(cluster: cluster, actions: actions)
+                    }
                 }
             }
             // Explicit, because the sidebar look is no longer inherited from a NavigationSplitView.
@@ -44,10 +46,8 @@ private struct ClusterSection: View {
     var body: some View {
         DisclosureGroup(isExpanded: $expanded) {
             if cluster.state == .connected {
-                Text("Workload")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .selectionDisabled()
+                Label("Overview", systemImage: "square.grid.2x2")
+                    .tag(SidebarSelection.cluster(cluster.id))
                 Label("Pods", systemImage: "shippingbox")
                     .tag(SidebarSelection.pods(cluster.id))
             } else {
@@ -157,11 +157,14 @@ private struct SidebarFooter: View {
                 Text(diagnostic).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
             }
             HStack {
-                Text("Kubix v0.1").font(.caption).foregroundStyle(.secondary)
+                Text("Kubix 0.1").font(.caption).foregroundStyle(.secondary)
                 Spacer(minLength: 8)
-                Button("Reload kubeconfig") { Task { await actions.loadConfiguration() } }
-                    .controlSize(.small)
-                    .disabled(store.isLoadingConfiguration)
+                Button { Task { await actions.loadConfiguration() } } label: {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                }
+                .buttonStyle(.borderless)
+                .disabled(store.isLoadingConfiguration)
+                .help("Reload kubeconfig")
             }
         }
         .padding(8)

@@ -1,8 +1,8 @@
 import Foundation
 
 /// Reachability and credential acceptance for one cluster, with no namespaced authorization implied.
-/// Deliberately returns nothing: the server's own version is not displayed anywhere, and keeping it
-/// would mean retaining part of a response body for no consumer.
+/// Returns the server's reported version, which the cluster pane displays; a server that answers
+/// without a readable version is still reachable, so the value is optional rather than a failure.
 public protocol ClusterProbing: Sendable {
-    func probe(context: ResolvedContext) async throws
+    func probe(context: ResolvedContext) async throws -> String?
 }

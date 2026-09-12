@@ -12,10 +12,10 @@ public extension AppActions {
         store.clusters[index].state = .connecting
         clusterTasks[name] = Task { [weak self] in
             do {
-                try await probe.probe(context: context)
-                self?.finishConnect(context, generation: generation, failure: nil)
+                let version = try await probe.probe(context: context)
+                self?.finishConnect(context, generation: generation, version: version, failure: nil)
             } catch {
-                self?.finishConnect(context, generation: generation, failure: error)
+                self?.finishConnect(context, generation: generation, version: nil, failure: error)
             }
         }
     }
@@ -72,13 +72,14 @@ extension AppActions {
     /// The probe is only an answer about the snapshot it ran against: a kubeconfig reload can redefine
     /// a context under the same name, and a result from the old definition must not describe the new
     /// one. The generation alone cannot catch that, because it is keyed by the name that survived.
-    func finishConnect(_ context: ResolvedContext, generation: UUID, failure: (any Error)?) {
+    func finishConnect(_ context: ResolvedContext, generation: UUID, version: String?, failure: (any Error)?) {
         let name = context.name
         guard !stopped, clusterGenerations[name] == generation,
               let index = store.clusters.firstIndex(where: { $0.id == name }),
               store.clusters[index].context == context else { return }
         clusterTasks.removeValue(forKey: name)
         store.clusters[index].state = failure.map { .failed(reason: Self.connectReason($0)) } ?? .connected
+        store.clusters[index].serverVersion = version
         if failure != nil {
             demotePodsSelection(of: name)
             discardNamespaces(of: name)

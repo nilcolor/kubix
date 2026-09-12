@@ -16,6 +16,8 @@ struct PodsPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            PodsHeader(store: store, actions: actions)
+                .padding(.horizontal, Self.inset)
             if let diagnostic = store.namespaceDiagnostic {
                 Text(diagnostic).font(.caption).foregroundStyle(.orange)
                     .padding(.horizontal, Self.inset)
@@ -37,23 +39,82 @@ struct PodsPane: View {
         .navigationSubtitle(store.podTable.subtitle)
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                NamespaceCombo(store: store, actions: actions).frame(width: 200, height: 22)
+                NamespaceControl(store: store, actions: actions).frame(width: 200)
             }
             ToolbarItemGroup {
+                Button { actions.refreshPods() } label: { Image(systemName: "arrow.triangle.2.circlepath") }
+                    .help("List and watch this namespace again")
                 Toggle("Wide", isOn: Binding(get: { store.podWide }, set: { actions.setPodWide($0) }))
                     .toggleStyle(.button)
                     .help("Show all server columns, including priority columns")
-                Button("Shell") { if let uid = store.podTable.selectedUID { actions.openPodShell(uid: uid) } }
-                    .disabled(store.podTable.selectedUID == nil)
-                    .help("Open a shell in the selected pod's running regular container")
-                Button("Logs") { actions.openPodLogs() }
-                    .disabled(store.podTable.selectedUID == nil)
             }
         }
         .searchable(
             text: Binding(get: { store.podFilter }, set: { actions.setPodFilter($0) }),
             placement: .toolbar, prompt: "Search"
         )
+    }
+}
+
+/// The page's own header: what this list is, how current it is, and the two actions that act on the
+/// selected row. Round icon buttons rather than toolbar text, so a per-selection action sits with the
+/// selection rather than with the view-wide controls.
+private struct PodsHeader: View {
+    let store: AppStore
+    let actions: AppActions
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Pods").font(.largeTitle.weight(.semibold))
+                Text(subtitle).font(.callout).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 12)
+            HStack(spacing: 8) {
+                RoundAction(
+                    symbol: "apple.terminal", help: "Open a shell in the selected pod's running regular container",
+                    disabled: store.podTable.selectedUID == nil
+                ) {
+                    if let uid = store.podTable.selectedUID { actions.openPodShell(uid: uid) }
+                }
+                RoundAction(
+                    symbol: "doc.text", help: "Follow the selected pod's container logs",
+                    disabled: store.podTable.selectedUID == nil
+                ) {
+                    actions.openPodLogs()
+                }
+            }
+        }
+    }
+
+    private var subtitle: String {
+        let table = store.podTable
+        let scope = "\(table.subtitle) in \(store.selectedNamespace)"
+        switch table.state {
+        case .live: return scope + " · live"
+        case .listed: return scope + " · waiting for live updates"
+        case .connecting: return scope + " · connecting"
+        case .failed: return scope + " · not updating"
+        default: return scope
+        }
+    }
+}
+
+private struct RoundAction: View {
+    let symbol: String
+    let help: String
+    let disabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol).frame(width: 16, height: 16)
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.circle)
+        .controlSize(.large)
+        .disabled(disabled)
+        .help(help)
     }
 }
 

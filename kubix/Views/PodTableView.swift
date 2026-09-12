@@ -85,11 +85,15 @@ struct NativePodTable: NSViewRepresentable {
         table.allowsMultipleSelection = false
         table.allowsEmptySelection = true
         table.allowsColumnReordering = false
-        table.usesAlternatingRowBackgroundColors = true
+        // Hairlines rather than alternating bands: a separator per row reads as a list, and stripes
+        // fight the inset selection shape.
+        table.usesAlternatingRowBackgroundColors = false
+        table.gridStyleMask = .solidHorizontalGridLineMask
+        table.gridColor = .separatorColor
         table.columnAutoresizingStyle = .noColumnAutoresizing
         // A bare text field stretched to the row draws its text at the top; the cell view centres it,
         // and a row with room to breathe is easier to scan than one sized to the glyphs.
-        table.rowHeight = 30
+        table.rowHeight = 38
         // Explicit, not .automatic: the row inset is what the pane's own inset has to match.
         table.style = .inset
         let scroll = NSScrollView()

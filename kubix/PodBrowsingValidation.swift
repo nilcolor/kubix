@@ -107,7 +107,8 @@ import KubixCore
         }
         evidence["rendering"] = "real NSTableView data-source cells render synthetic server-defined columns"
         try await checkTable(fixture, window: window, table: table)
-        try await checkNamespaceDiscovery(fixture, window: window)
+        stage = "namespace discovery: listed pop-up and denied fallback"
+        evidence.merge(try await PodNamespaceValidation.check(fixture, window: window)) { _, new in new }
         try await checkSessions(fixture, window: window, table: table)
         try await checkDraftsAndStates(fixture, window: window, table: table)
         stage = "1253-row encoded pagination, expiry and measured native events"
@@ -155,9 +156,10 @@ import KubixCore
         try await edit("", placeholder: "Search", in: window)
         try await until { table.numberOfRows == 2 && store.selectedPodUID == nil }
         evidence["wideFilter"] = "5 dynamic columns including duplicate names; hidden sort reset; real TextField filtering clears invisible UID"
-
     }
+}
 
+@MainActor extension PodBrowsingValidation {
     private static func checkSessions(_ fixture: PodBrowsingFixture, window: NSWindow, table: NSTableView) async throws {
         stage = "stable session deck and minimum window"
         let actions = fixture.actions
@@ -259,17 +261,20 @@ import KubixCore
         stage = "intentional namespace commits and errors"
         try await until { store.connection == .live }
         let count = await fixture.transport.requests.count
-        try await edit("known", placeholder: "Namespace", in: window)
+        try await PodNamespaceValidation.type("known", in: window)
         try await until { store.namespaceDraft == "known" }
         guard store.selectedNamespace == "other", await fixture.transport.requests.count == count else { throw Failure.assertion }
         try submit(placeholder: "Namespace", in: window)
         try await until { store.connection == .live && store.selectedNamespace == "known" }
         // A listed cluster shows the server's namespaces, not local history, however much was typed.
         guard store.namespaces == ["empty", "known", "other", "team"] else { throw Failure.assertion }
-        try await edit("bad/input", placeholder: "Namespace", in: window)
+        // A commit returns the control to its pop-up shape, so typing is re-entered each time.
+        try await PodNamespaceValidation.type("bad/input", in: window)
         try submit(placeholder: "Namespace", in: window)
         try await until { store.namespaceDiagnostic != nil }
-        guard store.selectedNamespace == "known" else { throw Failure.assertion }
+        guard store.selectedNamespace == "known", PodNamespaceValidation.control(in: window) is NSComboBox else {
+            throw Failure.assertion
+        }
         try actions.selectNamespace("empty")
         try await until { store.podTable.state == .empty && table.numberOfRows == 0 }
         try actions.selectNamespace("forbidden")
@@ -298,57 +303,15 @@ import KubixCore
     }
 
     private static func namespaceHeight(in window: NSWindow) -> CGFloat {
-        field("Namespace", in: window)?.frame.height ?? 0
+        PodNamespaceValidation.control(in: window)?.frame.height ?? 0
     }
 
     private static func namespaceMetrics(in window: NSWindow) -> String {
-        guard let field = field("Namespace", in: window) else { return "absent" }
-        return "\(field.className) \(Int(field.frame.width))x\(Int(field.frame.height)) visible \(Int(field.visibleRect.height))"
+        guard let control = PodNamespaceValidation.control(in: window) else { return "absent" }
+        return "\(control.className) \(Int(control.frame.width))x\(Int(control.frame.height))"
     }
 }
 
-/// Namespace discovery stages.
-@MainActor extension PodBrowsingValidation {
-    private static func checkNamespaceDiscovery(_ fixture: PodBrowsingFixture, window: NSWindow) async throws {
-        let store = fixture.store
-        stage = "namespace picker refresh throttle"
-        guard let box = field("Namespace", in: window) as? NSComboBox else { throw Failure.assertion }
-        let listed = await fixture.transport.namespaceRequests
-        guard (box.objectValues as? [String]) == ["empty", "known", "other", "team"] else { throw Failure.assertion }
-        // There is no programmatic pop-up, and a real one runs a nested tracking loop that would stall
-        // this driver, so the delegate is exercised through the notification AppKit posts for it.
-        for _ in 0..<3 {
-            NotificationCenter.default.post(name: NSComboBox.willPopUpNotification, object: box)
-            try await Task.sleep(for: .milliseconds(20))
-        }
-        guard await fixture.transport.namespaceRequests == listed else { throw Failure.assertion }
-        evidence["namespaceThrottle"] = "picker holds the cluster's four listed namespaces; three "
-            + "will-pop-up notifications inside the 30s window add no request (delegate exercised, not a real pop-up)"
-
-        stage = "denied namespace listing falls back to typed entry"
-        await fixture.transport.failNamespaceList(.http(code: 403, resource: "namespaces"))
-        fixture.actions.connect(contextNamed: "synthetic-second")
-        try await until { store.clusters[1].namespaces == .unavailable }
-        guard store.clusters[1].state == .connected, store.authenticationDiagnostic == nil,
-              store.namespaceDiagnostic == nil else { throw Failure.assertion }
-        let denied = await fixture.transport.namespaceRequests
-        fixture.actions.selectSidebar(.pods("synthetic-second"))
-        try await until { store.connection == .live }
-        guard store.namespaces == ["other"], await fixture.transport.namespaceRequests == denied else {
-            throw Failure.assertion
-        }
-        NotificationCenter.default.post(name: NSComboBox.willPopUpNotification, object: box)
-        try await Task.sleep(for: .milliseconds(30))
-        guard await fixture.transport.namespaceRequests == denied else { throw Failure.assertion }
-        evidence["namespaceFallback"] = "a 403 list leaves the cluster connected with no diagnostic, the "
-            + "picker holding configured-plus-typed history, and no further namespace request from any path"
-        await fixture.transport.failNamespaceList(nil)
-        fixture.actions.selectSidebar(.pods("synthetic-first"))
-        try await until { store.connection == .live && store.selectedNamespace == "team" }
-    }
-}
-
-/// Native view and event helpers for the smoke above.
 @MainActor extension PodBrowsingValidation {
     private static func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
     /// SwiftUI's List is itself an NSTableView, so the sidebar is the one that is not the pod table.

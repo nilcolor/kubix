@@ -15,14 +15,19 @@ public struct ClusterStatus: Identifiable, Equatable, Sendable {
     public let context: ResolvedContext
     public var state: State
     public var namespaces: NamespaceDiscovery
+    /// What the apiserver called itself at Connect. Display only, and absent for a server that
+    /// answered without a readable version.
+    public var serverVersion: String?
     public var id: String { context.name }
 
     public init(
-        context: ResolvedContext, state: State = .disconnected, namespaces: NamespaceDiscovery = .unknown
+        context: ResolvedContext, state: State = .disconnected, namespaces: NamespaceDiscovery = .unknown,
+        serverVersion: String? = nil
     ) {
         self.context = context
         self.state = state
         self.namespaces = namespaces
+        self.serverVersion = serverVersion
     }
 
     /// A context keeps its state only while its whole snapshot is unchanged: a redefined server, user
@@ -32,7 +37,7 @@ public struct ClusterStatus: Identifiable, Equatable, Sendable {
             let carried = existing.first { $0.context == context }
             return ClusterStatus(
                 context: context, state: carried?.state ?? .disconnected,
-                namespaces: carried?.namespaces ?? .unknown
+                namespaces: carried?.namespaces ?? .unknown, serverVersion: carried?.serverVersion
             )
         }
     }
