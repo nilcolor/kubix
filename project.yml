@@ -91,6 +91,9 @@ targets:
           /usr/bin/codesign --force --options runtime \
             --entitlements "$SRCROOT/kubix/kubix.entitlements" \
             --sign - "$CODESIGNING_FOLDER_PATH"
+          # LaunchServices caches the icon against the bundle directory's own date, which a rebuild
+          # of its contents leaves untouched — so without this the Dock keeps the previous icon.
+          /usr/bin/touch "$CODESIGNING_FOLDER_PATH"
 
 schemes:
   kubix:
