@@ -6,17 +6,18 @@ import SwiftUI
 struct AuthProgressView: View {
     let store: AppStore
     let actions: AppActions
+    let sessions: [AuthSession]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if store.selectedContext?.user?.exec != nil, !store.focusedAuthenticationSessions.isEmpty {
+            if store.selectedContext?.user?.exec != nil, !sessions.isEmpty {
                 Text("Complete any browser approval, then choose Retry authentication if the plugin reports a failure.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if let diagnostic = store.authenticationDiagnostic {
                 Text(diagnostic).foregroundStyle(.orange).textSelection(.enabled)
             }
-            ForEach(store.focusedAuthenticationSessions, id: \.id) { session in
+            ForEach(sessions, id: \.id) { session in
                 progress(AuthPresentation(session))
             }
         }

@@ -115,10 +115,11 @@ private struct AuthSessionBanner: View {
     let actions: AppActions
 
     var body: some View {
-        if !store.focusedAuthenticationSessions.isEmpty || store.authenticationDiagnostic != nil {
+        let sessions = store.attentionAuthenticationSessions
+        if !sessions.isEmpty || store.authenticationDiagnostic != nil {
             // Vertical padding only: horizontal padding here would indent this text past every other
             // row in the pane, which is the ragged edge this inset exists to remove.
-            AuthProgressView(store: store, actions: actions)
+            AuthProgressView(store: store, actions: actions, sessions: sessions)
                 .padding(.horizontal, PodsPane.inset)
                 .padding(.vertical, 8)
                 .background(Color(nsColor: .controlBackgroundColor))

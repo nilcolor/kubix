@@ -323,7 +323,7 @@ private struct PluginSection: View {
                     HStack { buttons }
                     VStack(alignment: .leading, spacing: 6) { buttons }
                 }
-                AuthProgressView(store: store, actions: actions)
+                AuthProgressView(store: store, actions: actions, sessions: store.focusedAuthenticationSessions)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 8)

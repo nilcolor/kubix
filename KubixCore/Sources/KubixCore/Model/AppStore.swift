@@ -64,6 +64,13 @@ public final class AppStore {
         return visibleAuthenticationSessions.filter { $0.credentialIdentity.belongs(to: context, settings: authSettings) }
     }
 
+    /// The focused cluster's sessions that still want something: credentials being acquired, a browser
+    /// approval to complete, or a failure with its Retry. A finished sign-in says only that the thing
+    /// the user just did worked, which the list it was for already shows.
+    public var attentionAuthenticationSessions: [AuthSession] {
+        focusedAuthenticationSessions.filter { $0.state != .succeeded && $0.state != .cancelled }
+    }
+
     public var visibleAuthenticationSessions: [AuthSession] {
         var completed = Set<CredentialIdentity>()
         let newestFirst = authenticationSessionOrder.reversed().compactMap { authenticationSessions[$0] }.filter {
