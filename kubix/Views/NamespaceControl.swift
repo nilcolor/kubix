@@ -4,20 +4,19 @@ import SwiftUI
 
 /// A pop-up button when the cluster told us its namespaces, a text field when it did not.
 ///
-/// A `Picker` with `.menu` is the native control for choosing one of a known set, and it is what the
-/// design asks for — but it cannot express a namespace the app was never told about, and a cluster
-/// that denies `list namespaces` is a supported configuration rather than an error. So the menu also
-/// carries an "Other namespace…" item, and without a list the control falls back to typing.
+/// Namespaces are cluster-scoped, so a cluster that answers `list namespaces` answers with all of
+/// them and the menu is complete — there is nothing for an escape hatch to reach. A cluster that
+/// denies the list is a supported configuration rather than an error, and that is the only case the
+/// typeable field exists for.
 struct NamespaceControl: View {
     let store: AppStore
     let actions: AppActions
-    @State private var typing = false
 
     var body: some View {
-        if let names = listed, !typing {
-            NamespaceMenu(store: store, actions: actions, names: names) { typing = true }
+        if let names = listed {
+            NamespaceMenu(store: store, actions: actions, names: names)
         } else {
-            NamespaceField(store: store, actions: actions, listed: listed != nil) { typing = false }
+            NamespaceField(store: store, actions: actions)
         }
     }
 
@@ -54,10 +53,8 @@ private enum NamespaceMetrics {
 private struct NamespaceField: NSViewRepresentable {
     let store: AppStore
     let actions: AppActions
-    let listed: Bool
-    let done: () -> Void
 
-    func makeCoordinator() -> Coordinator { Coordinator(actions: actions, done: done) }
+    func makeCoordinator() -> Coordinator { Coordinator(actions: actions) }
 
     func makeNSView(context: Context) -> NSComboBox {
         let box = NSComboBox()
@@ -83,7 +80,6 @@ private struct NamespaceField: NSViewRepresentable {
 
     func updateNSView(_ box: NSComboBox, context: Context) {
         context.coordinator.actions = actions
-        context.coordinator.done = done
         if box.stringValue != store.namespaceDraft { box.stringValue = store.namespaceDraft }
         let items = store.namespaces
         if (box.objectValues as? [String]) != items {
@@ -94,16 +90,12 @@ private struct NamespaceField: NSViewRepresentable {
 
     @MainActor final class Coordinator: NSObject, NSComboBoxDelegate {
         var actions: AppActions
-        var done: () -> Void
 
-        init(actions: AppActions, done: @escaping () -> Void) {
-            self.actions = actions
-            self.done = done
-        }
+        init(actions: AppActions) { self.actions = actions }
 
         @objc func commit(_ sender: NSComboBox) {
             actions.setNamespaceInput(sender.stringValue)
-            if actions.commitNamespaceInput() { done() }
+            actions.commitNamespaceInput()
         }
 
         func controlTextDidChange(_ notification: Notification) {
@@ -122,7 +114,7 @@ private struct NamespaceField: NSViewRepresentable {
             guard let box = notification.object as? NSComboBox,
                   let value = box.objectValueOfSelectedItem as? String else { return }
             actions.setNamespaceInput(value)
-            if actions.commitNamespaceInput() { done() }
+            actions.commitNamespaceInput()
         }
     }
 }
@@ -133,11 +125,8 @@ private struct NamespaceMenu: NSViewRepresentable {
     let store: AppStore
     let actions: AppActions
     let names: [String]
-    let other: () -> Void
 
-    static let otherTitle = "Other namespace…"
-
-    func makeCoordinator() -> Coordinator { Coordinator(actions: actions, other: other) }
+    func makeCoordinator() -> Coordinator { Coordinator(actions: actions) }
 
     func makeNSView(context: Context) -> NSPopUpButton {
         let button = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -156,10 +145,8 @@ private struct NamespaceMenu: NSViewRepresentable {
 
     func updateNSView(_ button: NSPopUpButton, context: Context) {
         context.coordinator.actions = actions
-        context.coordinator.other = other
         var titles = names
         if !titles.contains(store.selectedNamespace) { titles.insert(store.selectedNamespace, at: 0) }
-        titles.append(Self.otherTitle)
         if button.itemTitles != titles {
             button.removeAllItems()
             button.addItems(withTitles: titles)
@@ -171,12 +158,8 @@ private struct NamespaceMenu: NSViewRepresentable {
 
     @MainActor final class Coordinator: NSObject {
         var actions: AppActions
-        var other: () -> Void
 
-        init(actions: AppActions, other: @escaping () -> Void) {
-            self.actions = actions
-            self.other = other
-        }
+        init(actions: AppActions) { self.actions = actions }
 
         func observe(_ button: NSPopUpButton) {
             NotificationCenter.default.addObserver(
@@ -190,10 +173,6 @@ private struct NamespaceMenu: NSViewRepresentable {
 
         @objc func choose(_ sender: NSPopUpButton) {
             guard let title = sender.titleOfSelectedItem else { return }
-            if title == NamespaceMenu.otherTitle {
-                other()
-                return
-            }
             actions.setNamespaceInput(title)
             actions.commitNamespaceInput()
         }

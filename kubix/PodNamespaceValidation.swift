@@ -11,9 +11,8 @@ import KubixCore
         var fallback = ""
         guard let menu = popUp(in: window) else { throw Failure.assertion }
         let listed = await fixture.transport.namespaceRequests
-        guard menu.itemTitles == ["empty", "known", "other", "team", "Other namespace…"] else {
-            throw Failure.assertion
-        }
+        // Every namespace the cluster listed and nothing else: the list is complete by construction.
+        guard menu.itemTitles == ["empty", "known", "other", "team"] else { throw Failure.assertion }
         // There is no programmatic pop-up, and a real one runs a nested tracking loop that would stall
         // this driver, so the hook is exercised through the notification AppKit posts for it.
         for _ in 0..<3 {
@@ -22,9 +21,8 @@ import KubixCore
         }
         guard await fixture.transport.namespaceRequests == listed else { throw Failure.assertion }
         let geometry = try placement(of: menu, in: window)
-        throttle = "native pop-up holds the cluster's four listed namespaces plus "
-            + "an Other item; three will-pop-up notifications inside the 30s window add no request; "
-            + geometry
+        throttle = "native pop-up holds exactly the cluster's four listed namespaces; three "
+            + "will-pop-up notifications inside the 30s window add no request; " + geometry
 
         await fixture.transport.failNamespaceList(.http(code: 403, resource: "namespaces"))
         fixture.actions.connect(contextNamed: "synthetic-second")
@@ -41,23 +39,34 @@ import KubixCore
         NotificationCenter.default.post(name: NSComboBox.willPopUpNotification, object: fallbackField)
         try await Task.sleep(for: .milliseconds(30))
         guard await fixture.transport.namespaceRequests == denied else { throw Failure.assertion }
-        fallback = "a 403 list leaves the cluster connected with no diagnostic, a "
-            + "typeable field instead of a pop-up, and no further namespace request from any path"
+        try await typed(fixture, window: window)
+        fallback = "a 403 list leaves the cluster connected with no diagnostic, a typeable field "
+            + "instead of a pop-up, and no further namespace request from any path; typing does not "
+            + "commit, Return commits once, an invalid draft is rejected and keeps the last namespace"
         await fixture.transport.failNamespaceList(nil)
         fixture.actions.selectSidebar(.pods("synthetic-first"))
         try await PodBrowsingValidation.until { store.connection == .live && store.selectedNamespace == "team" }
+        // A listed cluster shows the server's namespaces, not the names typed into another cluster.
+        guard store.namespaces == ["empty", "known", "other", "team"] else { throw Failure.assertion }
         return ["namespaceThrottle": throttle, "namespaceFallback": fallback]
     }
 
-    /// Reaches the typeable field whatever shape the control is in: a listed cluster shows a pop-up,
-    /// and its Other item is the path a user takes for a namespace the cluster never listed.
-    static func type(_ value: String, in window: NSWindow) async throws {
-        if let menu = popUp(in: window) {
-            menu.selectItem(withTitle: "Other namespace…")
-            if let action = menu.action { NSApp.sendAction(action, to: menu.target, from: menu) }
-            try await PodBrowsingValidation.until { control(in: window) is NSComboBox }
+    /// Drafting and committing a name by hand, which only a cluster that denied the list offers.
+    private static func typed(_ fixture: PodBrowsingFixture, window: NSWindow) async throws {
+        let store = fixture.store
+        let count = await fixture.transport.requests.count
+        try await PodBrowsingValidation.edit("known", placeholder: "Namespace", in: window)
+        try await PodBrowsingValidation.until { store.namespaceDraft == "known" }
+        guard store.selectedNamespace == "other",
+              await fixture.transport.requests.count == count else { throw Failure.assertion }
+        try PodBrowsingValidation.submit(placeholder: "Namespace", in: window)
+        try await PodBrowsingValidation.until { store.connection == .live && store.selectedNamespace == "known" }
+        try await PodBrowsingValidation.edit("bad/input", placeholder: "Namespace", in: window)
+        try PodBrowsingValidation.submit(placeholder: "Namespace", in: window)
+        try await PodBrowsingValidation.until { store.namespaceDiagnostic != nil }
+        guard store.selectedNamespace == "known", control(in: window) is NSComboBox else {
+            throw Failure.assertion
         }
-        try await PodBrowsingValidation.edit(value, placeholder: "Namespace", in: window)
     }
 
     /// Either shape of the namespace control: a pop-up button when the cluster listed its namespaces,

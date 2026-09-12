@@ -258,28 +258,13 @@ import KubixCore
     private static func checkDraftsAndStates(_ fixture: PodBrowsingFixture, window: NSWindow, table: NSTableView) async throws {
         let store = fixture.store
         let actions = fixture.actions
-        stage = "intentional namespace commits and errors"
+        stage = "empty, forbidden and auth states"
         try await until { store.connection == .live }
-        let count = await fixture.transport.requests.count
-        try await PodNamespaceValidation.type("known", in: window)
-        try await until { store.namespaceDraft == "known" }
-        guard store.selectedNamespace == "other", await fixture.transport.requests.count == count else { throw Failure.assertion }
-        try submit(placeholder: "Namespace", in: window)
-        try await until { store.connection == .live && store.selectedNamespace == "known" }
-        // A listed cluster shows the server's namespaces, not local history, however much was typed.
-        guard store.namespaces == ["empty", "known", "other", "team"] else { throw Failure.assertion }
-        // A commit returns the control to its pop-up shape, so typing is re-entered each time.
-        try await PodNamespaceValidation.type("bad/input", in: window)
-        try submit(placeholder: "Namespace", in: window)
-        try await until { store.namespaceDiagnostic != nil }
-        guard store.selectedNamespace == "known", PodNamespaceValidation.control(in: window) is NSComboBox else {
-            throw Failure.assertion
-        }
         try actions.selectNamespace("empty")
         try await until { store.podTable.state == .empty && table.numberOfRows == 0 }
         try actions.selectNamespace("forbidden")
         try await until { store.podTable.state == .failed && store.podTable.message.contains("Forbidden: pods") }
-        evidence["states"] = "native typing does not commit; Return commits once; invalid draft rejected; suggestions remembered per context; empty and forbidden states shown inline"
+        evidence["states"] = "empty and forbidden states shown inline against a live watch"
 
         stage = "auth progress settings and configured retry"
         guard let context = store.selectedContext else { throw Failure.assertion }
@@ -343,7 +328,7 @@ import KubixCore
         editor.insertText(value, replacementRange: range)
         try await until { field.stringValue == value && editor.string == value }
     }
-    private static func submit(placeholder: String, in window: NSWindow) throws {
+    static func submit(placeholder: String, in window: NSWindow) throws {
         guard let field = field(placeholder, in: window),
               let editor = window.fieldEditor(false, for: field) as? NSTextView else { throw Failure.assertion }
         editor.doCommand(by: NSSelectorFromString("insertNewline:"))
