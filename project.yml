@@ -41,8 +41,12 @@ targets:
         excludes:
           - Info.plist
           - kubix.entitlements
+          - AppIcon.icon
           - Resources/ghostty
           - Resources/terminfo
+      # A single file reference, not a group: the icon is a package that actool compiles whole.
+      - path: kubix/AppIcon.icon
+        type: file
       # Folder references preserve extensionless files and the sibling layout.
       - path: kubix/Resources/ghostty
         type: folder
