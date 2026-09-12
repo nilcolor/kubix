@@ -2,6 +2,13 @@ import KubixCore
 import SwiftUI
 
 struct PodsPane: View {
+    /// One leading edge for the whole pane. The table bleeds to the pane's edge and insets its own
+    /// cells by the same amount, so its first column's text lines up with the controls above it
+    /// instead of each element carrying its own padding.
+    /// 16 because that is what `NSTableView.style = .inset` puts between the table's edge and its
+    /// first cell's text; matching it exactly is what makes the column read as one edge.
+    static let inset: CGFloat = 16
+
     let store: AppStore
     let actions: AppActions
 
@@ -14,18 +21,27 @@ struct PodsPane: View {
                 Toggle("Wide", isOn: Binding(get: { store.podWide }, set: { actions.setPodWide($0) }))
                     .toggleStyle(.checkbox)
                     .help("Show all server columns, including priority columns")
+                Button("Shell") { if let uid = store.podTable.selectedUID { actions.openPodShell(uid: uid) } }
+                    .disabled(store.podTable.selectedUID == nil)
+                    .help("Open a shell in the selected pod's running regular container")
                 Button("Logs") { actions.openPodLogs() }
                     .disabled(store.podTable.selectedUID == nil)
                 Spacer(minLength: 12)
                 PodSearchField(store: store, actions: actions)
             }
+            .padding(.horizontal, Self.inset)
             if let diagnostic = store.namespaceDiagnostic {
                 Text(diagnostic).font(.caption).foregroundStyle(.orange)
+                    .padding(.horizontal, Self.inset)
+            }
+            if let picker = store.containerPicker {
+                ContainerChoiceBar(presentation: picker, actions: actions)
+                    .padding(.horizontal, Self.inset)
             }
             AuthSessionBanner(store: store, actions: actions)
             PodTableView(store: store, actions: actions)
         }
-        .padding(10)
+        .padding(.vertical, 10)
         // The detail pane must claim the slack, or the split view hands every extra point to the
         // sidebar and its width tracks the window instead of staying put.
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -65,9 +81,12 @@ private struct AuthSessionBanner: View {
 
     var body: some View {
         if !store.focusedAuthenticationSessions.isEmpty || store.authenticationDiagnostic != nil {
+            // Vertical padding only: horizontal padding here would indent this text past every other
+            // row in the pane, which is the ragged edge this inset exists to remove.
             AuthProgressView(store: store, actions: actions)
-                .padding(8)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
+                .padding(.horizontal, PodsPane.inset)
+                .padding(.vertical, 8)
+                .background(Color(nsColor: .controlBackgroundColor))
         }
     }
 }

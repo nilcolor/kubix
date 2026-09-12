@@ -179,6 +179,21 @@ import KubixCore
         stage = "native log viewer and terminal preservation"
         evidence["logs"] = try await PodLogNativeValidation.check(fixture, window: window, table: table)
         try await checkClusterSwitchAndLayout(fixture, window: window, views: views, selected: second)
+        stage = "deck opens at half height"
+        guard let deckHost = views[1].enclosingScrollView?.superview ?? views[1].superview else {
+            throw Failure.assertion
+        }
+        let paneHeight = deckHost.window?.contentView?.bounds.height ?? 0
+        let terminalHeight = views[1].visibleRect.height
+        // Half the detail pane, not the sliver an automatic split chose.
+        guard paneHeight > 0, terminalHeight >= paneHeight * 0.3 else {
+            evidence["deckHeight"] = String(format: "terminal %.1f of pane %.1f", terminalHeight, paneHeight)
+            throw Failure.assertion
+        }
+        evidence["deckHeight"] = String(
+            format: "terminal %.1f of pane %.1f at the default half split", terminalHeight, paneHeight
+        )
+
         stage = "session target identity and lifetime"
         guard fixture.store.execSessions.map(\.target) == targets,
               actions.surface(for: first) === views[0], actions.surface(for: second) === views[1],
@@ -230,6 +245,7 @@ import KubixCore
                   namespaceHeight(in: window) > 0, namespaceHeight(in: window) <= 40 else { throw Failure.assertion }
         }
         evidence["sidebar"] = try await PodSidebarValidation.check(fixture, window: window, widths: sidebarWidths)
+        evidence["paneAlignment"] = try PodSidebarValidation.checkPaneAlignment(window: window, table: switched)
     }
 
     private enum Failure: Error { case assertion, timeout }

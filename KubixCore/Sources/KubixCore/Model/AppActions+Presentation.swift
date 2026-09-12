@@ -40,6 +40,12 @@ public extension AppActions {
         if store.sidebarWidth != clamped { store.sidebarWidth = clamped }
     }
 
+    func setDeckFraction(_ value: Double) {
+        guard !stopped, value.isFinite else { return }
+        let clamped = min(AppStore.deckFractionMaximum, max(AppStore.deckFractionMinimum, value))
+        if store.deckFraction != clamped { store.deckFraction = clamped }
+    }
+
     func setNamespaceInput(_ value: String) { store.namespaceDraft = value; store.namespaceDiagnostic = nil }
     func setShowingSettings(_ value: Bool) {
         store.showingSettings = value

@@ -44,6 +44,14 @@ public final class AppStore {
     public internal(set) var selectedExecSessionID: UUID?
     public internal(set) var surfaceRevision = 0
 
+    /// The exec/log deck's share of the detail pane. Half by default: a shell is the reason the deck
+    /// exists, and the old automatic split opened it barely tall enough to read two lines.
+    public internal(set) var deckFraction = AppStore.deckFractionDefault
+
+    public static let deckFractionDefault: Double = 0.5
+    public static let deckFractionMinimum: Double = 0.15
+    public static let deckFractionMaximum: Double = 0.85
+
     public static let sidebarWidthDefault: Double = 260
     public static let sidebarWidthMinimum: Double = 160
     public static let sidebarWidthMaximum: Double = 560

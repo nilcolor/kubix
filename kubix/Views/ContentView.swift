@@ -17,24 +17,29 @@ struct ContentView: View {
             // Above the detail pane: as the middle child it is drawn first, and the detail column
             // would otherwise shadow the right half of the grab strip.
             SidebarResizeHandle(actions: actions).zIndex(1)
-            VSplitView {
-                detail(store: store, actions: actions).frame(minHeight: 200)
-                // The deck is omitted rather than collapsed: a zero-height split child still reserves
-                // its divider, and an empty placeholder is not worth a sixth of a fresh window.
-                if hasSessions(store) {
-                    ExecSessionDeck(store: store, actions: actions).frame(minHeight: 160)
+            // Explicit heights rather than a VSplitView, for the reason the sidebar is explicit: the
+            // split view chose its own division and opened a shell barely tall enough to read, with
+            // no way to say "half". The deck is omitted rather than collapsed when empty, because a
+            // zero-height split child still reserves its divider.
+            GeometryReader { proxy in
+                let deck = hasSessions(store) ? (proxy.size.height * store.deckFraction).rounded() : 0
+                VStack(spacing: 0) {
+                    // One instance, height-adjusted: branching on the session count would give the
+                    // pods pane a different identity with and without a deck, so opening the first
+                    // shell would rebuild the table and drop its selection.
+                    detail(store: store, actions: actions)
+                        .frame(height: max(120, proxy.size.height - deck))
+                    if deck > 0 {
+                        DeckResizeHandle(actions: actions, total: proxy.size.height)
+                        ExecSessionDeck(store: store, actions: actions).frame(height: deck)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 1000, minHeight: 600)
         .sheet(isPresented: Binding(get: { store.showingSettings }, set: { actions.setShowingSettings($0) })) {
             AuthSettingsView(store: store, actions: actions)
-        }
-        .sheet(item: Binding(get: { store.containerPicker }, set: { value in
-            if value == nil, let picker = store.containerPicker { actions.cancelPodShell(selectionID: picker.id) }
-        })) { picker in
-            ContainerPicker(presentation: picker, actions: actions)
         }
         .task {
             if !store.hasLoadedConfiguration { await actions.loadConfiguration() }

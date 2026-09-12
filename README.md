@@ -77,17 +77,20 @@ exec paths resolve against the kubeconfig file that supplied the entry.
    permission is not required**, and typing a known name works either way.
    Typing alone is a draft — committing re-lists only while **Pods** is
    selected on a connected cluster.
-5. Use the **Search** field, **Wide**, column sorting, and arrow-key selection.
+5. Use **Shell** and **Logs** above the table, or a row's context menu, or Return
+   on a row. When a pod has several eligible containers the choice appears as a
+   bar above the table rather than a dialog, so the pod list stays visible.
+6. Use the **Search** field, **Wide**, column sorting, and arrow-key selection.
    Columns come from the server's Table schema. Pages are collected completely
    before watching, and a complete list says **Listed** while its watch is still
    being established — an idle namespace can wait about a minute for the
    apiserver's first bookmark, and those rows are already correct.
    Reconnecting/failed rows are explicitly last-known data.
    **Retry pods** uses the committed target, not an unfinished namespace draft.
-6. **Disconnect** abandons that cluster's watch. Running shells and log tails
+7. **Disconnect** abandons that cluster's watch. Running shells and log tails
    are not closed: they keep their original context, namespace, pod and
    container, and tails pause as they do for any scope change.
-7. Press Return on a row or use **Shell** on its context menu. Kubix fetches
+8. Press Return on a row or use **Shell** on its context menu. Kubix fetches
    fresh Pod details and checks the row UID before selecting a container.
    Only **running regular containers** are eligible; readiness is not required.
    Multiple eligible containers get a picker, preferring an eligible

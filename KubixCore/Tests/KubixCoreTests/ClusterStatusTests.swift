@@ -146,11 +146,30 @@ private actor ClusterTestLoader: AppConfigurationLoading {
         #expect(store.sidebarWidth == AppStore.sidebarWidthMaximum)
     }
 
+    @Test func theDeckOpensAtHalfAndClampsToItsBounds() throws {
+        let store = AppStore()
+        let actions = actions(store)
+        defer { actions.shutdown() }
+        // A shell is the reason the deck exists; the old automatic split opened it barely readable.
+        #expect(store.deckFraction == 0.5)
+
+        actions.setDeckFraction(0.3)
+        #expect(store.deckFraction == 0.3)
+        actions.setDeckFraction(0)
+        #expect(store.deckFraction == AppStore.deckFractionMinimum)
+        actions.setDeckFraction(1)
+        #expect(store.deckFraction == AppStore.deckFractionMaximum)
+        actions.setDeckFraction(.nan)
+        #expect(store.deckFraction == AppStore.deckFractionMaximum)
+    }
+
     @Test func aStoppedOwnerIgnoresAResize() throws {
         let store = AppStore()
         let actions = actions(store)
         actions.shutdown()
         actions.setSidebarWidth(400)
+        actions.setDeckFraction(0.2)
         #expect(store.sidebarWidth == AppStore.sidebarWidthDefault)
+        #expect(store.deckFraction == AppStore.deckFractionDefault)
     }
 }

@@ -19,14 +19,17 @@ struct PodTableView: View {
                 Spacer(minLength: 0)
                 if presentation.state == .failed { Button("Retry pods") { actions.refreshPods() } }
             }
+            .padding(.horizontal, textInset)
             if store.isLoadingPodDetails {
                 HStack {
                     ProgressView().controlSize(.small)
                     Text("Loading fresh Pod details…").font(.caption)
                 }
+                .padding(.horizontal, textInset)
             }
             if let diagnostic = store.podShellDiagnostic {
                 Text(diagnostic).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
+                    .padding(.horizontal, textInset)
             }
             if let diagnostic = store.podLogDiagnostic {
                 Text(diagnostic).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
@@ -34,6 +37,10 @@ struct PodTableView: View {
             NativePodTable(presentation: presentation, actions: actions)
         }
     }
+
+    /// Everything except the table carries the pane's inset; the table bleeds to the edge and insets
+    /// its own cells, so one leading edge runs down the whole pane.
+    private var textInset: CGFloat { PodsPane.inset }
 }
 
 /// NSTableView supports runtime-defined columns on macOS 14, including repeated server labels.
@@ -58,6 +65,8 @@ struct NativePodTable: NSViewRepresentable {
         table.usesAlternatingRowBackgroundColors = true
         table.columnAutoresizingStyle = .noColumnAutoresizing
         table.rowHeight = 24
+        // Explicit, not .automatic: the row inset is what the pane's own inset has to match.
+        table.style = .inset
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = true

@@ -86,3 +86,35 @@ struct ExecSessionDeck: View {
         }
     }
 }
+
+/// Drags the boundary between the pod table and the session deck. Same shape as the sidebar handle:
+/// the width follows the absolute cursor position rather than accumulated translation, and the grab
+/// strip is taller than the line it draws.
+struct DeckResizeHandle: View {
+    let actions: AppActions
+    let total: CGFloat
+
+    var body: some View {
+        Rectangle()
+            .fill(Color(nsColor: .separatorColor))
+            .frame(height: 1)
+            .frame(maxWidth: .infinity)
+            .overlay { strip }
+    }
+
+    private var strip: some View {
+        Color.clear
+            .frame(height: 10)
+            .contentShape(Rectangle())
+            .onHover { inside in
+                if inside { NSCursor.resizeUpDown.set() } else { NSCursor.arrow.set() }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .onChanged { value in
+                        guard total > 0 else { return }
+                        actions.setDeckFraction(1 - value.location.y / total)
+                    }
+            )
+    }
+}

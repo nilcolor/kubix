@@ -39,6 +39,24 @@ import KubixCore
             + "out-of-range widths clamp to the store's bounds"
     }
 
+    /// The pane has one leading edge: the namespace control, the status line and the table's first
+    /// column all start at the same x, or the eye reads the column as broken.
+    static func checkPaneAlignment(window: NSWindow, table: NSTableView) throws -> String {
+        guard let namespace = namespaceField(in: window),
+              let cell = table.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTextField,
+              let content = window.contentView else { throw Failure.misaligned }
+        let namespaceX = namespace.convert(namespace.bounds, to: content).minX
+        let cellX = cell.convert(cell.bounds, to: content).minX
+        guard abs(namespaceX - cellX) <= 1 else { throw Failure.misaligned }
+        return String(format: "namespace control and first cell text share x = %.1f", namespaceX)
+    }
+
+    private static func namespaceField(in window: NSWindow) -> NSTextField? {
+        window.contentView.flatMap {
+            descendants($0).compactMap { $0 as? NSTextField }.first { $0.placeholderString == "Namespace" }
+        }
+    }
+
     private static func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
 
     /// SwiftUI's List is itself an NSTableView, so the sidebar is the one that is not the pod table.
@@ -51,6 +69,7 @@ import KubixCore
     private enum Failure: Error {
         case resizedWithWindow([CGFloat])
         case contentWiderThanColumn(CGFloat)
+        case misaligned
     }
 }
 #endif
