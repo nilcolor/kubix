@@ -40,6 +40,10 @@ struct ClusterSidebar: View {
 
 /// Hand-rolled disclosure rather than a `DisclosureGroup`: the cluster's own row is a selection —
 /// clicking it opens the cluster overview — and a group's label row cannot carry a tag.
+///
+/// Only a connected cluster discloses anything. A disconnected one is a single row with no chevron:
+/// with this many contexts, a per-row Connect button and a repeated "not connected" sentence are the
+/// bulk of the sidebar, and both say what the overview pane says with room to explain it.
 private struct ClusterSection: View {
     let cluster: ClusterStatus
     let actions: AppActions
@@ -48,52 +52,36 @@ private struct ClusterSection: View {
     var body: some View {
         ClusterRow(cluster: cluster, expanded: $expanded, actions: actions)
             .tag(SidebarSelection.cluster(cluster.id))
-        if expanded { child }
-    }
-
-    @ViewBuilder private var child: some View {
-        if cluster.state == .connected {
+        if cluster.state == .connected, expanded {
             Label("Pods", systemImage: "shippingbox")
                 .padding(.leading, Self.indent)
                 .tag(SidebarSelection.pods(cluster.id))
-        } else {
-            Text(detail)
-                .font(.caption)
-                .foregroundStyle(cluster.state.isFailed ? .orange : .secondary)
-                .textSelection(.enabled)
-                .padding(.leading, Self.indent)
-                .selectionDisabled()
         }
     }
 
     private static let indent: CGFloat = 20
-
-    private var detail: String {
-        switch cluster.state {
-        case .failed(let reason): reason
-        case .connecting: "Connecting…"
-        default: "Not connected. Connect to browse this cluster."
-        }
-    }
 }
 
 private struct ClusterRow: View {
     let cluster: ClusterStatus
     @Binding var expanded: Bool
     let actions: AppActions
-    @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 6) {
-            Button { expanded.toggle() } label: {
-                Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .rotationEffect(.degrees(expanded ? 90 : 0))
-                    .frame(width: 10)
+            if cluster.state == .connected {
+                Button { expanded.toggle() } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                        .frame(width: 10)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(expanded ? "Collapse" : "Expand")
+            } else {
+                Spacer().frame(width: 10)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(expanded ? "Collapse" : "Expand")
             StateDot(state: cluster.state)
             Text(cluster.context.name).lineLimit(1).help(cluster.context.name)
             if cluster.context.cluster.insecureSkipTLSVerify == true {
@@ -102,32 +90,14 @@ private struct ClusterRow: View {
                     .help("TLS certificate verification is disabled for this context.")
             }
             Spacer(minLength: 4)
-            action
+            if cluster.state == .connecting { ProgressView().controlSize(.small) }
         }
-        .onHover { hovering = $0 }
         .contextMenu {
             if cluster.state == .connected {
                 Button("Disconnect") { actions.disconnect(contextNamed: cluster.id) }
             } else {
                 Button(cluster.state.isFailed ? "Retry Connect" : "Connect") { actions.connect(contextNamed: cluster.id) }
             }
-        }
-    }
-
-    @ViewBuilder private var action: some View {
-        switch cluster.state {
-        case .connecting:
-            ProgressView().controlSize(.small)
-        case .connected:
-            // Disconnecting is rare and destructive to a live watch, so it stays behind hover.
-            Button("Disconnect") { actions.disconnect(contextNamed: cluster.id) }
-                .buttonStyle(.plain)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .opacity(hovering ? 1 : 0)
-        case .disconnected, .failed:
-            Button(cluster.state.isFailed ? "Retry" : "Connect") { actions.connect(contextNamed: cluster.id) }
-                .controlSize(.small)
         }
     }
 }
@@ -156,7 +126,7 @@ private struct StateDot: View {
         switch state {
         case .connected: "Connected"
         case .connecting: "Connecting"
-        case .failed: "Connection failed"
+        case .failed(let reason): "Connection failed: \(reason)"
         case .disconnected: "Not connected"
         }
     }
