@@ -32,14 +32,6 @@ public extension AppActions {
         refreshPluginPresentation()
     }
 
-    /// Clamped here rather than at the drag site, so every caller — a gesture, a restored value, a
-    /// future menu command — lands inside the same bounds.
-    func setSidebarWidth(_ value: Double) {
-        guard !stopped, value.isFinite else { return }
-        let clamped = min(AppStore.sidebarWidthMaximum, max(AppStore.sidebarWidthMinimum, value))
-        if store.sidebarWidth != clamped { store.sidebarWidth = clamped }
-    }
-
     func setDeckFraction(_ value: Double) {
         guard !stopped, value.isFinite else { return }
         let clamped = min(AppStore.deckFractionMaximum, max(AppStore.deckFractionMinimum, value))

@@ -31,6 +31,7 @@ public struct PodTablePresentation: Equatable, Sendable {
     public let selectedUID: String?
     public let state: State
     public let message: String
+    public let total: Int
 
     public init(
         rows source: [PodRow], columns schema: [KubernetesTable.ColumnDefinition]?,
@@ -65,7 +66,22 @@ public struct PodTablePresentation: Equatable, Sendable {
         let rows = displayed.map { row in Row(id: row.id, cells: columns.map { row.cells[$0.id].displayText }) }
         self.rows = rows
         self.selectedUID = selectedUID.flatMap { uid in rows.contains { $0.id == uid } ? uid : nil }
+        total = source.count
         (state, message) = Self.status(connection, valid: valid, total: source.count, visible: rows.count)
+    }
+
+    /// The short form for a window subtitle: a count and its state, without the sentence the pane
+    /// uses when something needs acting on.
+    public var subtitle: String {
+        switch state {
+        case .idle: "Not connected"
+        case .connecting: rows.isEmpty ? "Connecting…" : "Reconnecting…"
+        case .listed: "Listed"
+        case .failed: "Failed"
+        case .empty: "No pods"
+        case .filteredEmpty: "No matches"
+        case .live: rows.count == total ? "\(total) pods" : "\(rows.count) of \(total) pods"
+        }
     }
 
     private static let locale = Locale(identifier: "en_US_POSIX")

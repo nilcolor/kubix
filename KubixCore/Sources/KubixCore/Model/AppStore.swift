@@ -7,9 +7,6 @@ public final class AppStore {
     public internal(set) var contexts: [ResolvedContext]
     public internal(set) var clusters: [ClusterStatus]
     public internal(set) var sidebarSelection: SidebarSelection?
-    /// Drag-set, clamped, and deliberately independent of the window: a resize must move the detail
-    /// pane, not this. Bounds follow agterm's sidebar, whose rows hold comparable names.
-    public internal(set) var sidebarWidth = AppStore.sidebarWidthDefault
     public internal(set) var selectedContext: ResolvedContext?
     public internal(set) var namespaces: [String]
     public internal(set) var selectedNamespace: String
@@ -51,10 +48,6 @@ public final class AppStore {
     public static let deckFractionDefault: Double = 0.5
     public static let deckFractionMinimum: Double = 0.15
     public static let deckFractionMaximum: Double = 0.85
-
-    public static let sidebarWidthDefault: Double = 260
-    public static let sidebarWidthMinimum: Double = 160
-    public static let sidebarWidthMaximum: Double = 560
 
     public var podTable: PodTablePresentation {
         PodTablePresentation(

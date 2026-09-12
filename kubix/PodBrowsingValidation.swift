@@ -360,8 +360,14 @@ import KubixCore
     private static func table(in window: NSWindow) -> NSTableView? {
         window.contentView.flatMap { descendants($0).compactMap { $0 as? NSTableView }.first { $0.identifier?.rawValue == "pod-table" } }
     }
+    /// From the window's frame view, not its content view: toolbar controls are siblings of the
+    /// content, so a search rooted there cannot see the namespace combo or the search field.
+    static func windowRoot(_ window: NSWindow) -> NSView? { window.contentView?.superview ?? window.contentView }
+
     private static func field(_ placeholder: String, in window: NSWindow) -> NSTextField? {
-        window.contentView.flatMap { descendants($0).compactMap { $0 as? NSTextField }.first { $0.placeholderString == placeholder } }
+        windowRoot(window).flatMap {
+            descendants($0).compactMap { $0 as? NSTextField }.first { $0.placeholderString == placeholder }
+        }
     }
     static func edit(_ value: String, placeholder: String, in window: NSWindow) async throws {
         guard let field = field(placeholder, in: window) else { throw Failure.assertion }

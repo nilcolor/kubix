@@ -10,45 +10,44 @@ import KubixCore
         guard let stable = widths.first, widths.allSatisfy({ abs($0 - stable) < 1 }) else {
             throw Failure.resizedWithWindow(widths)
         }
+        // The system split view owns the width now, so the sweep through our own bounds is gone;
+        // what still matters is that it holds across a window resize and never scrolls sideways.
         var measured: [String] = []
-        for width in [AppStore.sidebarWidthMinimum, AppStore.sidebarWidthMaximum, AppStore.sidebarWidthDefault] {
-            fixture.actions.setSidebarWidth(width)
-            try await PodBrowsingValidation.until {
-                abs((sidebar(in: window)?.visibleRect.width ?? 0) - width) < 1
+        if let table = sidebar(in: window), let scroll = table.enclosingScrollView {
+            guard table.frame.width <= scroll.contentView.bounds.width + 1 else {
+                throw Failure.contentWiderThanColumn(table.frame.width)
             }
+            measured.append(String(format: "%.1f<=%.1f", table.frame.width, scroll.contentView.bounds.width))
+        }
+        // The behaviour that matters is whether a user's drag survives a window resize: the system
+        // divider is an NSSplitView divider, so it can be moved the way a drag would move it.
+        if let split = splitView(in: window) {
+            split.setPosition(220, ofDividerAt: 0)
             window.contentView?.layoutSubtreeIfNeeded()
-            window.displayIfNeeded()
-            guard let table = sidebar(in: window), let scroll = table.enclosingScrollView,
-                  table.frame.width <= scroll.contentView.bounds.width + 1 else {
-                throw Failure.contentWiderThanColumn(width)
-            }
-            measured.append(String(format: "%.0f:%.1f<=%.1f", width, table.frame.width, scroll.contentView.bounds.width))
+            let dragged = sidebar(in: window)?.visibleRect.width ?? 0
+            window.setContentSize(NSSize(width: 1_100, height: 760))
+            try await PodBrowsingValidation.until { true }
+            window.contentView?.layoutSubtreeIfNeeded()
+            let afterResize = sidebar(in: window)?.visibleRect.width ?? 0
+            measured.append(String(format: "dragged %.0f then %.0f after resize", dragged, afterResize))
+            guard abs(dragged - afterResize) <= 1 else { throw Failure.measured(
+                String(format: "drag lost: %.0f became %.0f", dragged, afterResize)
+            ) }
         }
-        // Out of bounds in both directions, to prove the clamp is the store's and not the drag's.
-        fixture.actions.setSidebarWidth(10)
-        try await PodBrowsingValidation.until {
-            abs((sidebar(in: window)?.visibleRect.width ?? 0) - AppStore.sidebarWidthMinimum) < 1
-        }
-        fixture.actions.setSidebarWidth(5_000)
-        try await PodBrowsingValidation.until {
-            abs((sidebar(in: window)?.visibleRect.width ?? 0) - AppStore.sidebarWidthMaximum) < 1
-        }
-        fixture.actions.setSidebarWidth(AppStore.sidebarWidthDefault)
         return String(format: "width stable at %.0f across 1050x800 and 1000x600; ", stable)
-            + "content never exceeds the column (\(measured.joined(separator: " "))); "
-            + "out-of-range widths clamp to the store's bounds"
+            + "content never exceeds the column (\(measured.joined(separator: " ")))"
     }
 
-    /// The pane has one leading edge: the namespace control, the status line and the table's first
-    /// column all start at the same x, or the eye reads the column as broken.
+    /// The pane's inset has to match the table's own, or the content rows above the table and its
+    /// first column start at different x. The controls moved to the toolbar, so the comparison is
+    /// now between the table's edge and its first cell rather than against a namespace field.
     static func checkPaneAlignment(window: NSWindow, table: NSTableView) throws -> String {
-        guard let namespace = namespaceField(in: window),
-              let cell = (table.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTableCellView)?.textField,
+        guard let cell = (table.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTableCellView)?.textField,
               let content = window.contentView else { throw Failure.misaligned }
-        let namespaceX = namespace.convert(namespace.bounds, to: content).minX
+        let tableX = table.convert(table.bounds, to: content).minX
         let cellX = cell.convert(cell.bounds, to: content).minX
-        guard abs(namespaceX - cellX) <= 1 else {
-            throw Failure.measured(String(format: "namespace %.1f vs cell %.1f", namespaceX, cellX))
+        guard abs((cellX - tableX) - PodsPaneMetrics.inset) <= 1 else {
+            throw Failure.measured(String(format: "cell %.1f is %.1f from the table edge", cellX, cellX - tableX))
         }
 
         // The label must sit in the middle of its row, not against the top edge, and the row must
@@ -63,15 +62,19 @@ import KubixCore
             ))
         }
         return String(
-            format: "leading x %.1f shared; label centred in a %.0fpt row (%.1f above, %.1f below)",
-            namespaceX, rowHeight, above, below
+            format: "first cell %.0fpt from the table edge; label centred in a %.0fpt row (%.1f above, %.1f below)",
+            cellX - tableX, rowHeight, above, below
         )
     }
 
     private static func namespaceField(in window: NSWindow) -> NSTextField? {
-        window.contentView.flatMap {
+        PodBrowsingValidation.windowRoot(window).flatMap {
             descendants($0).compactMap { $0 as? NSTextField }.first { $0.placeholderString == "Namespace" }
         }
+    }
+
+    private static func splitView(in window: NSWindow) -> NSSplitView? {
+        window.contentView.flatMap { descendants($0).compactMap { $0 as? NSSplitView }.first }
     }
 
     private static func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }

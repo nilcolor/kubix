@@ -6,21 +6,14 @@ struct ContentView: View {
     var body: some View {
         let store = composition.store
         let actions = composition.actions
-        // Not a NavigationSplitView. Given a width range it divides a window resize between both
-        // columns, so the sidebar shrank until it clipped the chevron and the start of every cluster
-        // name; given a fixed width it stops reacting to that width changing at all, so the column
-        // could not be dragged. An HStack with an explicit width and our own handle gives both
-        // properties — the same structure agterm settled on, for the same reason.
-        HStack(spacing: 0) {
+        // The system split view, for the sidebar material, the collapse-past-minimum behaviour and
+        // the toolbar's sidebar toggle. The detail column claims the width explicitly: without that
+        // the split view hands its slack to the sidebar, which is what made the column track the
+        // window the first time round.
+        NavigationSplitView {
             ClusterSidebar(store: store, actions: actions)
-                .frame(width: store.sidebarWidth)
-            // Above the detail pane: as the middle child it is drawn first, and the detail column
-            // would otherwise shadow the right half of the grab strip.
-            SidebarResizeHandle(actions: actions).zIndex(1)
-            // Explicit heights rather than a VSplitView, for the reason the sidebar is explicit: the
-            // split view chose its own division and opened a shell barely tall enough to read, with
-            // no way to say "half". The deck is omitted rather than collapsed when empty, because a
-            // zero-height split child still reserves its divider.
+                .navigationSplitViewColumnWidth(min: 180, ideal: 260, max: 360)
+        } detail: {
             GeometryReader { proxy in
                 let deck = hasSessions(store) ? (proxy.size.height * store.deckFraction).rounded() : 0
                 VStack(spacing: 0) {
@@ -34,8 +27,10 @@ struct ContentView: View {
                         ExecSessionDeck(store: store, actions: actions).frame(height: deck)
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            // A real minimum, not just "any width": the split view reads an unbounded maximum as no
+            // demand at all and grows the sidebar to its own maximum instead.
+            .frame(minWidth: 640, maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 1000, minHeight: 600)
         .sheet(isPresented: Binding(get: { store.showingSettings }, set: { actions.setShowingSettings($0) })) {

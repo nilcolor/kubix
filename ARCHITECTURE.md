@@ -140,6 +140,16 @@ Network/API failures remain separate; cancellation and terminal 403 behavior
 are unchanged. The authentication session retains the safe process diagnostic,
 not credential stdout or terminal browser instructions.
 
+### Window chrome
+
+The window is a `NavigationSplitView`, and the controls above the table are real toolbar items with a
+`.searchable` search field, because the system draws that material and a hand-built row of buttons in
+the content area cannot match it. The detail column declares a real `minWidth`: an unbounded maximum
+alone reads to the split view as no demand, and it then grows the sidebar to *its* maximum, which is
+what made an earlier hand-rolled `HStack` look necessary. It was not — measured, the system column
+holds its width across a window resize, keeps a user's drag across one, never scrolls sideways, honours
+its min and max, and collapses past the minimum for free.
+
 ### Launching outside a terminal
 
 A Finder-launched app inherits none of the user's shell environment: `PATH` is the

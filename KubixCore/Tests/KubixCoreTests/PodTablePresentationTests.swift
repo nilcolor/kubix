@@ -153,3 +153,25 @@ private func present(
         #expect(reconnecting.message.contains("last-known"))
     }
 }
+
+@Suite struct SubtitleTests {
+    /// The window subtitle is a count and a state, not the pane's sentence.
+    @Test func theSubtitleCountsWhatIsShownAgainstWhatExists() throws {
+        let table = try presentationTable(cells: [#"["zulu"]"#, #"["alpha"]"#])
+        let rows = try table.rows.map(PodRow.init)
+
+        #expect(PodTablePresentation(rows: rows, columns: table.columnDefinitions, connection: .live).subtitle == "2 pods")
+        #expect(PodTablePresentation(
+            rows: rows, columns: table.columnDefinitions, connection: .live, filter: "alpha"
+        ).subtitle == "1 of 2 pods")
+        #expect(PodTablePresentation(rows: [], columns: table.columnDefinitions, connection: .live).subtitle == "No pods")
+        #expect(PodTablePresentation(
+            rows: rows, columns: table.columnDefinitions, connection: .live, filter: "absent"
+        ).subtitle == "No matches")
+        #expect(PodTablePresentation(rows: rows, columns: table.columnDefinitions, connection: .listed).subtitle == "Listed")
+        #expect(PodTablePresentation(rows: [], columns: nil, connection: .idle).subtitle == "Not connected")
+        #expect(PodTablePresentation(
+            rows: [], columns: nil, connection: .failed(.invalidRequest)
+        ).subtitle == "Failed")
+    }
+}
