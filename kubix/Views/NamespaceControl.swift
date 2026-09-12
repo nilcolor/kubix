@@ -37,6 +37,12 @@ struct NamespaceControl: View {
 /// Wide enough for an ordinary namespace name, bounded so a long one cannot push the page's actions
 /// off the header.
 private enum NamespaceMetrics {
+    /// The same size class as the round actions beside it, so the control row shares one height.
+    /// AppKit only gained the SwiftUI size the actions use in macOS 26; below that, one step down.
+    static var controlSize: NSControl.ControlSize {
+        if #available(macOS 26.0, *) { .extraLarge } else { .large }
+    }
+
     static func size(fitting: CGSize) -> CGSize {
         CGSize(width: min(max(fitting.width, 150), 240), height: fitting.height)
     }
@@ -59,6 +65,7 @@ private struct NamespaceField: NSViewRepresentable {
         box.identifier = NSUserInterfaceItemIdentifier("pod-namespace")
         box.setAccessibilityIdentifier("pod-namespace")
         box.completes = true
+        box.controlSize = NamespaceMetrics.controlSize
         box.isButtonBordered = true
         box.numberOfVisibleItems = 12
         box.delegate = context.coordinator
@@ -136,6 +143,7 @@ private struct NamespaceMenu: NSViewRepresentable {
         let button = NSPopUpButton(frame: .zero, pullsDown: false)
         button.identifier = NSUserInterfaceItemIdentifier("pod-namespace-menu")
         button.setAccessibilityIdentifier("pod-namespace-menu")
+        button.controlSize = NamespaceMetrics.controlSize
         button.target = context.coordinator
         button.action = #selector(Coordinator.choose(_:))
         context.coordinator.observe(button)

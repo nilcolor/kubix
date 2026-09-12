@@ -8,18 +8,22 @@ struct PodTableView: View {
     var body: some View {
         let presentation = store.podTable
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top) {
-                // A listed snapshot is still waiting on its watch, so the spinner stays until live.
-                if presentation.state == .connecting || presentation.state == .listed {
-                    ProgressView().controlSize(.small)
+            // A live count is the window subtitle's job; this line is for the states that need a
+            // sentence — connecting, empty, no matches, or a failure with its Retry.
+            if presentation.state != .live {
+                HStack(alignment: .top) {
+                    // A listed snapshot is still waiting on its watch, so the spinner stays until live.
+                    if presentation.state == .connecting || presentation.state == .listed {
+                        ProgressView().controlSize(.small)
+                    }
+                    Text(presentation.message)
+                        .foregroundStyle(presentation.state == .failed ? Color.orange : Color.secondary)
+                        .font(.caption).textSelection(.enabled)
+                    Spacer(minLength: 0)
+                    if presentation.state == .failed { Button("Retry pods") { actions.refreshPods() } }
                 }
-                Text(presentation.message)
-                    .foregroundStyle(presentation.state == .failed ? Color.orange : Color.secondary)
-                    .font(.caption).textSelection(.enabled)
-                Spacer(minLength: 0)
-                if presentation.state == .failed { Button("Retry pods") { actions.refreshPods() } }
+                .padding(.horizontal, textInset)
             }
-            .padding(.horizontal, textInset)
             if store.isLoadingPodDetails {
                 HStack {
                     ProgressView().controlSize(.small)

@@ -40,7 +40,11 @@ struct ContentView: View {
             if !store.hasLoadedConfiguration { await actions.loadConfiguration() }
             #if DEBUG
             if let fixture = composition.podValidation {
-                await PodBrowsingValidation.run(fixture)
+                if PodUIPreview.isEnabled {
+                    await PodUIPreview.run(fixture)
+                } else {
+                    await PodBrowsingValidation.run(fixture)
+                }
                 return
             }
             if AWSVaultIsolationValidation.root != nil {

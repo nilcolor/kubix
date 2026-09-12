@@ -14,9 +14,20 @@ struct PodsPane: View {
     let store: AppStore
     let actions: AppActions
 
+    private var subtitle: String {
+        let table = store.podTable
+        switch table.state {
+        case .live: return table.subtitle + " · live"
+        case .listed: return table.subtitle + " · waiting for live updates"
+        case .connecting: return table.subtitle + " · connecting"
+        case .failed: return table.subtitle + " · not updating"
+        default: return table.subtitle
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            PodsHeader(store: store, actions: actions)
+            PodsActions(store: store, actions: actions)
                 .padding(.horizontal, Self.inset)
             if let diagnostic = store.namespaceDiagnostic {
                 Text(diagnostic).font(.caption).foregroundStyle(.orange)
@@ -31,17 +42,12 @@ struct PodsPane: View {
         }
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        // Native controls in the native place: the system draws the toolbar's material, which is what
-        // a hand-built row of buttons inside the content area can never match.
-        // The count belongs beside the window title, where macOS puts a collection's size, rather
-        // than as another line of body text above the table.
+        // The system's title, not a large one drawn in the content: this is where macOS puts what a
+        // window is showing and how much of it, and it is the toolbar's own leading region.
         .navigationTitle("Pods")
-        .navigationSubtitle(store.podTable.subtitle)
-        // The page draws its own title, and the toolbar's copy of it sits in the leading region that
-        // spans the sidebar column, where it crowds whatever else is placed there.
-        .toolbarTitleHidden()
+        .navigationSubtitle(subtitle)
         .toolbar {
-            ToolbarItemGroup {
+            ToolbarItemGroup(placement: .primaryAction) {
                 Button { actions.refreshPods() } label: { Image(systemName: "arrow.triangle.2.circlepath") }
                     .help("List and watch this namespace again")
                 Toggle("Wide", isOn: Binding(get: { store.podWide }, set: { actions.setPodWide($0) }))
@@ -56,47 +62,28 @@ struct PodsPane: View {
     }
 }
 
-/// The page's own header: what this list is, how current it is, and the two actions that act on the
-/// selected row. Round icon buttons rather than toolbar text, so a per-selection action sits with the
-/// selection rather than with the view-wide controls.
-private struct PodsHeader: View {
+/// The page's controls, in reading order: what this list is scoped to, then the two actions that act
+/// on the selected row. Left-aligned under the title, matched in height so the row reads as one group.
+private struct PodsActions: View {
     let store: AppStore
     let actions: AppActions
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Pods").font(.largeTitle.weight(.semibold))
-                Text(subtitle).font(.callout).foregroundStyle(.secondary)
+        HStack(spacing: 8) {
+            NamespaceControl(store: store, actions: actions)
+            RoundAction(
+                symbol: "apple.terminal", help: "Open a shell in the selected pod's running regular container",
+                disabled: store.podTable.selectedUID == nil
+            ) {
+                if let uid = store.podTable.selectedUID { actions.openPodShell(uid: uid) }
             }
-            Spacer(minLength: 12)
-            HStack(spacing: 8) {
-                NamespaceControl(store: store, actions: actions)
-                RoundAction(
-                    symbol: "apple.terminal", help: "Open a shell in the selected pod's running regular container",
-                    disabled: store.podTable.selectedUID == nil
-                ) {
-                    if let uid = store.podTable.selectedUID { actions.openPodShell(uid: uid) }
-                }
-                RoundAction(
-                    symbol: "doc.text", help: "Follow the selected pod's container logs",
-                    disabled: store.podTable.selectedUID == nil
-                ) {
-                    actions.openPodLogs()
-                }
+            RoundAction(
+                symbol: "doc.text", help: "Follow the selected pod's container logs",
+                disabled: store.podTable.selectedUID == nil
+            ) {
+                actions.openPodLogs()
             }
-        }
-    }
-
-    private var subtitle: String {
-        let table = store.podTable
-        let scope = table.subtitle
-        switch table.state {
-        case .live: return scope + " · live"
-        case .listed: return scope + " · waiting for live updates"
-        case .connecting: return scope + " · connecting"
-        case .failed: return scope + " · not updating"
-        default: return scope
+            Spacer(minLength: 0)
         }
     }
 }
@@ -113,7 +100,9 @@ private struct RoundAction: View {
         }
         .buttonStyle(.bordered)
         .buttonBorderShape(.circle)
-        .controlSize(.large)
+        // The toolbar's own controls are drawn at this weight, and the page's row reads as an
+        // afterthought beside them at anything smaller.
+        .controlSize(.extraLarge)
         .disabled(disabled)
         .help(help)
     }
