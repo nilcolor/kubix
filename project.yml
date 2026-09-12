@@ -54,6 +54,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.nilcolor.kubix
         PRODUCT_NAME: kubix
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_FILE: kubix/Info.plist
         CODE_SIGN_ENTITLEMENTS: kubix/kubix.entitlements
         MARKETING_VERSION: "0.1.0"
