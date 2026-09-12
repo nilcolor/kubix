@@ -37,10 +37,10 @@ struct PodsPane: View {
         // than as another line of body text above the table.
         .navigationTitle("Pods")
         .navigationSubtitle(store.podTable.subtitle)
+        // The page draws its own title, and the toolbar's copy of it sits in the leading region that
+        // spans the sidebar column, where it crowds whatever else is placed there.
+        .toolbarTitleHidden()
         .toolbar {
-            ToolbarItem(placement: .navigation) {
-                NamespaceControl(store: store, actions: actions).frame(width: 200)
-            }
             ToolbarItemGroup {
                 Button { actions.refreshPods() } label: { Image(systemName: "arrow.triangle.2.circlepath") }
                     .help("List and watch this namespace again")
@@ -71,6 +71,7 @@ private struct PodsHeader: View {
             }
             Spacer(minLength: 12)
             HStack(spacing: 8) {
+                NamespaceControl(store: store, actions: actions)
                 RoundAction(
                     symbol: "apple.terminal", help: "Open a shell in the selected pod's running regular container",
                     disabled: store.podTable.selectedUID == nil
@@ -89,7 +90,7 @@ private struct PodsHeader: View {
 
     private var subtitle: String {
         let table = store.podTable
-        let scope = "\(table.subtitle) in \(store.selectedNamespace)"
+        let scope = table.subtitle
         switch table.state {
         case .live: return scope + " · live"
         case .listed: return scope + " · waiting for live updates"
@@ -133,5 +134,12 @@ private struct AuthSessionBanner: View {
                 .padding(.vertical, 8)
                 .background(Color(nsColor: .controlBackgroundColor))
         }
+    }
+}
+
+extension View {
+    /// `.title` is macOS 15+; on 14 the toolbar keeps its title and the page simply reads it twice.
+    @ViewBuilder func toolbarTitleHidden() -> some View {
+        if #available(macOS 15.0, *) { toolbar(removing: .title) } else { self }
     }
 }

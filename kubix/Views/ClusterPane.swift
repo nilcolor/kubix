@@ -29,6 +29,7 @@ struct ClusterPane: View {
         }
         .navigationTitle("Overview")
         .navigationSubtitle(cluster.context.name)
+        .toolbarTitleHidden()
     }
 }
 

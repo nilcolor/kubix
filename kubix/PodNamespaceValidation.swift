@@ -21,8 +21,10 @@ import KubixCore
             try await Task.sleep(for: .milliseconds(20))
         }
         guard await fixture.transport.namespaceRequests == listed else { throw Failure.assertion }
+        let geometry = try placement(of: menu, in: window)
         throttle = "native pop-up holds the cluster's four listed namespaces plus "
-            + "an Other item; three will-pop-up notifications inside the 30s window add no request"
+            + "an Other item; three will-pop-up notifications inside the 30s window add no request; "
+            + geometry
 
         await fixture.transport.failNamespaceList(.http(code: 403, resource: "namespaces"))
         fixture.actions.connect(contextNamed: "synthetic-second")
@@ -70,6 +72,18 @@ import KubixCore
 
     static func popUp(in window: NSWindow) -> NSPopUpButton? {
         control(in: window) as? NSPopUpButton
+    }
+
+    /// The control used to sit in the toolbar's leading region, which spans the sidebar column, so it
+    /// was drawn across the split divider. It belongs to the page, which means inside the content view
+    /// rather than in the titlebar hierarchy the toolbar lays out.
+    private static func placement(of control: NSView, in window: NSWindow) throws -> String {
+        guard let content = window.contentView, descendants(content).contains(control) else {
+            throw Failure.assertion
+        }
+        let size = control.frame.size
+        guard size.width >= 150, size.width <= 240, size.height <= 40 else { throw Failure.assertion }
+        return String(format: "sized %.0fx%.0f inside the page, not the toolbar", size.width, size.height)
     }
 
     private static func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }

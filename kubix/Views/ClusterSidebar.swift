@@ -38,30 +38,35 @@ struct ClusterSidebar: View {
     }
 }
 
+/// Hand-rolled disclosure rather than a `DisclosureGroup`: the cluster's own row is a selection —
+/// clicking it opens the cluster overview — and a group's label row cannot carry a tag.
 private struct ClusterSection: View {
     let cluster: ClusterStatus
     let actions: AppActions
     @State private var expanded = true
 
     var body: some View {
-        DisclosureGroup(isExpanded: $expanded) {
-            if cluster.state == .connected {
-                Label("Overview", systemImage: "square.grid.2x2")
-                    .tag(SidebarSelection.cluster(cluster.id))
-                Label("Pods", systemImage: "shippingbox")
-                    .tag(SidebarSelection.pods(cluster.id))
-            } else {
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(cluster.state.isFailed ? .orange : .secondary)
-                    .textSelection(.enabled)
-                    .selectionDisabled()
-            }
-        } label: {
-            ClusterRow(cluster: cluster, actions: actions)
-                .tag(SidebarSelection.cluster(cluster.id))
+        ClusterRow(cluster: cluster, expanded: $expanded, actions: actions)
+            .tag(SidebarSelection.cluster(cluster.id))
+        if expanded { child }
+    }
+
+    @ViewBuilder private var child: some View {
+        if cluster.state == .connected {
+            Label("Pods", systemImage: "shippingbox")
+                .padding(.leading, Self.indent)
+                .tag(SidebarSelection.pods(cluster.id))
+        } else {
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(cluster.state.isFailed ? .orange : .secondary)
+                .textSelection(.enabled)
+                .padding(.leading, Self.indent)
+                .selectionDisabled()
         }
     }
+
+    private static let indent: CGFloat = 20
 
     private var detail: String {
         switch cluster.state {
@@ -74,11 +79,21 @@ private struct ClusterSection: View {
 
 private struct ClusterRow: View {
     let cluster: ClusterStatus
+    @Binding var expanded: Bool
     let actions: AppActions
     @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 6) {
+            Button { expanded.toggle() } label: {
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(expanded ? 90 : 0))
+                    .frame(width: 10)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(expanded ? "Collapse" : "Expand")
             StateDot(state: cluster.state)
             Text(cluster.context.name).lineLimit(1).help(cluster.context.name)
             if cluster.context.cluster.insecureSkipTLSVerify == true {

@@ -34,6 +34,14 @@ struct NamespaceControl: View {
 
 }
 
+/// Wide enough for an ordinary namespace name, bounded so a long one cannot push the page's actions
+/// off the header.
+private enum NamespaceMetrics {
+    static func size(fitting: CGSize) -> CGSize {
+        CGSize(width: min(max(fitting.width, 150), 240), height: fitting.height)
+    }
+}
+
 /// `NSComboBox` rather than a plain field: it keeps the local history reachable while still accepting
 /// a name the cluster never listed. Placeholder and identifier are stable because the native check
 /// finds this control by them.
@@ -58,6 +66,12 @@ private struct NamespaceField: NSViewRepresentable {
         box.action = #selector(Coordinator.commit(_:))
         box.stringValue = store.namespaceDraft
         return box
+    }
+
+    /// Without this the representable accepts whatever width it is offered and the bezel is drawn
+    /// against a frame the control never sized itself for.
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSComboBox, context: Context) -> CGSize? {
+        NamespaceMetrics.size(fitting: nsView.fittingSize)
     }
 
     func updateNSView(_ box: NSComboBox, context: Context) {
@@ -126,6 +140,10 @@ private struct NamespaceMenu: NSViewRepresentable {
         button.action = #selector(Coordinator.choose(_:))
         context.coordinator.observe(button)
         return button
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSPopUpButton, context: Context) -> CGSize? {
+        NamespaceMetrics.size(fitting: nsView.fittingSize)
     }
 
     func updateNSView(_ button: NSPopUpButton, context: Context) {
