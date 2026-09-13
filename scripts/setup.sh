@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 ROOT="$PWD"
 
 GHOSTTY_REPO="https://github.com/ghostty-org/ghostty"
-# agterm's verified pre-renderer-regression pin: later revisions blanked scrollback on font zoom.
+# Verified pre-renderer-regression pin: later revisions blanked scrollback on font zoom.
 # Upgrade deliberately and re-test rendering when Kubix has terminal surfaces.
 GHOSTTY_REV="4dcb09ada0c0909717d92547623b26eafa50ca8a"
 ZIG_FORMULA="zig@0.15"

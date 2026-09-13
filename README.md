@@ -148,7 +148,7 @@ original arguments and environment overrides. A plugin may reuse credentials,
 open a browser, or emit live browser/device instructions. Use **Open Browser**
 when an HTTPS fallback is available, and complete approval yourself.
 
-The recovery model is Lens-style **manual Retry**: if the plugin starts browser
+The recovery model is **manual Retry**: if the plugin starts browser
 approval but exits unsuccessfully, finish approval and choose **Retry
 authentication**. Kubix does not detect browser completion and run a login loop.
 Retry belongs to the original operation/context even if the sidebar selection has changed.

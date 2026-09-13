@@ -6,7 +6,7 @@ excluded:
   - GhosttyKit.xcframework
   - kubix/Resources
 
-# Match agterm's deliberate style conventions without its legacy size allowances.
+# Deliberate style conventions, with no legacy size allowances.
 disabled_rules:
   - identifier_name
   - trailing_comma

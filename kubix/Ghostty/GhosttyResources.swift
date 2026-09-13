@@ -1,4 +1,4 @@
-// Bridge architecture adapted from thdxg/macterm (MIT), via agterm.
+// Bridge architecture adapted from thdxg/macterm (MIT).
 // Copyright (c) 2026 Macterm. See Resources/ThirdPartyNotices.txt.
 
 import Foundation

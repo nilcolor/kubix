@@ -3,11 +3,9 @@ Kubix embeds libghostty, built from ghostty-org/ghostty at
 bundled in ghostty/LICENSE.
 
 The Swift/AppKit bridge architecture and C API patterns were learned from
-thdxg/macterm (https://github.com/thdxg/macterm), via the attributed bridge
-files in agterm (local reference commit 2003cd0). No agterm-specific model,
-control API, settings, or session features are copied. The reference
-checkout has no repository-wide license; only its explicitly MIT-attributed
-bridge is used as a reference.
+thdxg/macterm (https://github.com/thdxg/macterm). Only its explicitly
+MIT-attributed bridge is used as a reference; no model, control API, settings
+or session features are copied.
 
 Macterm LICENSE verified from upstream (file SHA
 0ab680e608fe38c5f5ca2dbbeb50c98ba4851335):
