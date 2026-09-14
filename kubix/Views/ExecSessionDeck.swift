@@ -48,27 +48,37 @@ private struct SessionTabs: View {
     let actions: AppActions
 
     var body: some View {
-        HStack(spacing: 4) {
-            ScrollView(.horizontal) {
-                HStack(spacing: 4) {
-                    ForEach(store.openSessions) { selection in
-                        SessionTab(
-                            actions: actions, selection: selection,
-                            title: actions.sessionTarget(selection)?.pod ?? "",
-                            detail: detail(selection), selected: store.selectedSession == selection
-                        )
-                    }
-                }
-                .padding(.vertical, 5)
+        HStack(spacing: 6) {
+            // Finder's shape: the tabs share the strip while they fit, and only scroll once they
+            // cannot, so two sessions are not two small buttons against a wide empty bar.
+            ViewThatFits(in: .horizontal) {
+                strip(width: nil)
+                ScrollView(.horizontal) { strip(width: SessionTab.minimum) }
+                    .scrollIndicators(.never)
             }
-            .scrollIndicators(.never)
-            Button { actions.setDeckCollapsed(true) } label: { Image(systemName: "rectangle.bottomthird.inset.filled") }
-                .buttonStyle(.borderless)
-                .help("Collapse the session pane")
-                .accessibilityIdentifier("collapse-deck")
+            Button { actions.setDeckCollapsed(true) } label: {
+                Image(systemName: "chevron.down").font(.caption.weight(.semibold)).frame(width: 14, height: 14)
+            }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.circle)
+            .help("Collapse the session pane")
+            .accessibilityIdentifier("collapse-deck")
         }
-        .padding(.horizontal, 7)
-        .frame(minHeight: 42)
+        .padding(.horizontal, 8)
+        .frame(minHeight: 44)
+    }
+
+    private func strip(width: CGFloat?) -> some View {
+        HStack(spacing: 6) {
+            ForEach(store.openSessions) { selection in
+                SessionTab(
+                    actions: actions, selection: selection,
+                    title: actions.sessionTarget(selection)?.pod ?? "",
+                    detail: detail(selection), selected: store.selectedSession == selection, fixed: width
+                )
+            }
+        }
+        .padding(.vertical, 6)
     }
 
     /// Two sessions on one pod differ only by container, which the tab has no room for.
@@ -79,40 +89,54 @@ private struct SessionTabs: View {
 }
 
 private struct SessionTab: View {
+    static let minimum: CGFloat = 150
+
     let actions: AppActions
     let selection: SessionSelection
     let title: String
     let detail: String
     let selected: Bool
+    let fixed: CGFloat?
+    @State private var hovering = false
 
     var body: some View {
-        HStack(spacing: 2) {
-            Button { actions.selectSession(selection) } label: {
-                HStack(spacing: 7) {
-                    Image(systemName: selection.isLogs ? "scroll" : "apple.terminal")
-                        .font(.caption)
-                        .foregroundStyle(selected ? Color.accentColor : .secondary)
-                    Text(title).font(.caption.weight(.medium)).lineLimit(1).truncationMode(.middle)
+        Button { actions.selectSession(selection) } label: {
+            HStack(spacing: 6) {
+                Image(systemName: selection.isLogs ? "scroll" : "apple.terminal")
+                    .font(.callout)
+                    .foregroundStyle(selected ? Color.accentColor : .secondary)
+                Text(title).lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: 4)
+                // Finder reveals the close control on the tab under the pointer; a tab nobody is
+                // pointing at keeps its name instead of a button.
+                Button { actions.closeSession(selection) } label: {
+                    Image(systemName: "xmark").font(.caption2.weight(.semibold))
                 }
-                .padding(.leading, 8).padding(.vertical, 5)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .opacity(hovering || selected ? 1 : 0)
+                .accessibilityLabel("Close session")
             }
-            .buttonStyle(.plain)
-            Button { actions.closeSession(selection) } label: {
-                Image(systemName: "xmark").font(.caption2)
+            .font(.callout)
+            .padding(.horizontal, 10)
+            .frame(height: 30)
+            .frame(minWidth: Self.minimum, idealWidth: fixed, maxWidth: fixed ?? .infinity)
+            .contentShape(Rectangle())
+            .background {
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(fill)
+                    .strokeBorder(selected ? Color(nsColor: .separatorColor) : .clear)
             }
-            .buttonStyle(.borderless)
-            .padding(.trailing, 5)
-            .accessibilityLabel("Close session")
         }
-        .frame(minWidth: 110, idealWidth: 165, maxWidth: 235)
-        .background {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(selected ? Color(nsColor: .controlBackgroundColor) : .clear)
-                .strokeBorder(selected ? Color(nsColor: .separatorColor) : .clear)
-        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
         .help(detail)
         .accessibilityIdentifier("session-tab")
+    }
+
+    private var fill: Color {
+        if selected { return Color(nsColor: .controlBackgroundColor) }
+        return hovering ? Color.primary.opacity(0.08) : Color.primary.opacity(0.04)
     }
 }
 
