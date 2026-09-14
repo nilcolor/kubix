@@ -3,10 +3,11 @@ import Foundation
 public extension AppActions {
     func podLogsMenuAction(uid: String) -> @MainActor () -> Void {
         selectPod(uid: uid)
-        let generation = podSelectionGeneration
+        // This menu opens logs, so it is stale when the pending log request it was built against is.
+        let generation = podLogSelectionGeneration
         let row = store.rows.first { $0.id == uid }
         return { [weak self] in
-            guard let self, self.podSelectionGeneration == generation,
+            guard let self, self.podLogSelectionGeneration == generation,
                   self.store.rows.first(where: { $0.id == uid }) == row, row != nil else { return }
             self.openPodLogs(uid: uid)
         }
@@ -15,7 +16,7 @@ public extension AppActions {
     func openPodLogs(uid: String? = nil, container: String? = nil) {
         guard !stopped else { return }
         if let uid { selectPod(uid: uid) }
-        cancelPodShellSelection()
+        cancelPendingLogs()
         guard !store.isLoadingConfiguration, logs != nil, let details = podDetails,
               let context = store.selectedContext,
               let row = store.rows.first(where: { $0.id == store.podTable.selectedUID }),
@@ -24,7 +25,7 @@ public extension AppActions {
             return
         }
         let selection = PodShellSelection(
-            id: UUID(), generation: podSelectionGeneration, podGeneration: podGeneration,
+            id: UUID(), purpose: .logs, generation: podLogSelectionGeneration, podGeneration: podGeneration,
             configurationRevision: configurationRevision, context: context, namespace: store.selectedNamespace, row: row
         )
         podLogSelection = selection
@@ -78,9 +79,7 @@ public extension AppActions {
 
     func cancelPodLogs(selectionID: UUID) {
         guard podLogSelection?.id == selectionID else { return }
-        store.containerPicker = nil
-        logChoices.removeValue(forKey: selectionID)
-        podLogSelection = nil
+        cancelPendingLogs()
     }
 }
 
@@ -96,11 +95,17 @@ extension AppActions {
         startLog(session)
     }
 
-    func cancelPodLogSelection() {
+    func cancelPendingLogs() {
+        podLogSelectionGeneration = UUID()
+        if let pending = podLogSelection { podDetailTasks.removeValue(forKey: pending.id)?.cancel() }
         podLogSelection = nil
         logChoices = [:]
+        if store.containerPicker?.purpose == .logs { store.containerPicker = nil }
+        if store.pendingContainerPurpose == .logs {
+            store.isLoadingPodDetails = false
+            store.pendingContainerPurpose = nil
+        }
         store.podLogDiagnostic = nil
-        for id in Array(podLogGuards.keys) { closeLog(id) }
     }
 
     func makeLogSession(context: ResolvedContext, pod: PodDetails, container: PodDetails.Container) -> LogSession {

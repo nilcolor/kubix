@@ -78,8 +78,11 @@ public struct ContainerPickerPresentation: Identifiable, Equatable, Sendable {
 }
 
 /// An immutable row revision and generation, never a later name lookup through the current context.
+/// The purpose says which generation it belongs to: a pending shell and a pending log tail are
+/// separate requests for separate tabs, so starting one must not discard the other.
 struct PodShellSelection: Equatable, Sendable {
     let id: UUID
+    let purpose: ContainerPickerPresentation.Purpose
     let generation: UUID
     let podGeneration: UUID
     let configurationRevision: Int

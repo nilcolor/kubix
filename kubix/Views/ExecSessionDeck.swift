@@ -50,13 +50,9 @@ private struct SessionTabs: View {
     var body: some View {
         HStack(spacing: 8) {
             // Finder's shape: one continuous track holding every tab, with only the selected one
-            // drawn as a capsule floating inside it. The tabs share the track while they fit and
-            // only scroll once they cannot.
-            ViewThatFits(in: .horizontal) {
-                track(width: nil)
-                ScrollView(.horizontal) { track(width: SessionTab.minimum) }
-                    .scrollIndicators(.never)
-            }
+            // drawn as a capsule floating inside it. The track always spans the strip and the tabs
+            // divide it evenly, shrinking as more open rather than leaving the bar half empty.
+            track
             Button { actions.setDeckCollapsed(true) } label: {
                 Image(systemName: "chevron.down").font(.caption.weight(.semibold)).frame(width: 14, height: 14)
             }
@@ -69,17 +65,18 @@ private struct SessionTabs: View {
         .frame(minHeight: 44)
     }
 
-    private func track(width: CGFloat?) -> some View {
+    private var track: some View {
         HStack(spacing: 0) {
             ForEach(store.openSessions) { selection in
                 SessionTab(
                     actions: actions, selection: selection,
                     title: actions.sessionTarget(selection)?.pod ?? "",
-                    detail: detail(selection), selected: store.selectedSession == selection, fixed: width
+                    detail: detail(selection), selected: store.selectedSession == selection
                 )
             }
         }
         .padding(2)
+        .frame(maxWidth: .infinity)
         .background(Capsule().fill(Color.primary.opacity(0.06)))
     }
 
@@ -91,14 +88,11 @@ private struct SessionTabs: View {
 }
 
 private struct SessionTab: View {
-    static let minimum: CGFloat = 150
-
     let actions: AppActions
     let selection: SessionSelection
     let title: String
     let detail: String
     let selected: Bool
-    let fixed: CGFloat?
     @State private var hovering = false
 
     var body: some View {
@@ -116,7 +110,9 @@ private struct SessionTab: View {
             }
             .font(.callout)
             .frame(height: 28)
-            .frame(minWidth: Self.minimum, idealWidth: fixed, maxWidth: fixed ?? .infinity)
+            // No floor worth defending: a tab too narrow for its name still says which kind it is
+            // and still has its tooltip, which beats a track that stops filling the strip.
+            .frame(minWidth: 44, maxWidth: .infinity)
             .contentShape(Capsule())
             .background {
                 if selected {

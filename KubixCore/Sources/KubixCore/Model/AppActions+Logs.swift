@@ -86,7 +86,7 @@ extension AppActions {
 
     private func receiveLog(_ event: LogEvent, session: LogSession, attempt: UUID) {
         guard logIsCurrent(session, attempt: attempt) else { return }
-        if let selection = podLogGuards[session.id], !isCurrentPodSelection(selection) { return }
+        if let selection = podLogGuards[session.id], !isCurrentPodScope(selection) { return }
         switch event {
         case .opened:
             guard !Task.isCancelled, session.state != .paused else { return }

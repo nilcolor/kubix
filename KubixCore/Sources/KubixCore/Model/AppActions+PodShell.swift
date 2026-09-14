@@ -21,7 +21,7 @@ public extension AppActions {
             return
         }
         if let uid { selectPod(uid: uid) }
-        cancelPodShellSelection()
+        cancelPendingShell()
         guard let details = podDetails, let context = store.selectedContext,
               let row = store.rows.first(where: { $0.id == store.selectedPodUID }),
               store.podTable.selectedUID == row.id, let name = row.metadata.name,
@@ -30,7 +30,7 @@ public extension AppActions {
             return
         }
         let selection = PodShellSelection(
-            id: UUID(), generation: podSelectionGeneration, podGeneration: podGeneration,
+            id: UUID(), purpose: .shell, generation: podSelectionGeneration, podGeneration: podGeneration,
             configurationRevision: configurationRevision, context: context, namespace: store.selectedNamespace, row: row
         )
         podShellSelection = selection
@@ -63,30 +63,51 @@ public extension AppActions {
 
     func cancelPodShell(selectionID: UUID) {
         guard podShellSelection?.id == selectionID else { return }
-        cancelPodShellSelection()
+        cancelPendingShell()
     }
 }
 
 extension AppActions {
+    /// A pending request: the scope it was made in, and the generation that says it has not been
+    /// superseded by a newer request of its own kind.
     func isCurrentPodSelection(_ selection: PodShellSelection) -> Bool {
-        !stopped && !store.isLoadingConfiguration && selection.generation == podSelectionGeneration && selection.podGeneration == podGeneration
+        let generation = selection.purpose == .shell ? podSelectionGeneration : podLogSelectionGeneration
+        return selection.generation == generation && isCurrentPodScope(selection)
+    }
+
+    /// A session that has been created but is still connecting: it depends on the scope it was
+    /// validated against, not on whether another session has since been asked for. Opening a second
+    /// shell or log tail is not a reason to discard the first.
+    func isCurrentPodScope(_ selection: PodShellSelection) -> Bool {
+        !stopped && !store.isLoadingConfiguration && selection.podGeneration == podGeneration
             && selection.configurationRevision == configurationRevision && store.selectedContext == selection.context
             && store.selectedNamespace == selection.namespace && store.podTable.selectedUID == selection.row.id
             && store.rows.first(where: { $0.id == selection.row.id }) == selection.row
     }
 
+    /// Everything: both pending requests and the sessions still guarded by them. This is the scope
+    /// change path — a different row, namespace, context or reloaded configuration.
     func cancelPodShellSelection() {
-        cancelPodLogSelection()
-        podSelectionGeneration = UUID()
-        podShellSelection = nil
-        shellChoices = [:]
-        store.containerPicker = nil
-        store.isLoadingPodDetails = false
-        store.pendingContainerPurpose = nil
-        store.podShellDiagnostic = nil
-        for task in podDetailTasks.values { task.cancel() }
+        cancelPendingShell()
+        cancelPendingLogs()
         // Running sessions have already relinquished their selection guard and remain immutable.
         for id in Array(podShellGuards.keys) { closeShell(id) }
+        for id in Array(podLogGuards.keys) { closeLog(id) }
+    }
+
+    /// Only the pending shell: its own generation, its own request, its own guarded sessions. A log
+    /// tail waiting for its stream to open is a separate tab the user also asked for.
+    func cancelPendingShell() {
+        podSelectionGeneration = UUID()
+        if let pending = podShellSelection { podDetailTasks.removeValue(forKey: pending.id)?.cancel() }
+        podShellSelection = nil
+        shellChoices = [:]
+        if store.containerPicker?.purpose == .shell { store.containerPicker = nil }
+        if store.pendingContainerPurpose == .shell {
+            store.isLoadingPodDetails = false
+            store.pendingContainerPurpose = nil
+        }
+        store.podShellDiagnostic = nil
     }
 
     func reconcilePodShellSelection() {
@@ -95,7 +116,7 @@ extension AppActions {
     }
 
     func validatePodShell(_ id: UUID) throws {
-        if let selection = podShellGuards[id], !isCurrentPodSelection(selection) { throw CancellationError() }
+        if let selection = podShellGuards[id], !isCurrentPodScope(selection) { throw CancellationError() }
     }
 
     private func presentContainers(

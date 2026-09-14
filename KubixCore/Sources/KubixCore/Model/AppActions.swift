@@ -52,6 +52,7 @@ public final class AppActions {
     var namespaceSelection = NamespaceSelection()
     let podDetails: (any PodDetailsProviding)?
     var podSelectionGeneration = UUID()
+    var podLogSelectionGeneration = UUID()
     var podShellSelection: PodShellSelection?
     var podDetailTasks: [UUID: Task<Void, Never>] = [:]
     var podShellGuards: [UUID: PodShellSelection] = [:]

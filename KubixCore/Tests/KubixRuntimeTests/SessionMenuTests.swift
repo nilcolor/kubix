@@ -64,4 +64,28 @@ import Testing
         #expect(!owner.actions.hasOpenSession(.logs(first.id), container: "debugger"))
         await owner.actions.shutdownAndWait()
     }
+
+    /// A log tail holds its selection guard until its stream opens. Opening a shell in that window
+    /// used to discard it, because both kinds shared one pending-work generation.
+    @Test func openingAShellDoesNotDiscardALogTailThatIsStillConnecting() async throws {
+        let gate = UncooperativeWatchGate()
+        let transport = LogTestTransport(stream: { _, _ in
+            await gate.wait()
+            return MemoryByteStream([Data("synthetic\n".utf8)])
+        })
+        let owner = try PodShellTestOwner(transport: transport, logs: LogService { _ in transport })
+        owner.actions.openPodLogs(uid: "uid-0", container: "web")
+        try await watchEventually { await gate.isWaiting }
+        let log = try #require(owner.store.logSessions.first)
+        #expect(log.state == .connecting)
+
+        owner.actions.openPodShell(uid: "uid-0")
+        try await watchEventually { owner.store.execSessions.first?.state == .running }
+        #expect(owner.store.logSessions.count == 1 && !log.isClosed)
+
+        await gate.open()
+        try await watchEventually { log.state == .following }
+        #expect(owner.store.openSessions.count == 2)
+        await owner.actions.shutdownAndWait()
+    }
 }

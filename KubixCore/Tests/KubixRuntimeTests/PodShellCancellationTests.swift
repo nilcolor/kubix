@@ -161,7 +161,10 @@ import Testing
         #expect(capture.endpoints.isEmpty)
     }
 
-    @Test func supersedingPendingAuthenticationClosesOldSessionAndOnlyLatestCanDispatch() async throws {
+    /// A second open is another session the user asked for, not a correction of the first: both run,
+    /// each with its own surface. What supersession still governs is the pending *request* — the one
+    /// details fetch and its menu — never a session that has already been created from an earlier one.
+    @Test func asecondOpenLeavesTheStillAuthenticatingSessionRunningAlongsideIt() async throws {
         let gate = UncooperativeWatchGate()
         let owner = try PodShellTestOwner(
             transport: WatchTestTransport { _, _ in try podDetailsData() }, auth: PodShellAuth(gate: gate)
@@ -172,10 +175,15 @@ import Testing
         owner.actions.openPodShell(uid: "uid-0")
         try await watchEventually { owner.store.execSessions.count == 2 && owner.store.execSessions[1].state == .running }
         await gate.open()
-        try await watchEventually { owner.store.execSessions.first?.isClosed == true }
-        owner.actions.retryShell(id)
-        #expect(await owner.exec.targets.count == 1)
-        #expect(owner.surfaces.created.count == 1 && owner.surfaces.created[id] == nil)
+        try await watchEventually { owner.store.execSessions.first?.state == .running }
+        #expect(owner.store.execSessions.allSatisfy { !$0.isClosed })
+        #expect(owner.store.openSessions.count == 2)
+        #expect(await owner.exec.targets.count == 2)
+        #expect(owner.surfaces.created.count == 2 && owner.surfaces.created[id] != nil)
+        // Both are running, so both have relinquished their selection guard and a scope change
+        // leaves them alone — a shell outlives the row it was started from.
+        owner.actions.selectPod(uid: "uid-1")
+        #expect(owner.store.execSessions.allSatisfy { !$0.isClosed } && owner.store.openSessions.count == 2)
         await owner.actions.shutdownAndWait()
     }
 
