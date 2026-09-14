@@ -54,6 +54,8 @@ public struct ExecSession: Identifiable, Equatable, Sendable {
             if case .finished = self { return true }
             return false
         }
+
+        public var isRunning: Bool { self == .running }
     }
 
     public let id: UUID

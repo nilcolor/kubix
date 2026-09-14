@@ -1,70 +1,250 @@
 import KubixCore
 import SwiftUI
 
+/// One strip for every open session, shells and log tails alike, because they are the same thing to
+/// the person switching between them: a live view of one container. The icon says which kind it is;
+/// the row below names the pod it belongs to and offers its sibling containers.
 struct ExecSessionDeck: View {
     let store: AppStore
     let actions: AppActions
 
     var body: some View {
-        let sessions = store.execSessions.filter { !$0.isClosed }
         VStack(spacing: 0) {
-            ScrollView(.horizontal) {
-                HStack {
-                    ForEach(sessions) { session in
-                        HStack(spacing: 4) {
-                            Button("Shell: " + session.target.pod + "/" + session.target.container) { actions.selectShell(session.id) }
-                                .fontWeight(isSelected(session.id) ? .bold : .regular)
-                            Button { actions.closeShell(session.id) } label: { Image(systemName: "xmark") }
-                                .help("Close this session")
-                        }
-                    }
-                    ForEach(store.logSessions) { session in
-                        HStack(spacing: 4) {
-                            Button("Logs: " + session.target.pod + "/" + session.target.container.name) { actions.selectLog(session.id) }
-                                .fontWeight(store.selectedLogSessionID == session.id ? .bold : .regular)
-                            Button { actions.closeLog(session.id) } label: { Image(systemName: "xmark") }
-                                .help("Close this log session")
-                        }
-                    }
-                }.padding(8)
-            }.fixedSize(horizontal: false, vertical: true)
-            ZStack {
-                if sessions.isEmpty && store.logSessions.isEmpty {
-                    ContentUnavailableView("Connect to a known container", systemImage: "terminal")
-                }
-                ForEach(sessions) { session in
-                    sessionView(session, selected: isSelected(session.id))
-                        .opacity(isSelected(session.id) ? 1 : 0)
-                        .allowsHitTesting(isSelected(session.id))
-                        .accessibilityHidden(!isSelected(session.id))
-                }
-                ForEach(store.logSessions) { session in
-                    LogView(session: session, actions: actions)
-                        .opacity(session.id == store.selectedLogSessionID ? 1 : 0)
-                        .allowsHitTesting(session.id == store.selectedLogSessionID)
-                        .accessibilityHidden(session.id != store.selectedLogSessionID)
-                }
-            }.frame(maxWidth: .infinity, maxHeight: .infinity)
+            SessionTabs(store: store, actions: actions)
+            if let selection = store.selectedSession {
+                SessionMeta(store: store, actions: actions, selection: selection)
+                Divider()
+                body(for: selection)
+            } else {
+                ContentUnavailableView("No open session", systemImage: "terminal")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
     }
 
-    private func isSelected(_ id: UUID) -> Bool { store.selectedLogSessionID == nil && store.selectedExecSessionID == id }
+    /// Every session stays mounted: a terminal is a live process tree and a log tail is a live
+    /// stream, so hiding one is an opacity change, never a teardown.
+    @ViewBuilder private func body(for selection: SessionSelection) -> some View {
+        ZStack {
+            ForEach(store.execSessions.filter { !$0.isClosed }) { session in
+                ShellBody(store: store, actions: actions, session: session, selected: selection == .shell(session.id))
+                    .opacity(selection == .shell(session.id) ? 1 : 0)
+                    .allowsHitTesting(selection == .shell(session.id))
+                    .accessibilityHidden(selection != .shell(session.id))
+            }
+            ForEach(store.logSessions) { session in
+                LogView(session: session, actions: actions)
+                    .opacity(selection == .logs(session.id) ? 1 : 0)
+                    .allowsHitTesting(selection == .logs(session.id))
+                    .accessibilityHidden(selection != .logs(session.id))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
 
-    private func sessionView(_ session: ExecSession, selected: Bool) -> some View {
+private struct SessionTabs: View {
+    let store: AppStore
+    let actions: AppActions
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ScrollView(.horizontal) {
+                HStack(spacing: 4) {
+                    ForEach(store.openSessions) { selection in
+                        SessionTab(
+                            actions: actions, selection: selection,
+                            title: actions.sessionTarget(selection)?.pod ?? "",
+                            detail: detail(selection), selected: store.selectedSession == selection
+                        )
+                    }
+                }
+                .padding(.vertical, 5)
+            }
+            .scrollIndicators(.never)
+            Button { actions.setDeckCollapsed(true) } label: { Image(systemName: "rectangle.bottomthird.inset.filled") }
+                .buttonStyle(.borderless)
+                .help("Collapse the session pane")
+                .accessibilityIdentifier("collapse-deck")
+        }
+        .padding(.horizontal, 7)
+        .frame(minHeight: 42)
+    }
+
+    /// Two sessions on one pod differ only by container, which the tab has no room for.
+    private func detail(_ selection: SessionSelection) -> String {
+        guard let target = actions.sessionTarget(selection) else { return "" }
+        return "\(selection.isLogs ? "Logs" : "Shell") · \(target.pod) · \(target.container)"
+    }
+}
+
+private struct SessionTab: View {
+    let actions: AppActions
+    let selection: SessionSelection
+    let title: String
+    let detail: String
+    let selected: Bool
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Button { actions.selectSession(selection) } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: selection.isLogs ? "scroll" : "apple.terminal")
+                        .font(.caption)
+                        .foregroundStyle(selected ? Color.accentColor : .secondary)
+                    Text(title).font(.caption.weight(.medium)).lineLimit(1).truncationMode(.middle)
+                }
+                .padding(.leading, 8).padding(.vertical, 5)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Button { actions.closeSession(selection) } label: {
+                Image(systemName: "xmark").font(.caption2)
+            }
+            .buttonStyle(.borderless)
+            .padding(.trailing, 5)
+            .accessibilityLabel("Close session")
+        }
+        .frame(minWidth: 110, idealWidth: 165, maxWidth: 235)
+        .background {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(selected ? Color(nsColor: .controlBackgroundColor) : .clear)
+                .strokeBorder(selected ? Color(nsColor: .separatorColor) : .clear)
+        }
+        .help(detail)
+        .accessibilityIdentifier("session-tab")
+    }
+}
+
+/// Where the session is, and the only other thing to ask about it: a different container of the same
+/// pod. Choosing one focuses its session if it is already open, so the strip cannot collect
+/// duplicates of the same target.
+private struct SessionMeta: View {
+    let store: AppStore
+    let actions: AppActions
+    let selection: SessionSelection
+    @State private var switching = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let target = actions.sessionTarget(selection) {
+                Text("\(target.context.name) / \(target.namespace) / \(target.pod)")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                Spacer(minLength: 8)
+                if siblings.count > 1 {
+                    Button { switching = true } label: {
+                        HStack(spacing: 4) {
+                            Text("Container:").foregroundStyle(.secondary)
+                            Text(target.container).fontWeight(.medium)
+                            Image(systemName: "chevron.down").font(.caption2).foregroundStyle(.secondary)
+                        }
+                        .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("container-switch")
+                    .popover(isPresented: $switching, arrowEdge: .bottom) { switcher(current: target.container) }
+                } else {
+                    Text("Container: \(target.container)").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal, 11)
+        .frame(minHeight: 34)
+    }
+
+    private func switcher(current: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(selection.isLogs ? "Container logs" : "Container shell")
+                .font(.caption).foregroundStyle(.secondary)
+                .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 4)
+            ForEach(siblings, id: \.name) { container in
+                SwitchChoice(
+                    name: container.name, state: container.state.rawValue.capitalized,
+                    detail: detail(container.name, current: current), isCurrent: container.name == current
+                ) {
+                    switching = false
+                    guard container.name != current else { return }
+                    actions.openSessionForContainer(selection, container: container.name)
+                }
+            }
+        }
+        .frame(width: 260)
+        .padding(.bottom, 6)
+    }
+
+    private func detail(_ name: String, current: String) -> String {
+        if name == current { return "Current session" }
+        return actions.hasOpenSession(selection, container: name) ? "Focus open tab" : "Open in a new tab"
+    }
+
+    /// The pod's own containers as validated when the session opened, filtered to what this kind of
+    /// session can target: every declared container for logs, running regular ones for a shell.
+    private var siblings: [PodDetails.Container] {
+        switch selection {
+        case .shell(let id):
+            let containers = store.execSessions.first { $0.id == id }?.containers ?? []
+            return containers.filter { $0.kind == .regular && $0.state == .running }
+        case .logs(let id):
+            return store.logSessions.first { $0.id == id }?.containers ?? []
+        }
+    }
+}
+
+private struct SwitchChoice: View {
+    let name: String
+    let state: String
+    let detail: String
+    let isCurrent: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark")
+                    .font(.caption.weight(.semibold)).foregroundStyle(.tint)
+                    .opacity(isCurrent ? 1 : 0).frame(width: 14)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(name).fontWeight(.medium)
+                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                Text(state).font(.caption).foregroundStyle(state == "Running" ? Color.green : .secondary)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .contentShape(Rectangle())
+            .background(RoundedRectangle(cornerRadius: 6).fill(hovering ? Color.accentColor.opacity(0.14) : .clear).padding(.horizontal, 6))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .accessibilityIdentifier("switch-choice-\(name)")
+    }
+}
+
+private struct ShellBody: View {
+    let store: AppStore
+    let actions: AppActions
+    let session: ExecSession
+    let selected: Bool
+
+    var body: some View {
         // Observing the revision mounts a ready surface before the bridge awaits its initial size.
         _ = store.surfaceRevision
         return VStack(alignment: .leading, spacing: 4) {
-            Text("\(session.target.context.name) / \(session.target.namespace) / \(session.target.pod) / \(session.target.container)")
-                .font(.caption).padding(.horizontal, 8)
             if session.target.context.cluster.insecureSkipTLSVerify == true {
                 Text("WARNING: TLS certificate verification disabled.").foregroundStyle(.red)
+                    .padding(.horizontal, 11)
             }
-            HStack {
-                Text(status(session.state)).textSelection(.enabled)
-                if case .finished(.failed(.authentication)) = session.state {
-                    Button("Retry shell") { actions.retryShell(session.id) }
+            if !session.state.isRunning {
+                HStack {
+                    Text(status).font(.caption).textSelection(.enabled)
+                    if case .finished(.failed(.authentication)) = session.state {
+                        Button("Retry shell") { actions.retryShell(session.id) }.controlSize(.small)
+                    }
                 }
-            }.padding(.horizontal, 8)
+                .padding(.horizontal, 11).padding(.top, 4)
+            }
             if let surface = actions.surface(for: session.id) as? GhosttySurfaceView {
                 TerminalView(surface: surface, isSelected: selected)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -75,8 +255,8 @@ struct ExecSessionDeck: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private func status(_ state: ExecSession.State) -> String {
-        switch state {
+    private var status: String {
+        switch session.state {
         case .authenticating: "Waiting for credentials — sign in or retry above if needed."
         case .connecting: "Connecting authenticated exec…"
         case .running: "Connected — v5.channel.k8s.io"
@@ -85,6 +265,32 @@ struct ExecSessionDeck: View {
         case .finished(.cancelled): "Session cancelled."
         }
     }
+}
+
+/// The deck, out of the way but not gone: the sessions keep running and the table takes the space.
+struct CollapsedDeckBar: View {
+    let store: AppStore
+    let actions: AppActions
+
+    var body: some View {
+        Button { actions.setDeckCollapsed(false) } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "rectangle.bottomthird.inset.filled")
+                Text(count == 1 ? "1 session" : "\(count) sessions")
+                Spacer(minLength: 8)
+                Text("Show").foregroundStyle(.secondary)
+                Image(systemName: "chevron.up").font(.caption2).foregroundStyle(.secondary)
+            }
+            .font(.callout)
+            .padding(.horizontal, 11)
+            .frame(height: 37)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("restore-deck")
+    }
+
+    private var count: Int { store.openSessions.count }
 }
 
 /// Drags the boundary between the pod table and the session deck. Same shape as the sidebar handle:

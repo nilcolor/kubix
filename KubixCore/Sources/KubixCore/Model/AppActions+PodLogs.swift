@@ -29,6 +29,7 @@ public extension AppActions {
         )
         podLogSelection = selection
         store.isLoadingPodDetails = true
+        store.pendingContainerPurpose = .logs
         podDetailTasks[selection.id] = Task { [weak self] in
             defer { self?.podDetailTasks.removeValue(forKey: selection.id) }
             do {
@@ -39,6 +40,7 @@ public extension AppActions {
                 let choices = ContainerSelection(details: pod)
                 guard let fallback = choices.defaultLog else { throw PodDetailsError.identityMismatch }
                 self.store.isLoadingPodDetails = false
+                self.store.pendingContainerPurpose = nil
                 if let container, let preferred = choices.logs.first(where: { $0.name == container }) {
                     self.dispatchPodLogs(selection, context: context, pod: pod, container: preferred)
                     return
@@ -50,11 +52,12 @@ public extension AppActions {
                 self.logChoices[selection.id] = pod
                 self.store.containerPicker = ContainerPickerPresentation(
                     id: selection.id, purpose: .logs, pod: pod.name,
-                    containers: choices.logs, defaultContainer: fallback.name
+                    containers: choices.logs, defaultContainer: fallback.name, annotated: choices.annotated
                 )
             } catch {
                 guard let self, self.isCurrentPodSelection(selection) else { return }
                 self.store.isLoadingPodDetails = false
+                self.store.pendingContainerPurpose = nil
                 self.store.podLogDiagnostic = LogFailure.classify(error).diagnostic
             }
         }

@@ -9,8 +9,6 @@ struct LogView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("\(session.target.context.name) / \(session.target.namespace) / \(session.target.pod) / \(session.target.container.name)")
-                .font(.caption).textSelection(.enabled)
             if session.target.context.cluster.insecureSkipTLSVerify == true {
                 Text("WARNING: TLS certificate verification disabled.").foregroundStyle(.red)
             }
@@ -19,13 +17,6 @@ struct LogView: View {
                     if $0 { actions.resumeLog(session.id) } else { actions.pauseLog(session.id) }
                 })).toggleStyle(.checkbox)
                 if !following { Button("Resume") { actions.resumeLog(session.id) } }
-                Picker("Container", selection: Binding(get: { session.target.container.name }, set: {
-                    actions.switchLogContainer(session.id, name: $0)
-                })) {
-                    ForEach(session.containers, id: \.name) { container in
-                        Text("\(container.name) (\(container.kind.rawValue))").tag(container.name)
-                    }
-                }.frame(maxWidth: 260)
                 TextField("Filter log lines", text: Binding(get: { session.filter }, set: { actions.setLogFilter(session.id, $0) }))
                 Button("Latest") { actions.setLogAutoscroll(session.id, true) }
                     .disabled(session.autoscroll)

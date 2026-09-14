@@ -20,25 +20,30 @@ import KubixCore
         guard store.execSessions[0].target.pod == "alpha", store.execSessions[0].target.container == "web" else { throw Failure.assertion }
         phase = "first context menu picker"
         try menu(uid: "uid-z", store: store, window: window, table: table)
-        // The choice is a bar above the table now, not a sheet: it must not take the window modal.
-        try await until { store.containerPicker != nil && choice(in: window) != nil }
+        // The choice is a menu hanging off its button now, not a sheet: it must not take the window
+        // modal, and it must actually be on screen rather than only in the store.
+        try await until { store.containerPicker != nil && menuWindow() != nil }
         guard window.attachedSheet == nil else { throw Failure.assertion }
         let stale = try picker(store)
         phase = "cancel stale picker"
         actions.selectPod(uid: "uid-a")
         actions.confirmPodShell(selectionID: stale.id, container: "sidecar")
-        try await until { store.containerPicker == nil && choice(in: window) == nil }
+        try await until { store.containerPicker == nil && menuWindow() == nil }
         guard store.execSessions.count == 1 else { throw Failure.assertion }
         phase = "second context menu picker"
         try menu(uid: "uid-z", store: store, window: window, table: table)
-        try await until { store.containerPicker != nil && choice(in: window) != nil }
+        try await until { store.containerPicker != nil && menuWindow() != nil }
         let pending = try picker(store)
-        phase = "rendered inline container choice"
-        guard let popup = choice(in: window), popup.itemTitles == ["web", "sidecar"],
-              popup.titleOfSelectedItem == "sidecar", window.attachedSheet == nil else { throw Failure.assertion }
+        phase = "rendered container menu"
+        guard window.attachedSheet == nil, let presented = menuWindow(), presented.isVisible else {
+            throw Failure.assertion
+        }
+        // What the menu draws, asserted where it is decided: the pod's own roles and states.
+        guard pending.purpose == .shell, pending.items.map(\.role) == ["Container", "Default container"],
+              pending.items.map(\.state) == ["Running", "Running"] else { throw Failure.assertion }
         actions.confirmPodShell(selectionID: pending.id, container: "sidecar")
         phase = "confirmed second session"
-        try await until { store.execSessions.count == 2 && store.execSessions[1].state == .running && choice(in: window) == nil }
+        try await until { store.execSessions.count == 2 && store.execSessions[1].state == .running && menuWindow() == nil }
         guard store.execSessions[1].target.pod == "zulu", store.execSessions[1].target.container == "sidecar" else { throw Failure.assertion }
         // The unnamespaced /version probe shares this Accept header; only pod details are counted here.
         let requests = await fixture.transport.requests.filter { $0.accept == "application/json" && $0.path.first == "api" }
@@ -46,12 +51,10 @@ import KubixCore
         return store.execSessions.map(\.id)
     }
 
-    /// The inline choice renders a real NSPopUpButton, so its options can be read from the window.
-    private static func choice(in window: NSWindow) -> NSPopUpButton? {
-        guard let content = window.contentView else { return nil }
-        func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
-        return descendants(content).compactMap { $0 as? NSPopUpButton }
-            .first { $0.itemTitles.contains("sidecar") }
+    /// A SwiftUI popover is its own window, so its presence is what says the menu is open. Its
+    /// buttons are not AppKit controls, which is why the choice itself is made through AppActions.
+    private static func menuWindow() -> NSWindow? {
+        NSApp.windows.first { $0.className.contains("Popover") && $0.isVisible }
     }
 
     private static func picker(_ store: AppStore) throws -> ContainerPickerPresentation {

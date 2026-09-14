@@ -14,6 +14,11 @@ import KubixCore
         try? await PodBrowsingValidation.until { store.clusters.first?.state == .connected }
         fixture.actions.selectSidebar(.pods("synthetic-first"))
         try? await PodBrowsingValidation.until { store.connection == .live }
+        // One session of each kind, on different pods, so the deck's strip is worth looking at.
+        fixture.actions.openPodShell(uid: "uid-a")
+        try? await PodBrowsingValidation.until { store.execSessions.first?.state == .running }
+        fixture.actions.openPodLogs(uid: "uid-z", container: "web")
+        try? await PodBrowsingValidation.until { !store.logSessions.isEmpty }
         guard let window = NSApp.windows.first(where: \.isVisible),
               let primary = NSScreen.screens.first(where: { $0.frame.origin == .zero }) else { return }
         window.setContentSize(NSSize(width: 1180, height: 720))

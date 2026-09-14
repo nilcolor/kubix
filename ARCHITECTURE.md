@@ -414,6 +414,24 @@ Kubernetes exec/log endpoints are name-addressed. Fresh UID checks detect observ
 replacement, but cannot make details GET and exec/log GET atomic; there is no
 server-side UID precondition. Do not describe this as race-free Pod binding.
 
+### One deck for both kinds of session
+
+Shells and log tails share one strip, ordered by when they were opened, so the
+store keeps one `SessionSelection` rather than a selected shell and a selected
+log: two fields could represent two visible sessions, which the deck cannot show.
+Collapsing the deck unmounts the bodies and leaves every session running — the
+native check asserts the surface is not freed and the same terminal view is
+remounted on restore.
+
+Choosing a container is a menu on the button that asked for it, listing what the
+pod declares with the role it gives each one — the `default-container`
+annotation, a native sidecar's `restartPolicy: Always`, init and ephemeral — and
+its state. Choosing opens immediately; there is no confirm step. A single
+candidate opens without a menu. Switching container from a running session opens
+a second session, or focuses the container's existing one, and never rebinds a
+live session: a log tail revalidates through its own target, a shell reruns the
+selected row's details.
+
 `AppActions` owns tasks, attempt tokens, and `TerminalSurfaceLifetime`.
 Tab switching/rehosting never frees the session's surface. Context/namespace
 changes and reload pause logs without relabeling their retained data, while

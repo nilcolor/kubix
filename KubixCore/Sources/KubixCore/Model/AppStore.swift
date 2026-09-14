@@ -35,6 +35,8 @@ public final class AppStore {
     public internal(set) var showingSettings = false
     public internal(set) var useDeviceCode = false
     public internal(set) var isLoadingPodDetails = false
+    /// Which button is waiting for the details its menu will list, so only that one shows progress.
+    public internal(set) var pendingContainerPurpose: ContainerPickerPresentation.Purpose?
     public internal(set) var podShellDiagnostic: String?
     public internal(set) var containerPicker: ContainerPickerPresentation?
     /// Open order across both kinds, which is the order the deck's one strip shows them in.

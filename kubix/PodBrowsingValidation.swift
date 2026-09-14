@@ -195,6 +195,7 @@ import KubixCore
         evidence["deckHeight"] = String(
             format: "terminal %.1f of pane %.1f at the default half split", terminalHeight, paneHeight
         )
+        evidence["deckStrip"] = try await PodDeckValidation.check(fixture, window: window, terminal: views[1])
 
         stage = "session target identity and lifetime"
         guard fixture.store.execSessions.map(\.target) == targets,

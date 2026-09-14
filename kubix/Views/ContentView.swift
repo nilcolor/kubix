@@ -15,16 +15,24 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 180, ideal: 260, max: 360)
         } detail: {
             GeometryReader { proxy in
-                let deck = hasSessions(store) ? (proxy.size.height * store.deckFraction).rounded() : 0
+                let open = hasSessions(store)
+                // Collapsed keeps every session running and gives the table the space back, so the
+                // deck's height is the bar's alone rather than a fraction of the pane.
+                let deck = open ? (store.deckCollapsed ? 37 : (proxy.size.height * store.deckFraction).rounded()) : 0
                 VStack(spacing: 0) {
                     // One instance, height-adjusted: branching on the session count would give the
                     // pods pane a different identity with and without a deck, so opening the first
                     // shell would rebuild the table and drop its selection.
                     detail(store: store, actions: actions)
                         .frame(height: max(120, proxy.size.height - deck))
-                    if deck > 0 {
-                        DeckResizeHandle(actions: actions, total: proxy.size.height)
-                        ExecSessionDeck(store: store, actions: actions).frame(height: deck)
+                    if open {
+                        if store.deckCollapsed {
+                            Divider()
+                            CollapsedDeckBar(store: store, actions: actions).frame(height: deck)
+                        } else {
+                            DeckResizeHandle(actions: actions, total: proxy.size.height)
+                            ExecSessionDeck(store: store, actions: actions).frame(height: deck)
+                        }
                     }
                 }
             }

@@ -5,11 +5,14 @@ public struct ContainerSelection: Equatable, Sendable {
     public let logs: [PodDetails.Container]
     public let defaultShell: String?
     public let defaultLog: PodDetails.Container?
+    /// What the pod nominates, whether or not it is a candidate for either purpose.
+    public let annotated: String?
     public var unavailableExplanation: String? {
         shell.isEmpty ? "No running regular container is available for a shell yet. Init and ephemeral containers are not shell targets." : nil
     }
 
     public init(details: PodDetails) {
+        annotated = details.defaultContainer
         shell = details.containers.filter { $0.kind == .regular && $0.state == .running }
         logs = details.containers
         defaultShell = shell.first { $0.name == details.defaultContainer }?.name ?? shell.first?.name
@@ -36,9 +39,9 @@ public struct ContainerPickerPresentation: Identifiable, Equatable, Sendable {
         public let state: String
         public var id: String { name }
 
-        public init(_ container: PodDetails.Container, isDefault: Bool) {
+        public init(_ container: PodDetails.Container, annotated: Bool) {
             name = container.name
-            role = Self.role(container, isDefault: isDefault)
+            role = Self.role(container, isDefault: annotated)
             state = container.state.rawValue.capitalized
         }
 
@@ -60,11 +63,16 @@ public struct ContainerPickerPresentation: Identifiable, Equatable, Sendable {
     public let defaultContainer: String
     public var containers: [String] { items.map(\.name) }
 
-    public init(id: UUID, purpose: Purpose, pod: String, containers: [PodDetails.Container], defaultContainer: String) {
+    /// `annotated` is the pod's `kubectl.kubernetes.io/default-container`, which names a container
+    /// that may not be a candidate at all; `defaultContainer` is the candidate this menu preselects.
+    public init(
+        id: UUID, purpose: Purpose, pod: String, containers: [PodDetails.Container],
+        defaultContainer: String, annotated: String?
+    ) {
         self.id = id
         self.purpose = purpose
         self.pod = pod
-        items = containers.map { Item($0, isDefault: $0.name == defaultContainer) }
+        items = containers.map { Item($0, annotated: $0.name == annotated) }
         self.defaultContainer = defaultContainer
     }
 }

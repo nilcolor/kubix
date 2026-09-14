@@ -7,7 +7,7 @@ import KubixCore
         let actions = fixture.actions
         let shells = fixture.store.execSessions
         let views = shells.compactMap { actions.surface(for: $0.id) as? GhosttySurfaceView }
-        try openMenu(table: table, window: window)
+        try await chooseContainer(fixture, table: table, window: window)
         try await PodBrowsingValidation.until { fixture.store.logSessions.first?.buffer.count == 401 }
         guard let session = fixture.store.logSessions.first else { throw Failure.assertion }
         try await PodBrowsingValidation.until { logTable(session.id, in: window)?.numberOfRows == 401 }
@@ -59,6 +59,18 @@ import KubixCore
         try await fixture.transport.deletePod(named: session.target.pod)
         try await PodBrowsingValidation.until { session.state == .failed(.deleted) }
         guard session.buffer.count > 0, session.segment == 1 else { throw Failure.assertion }
+    }
+
+    /// Logs ask which container too, so the row menu opens a choice rather than a session.
+    private static func chooseContainer(_ fixture: PodBrowsingFixture, table: NSTableView, window: NSWindow) async throws {
+        try openMenu(table: table, window: window)
+        try await PodBrowsingValidation.until { fixture.store.containerPicker?.purpose == .logs }
+        guard let choice = fixture.store.containerPicker, choice.pod == "zulu",
+              choice.items.map(\.name) == ["web", "sidecar", "setup", "debugger"],
+              // Every declared kind, unlike the shell menu, which offers running regular ones alone.
+              choice.items.map(\.role) == ["Container", "Default container", "Init container", "Ephemeral container"],
+              choice.defaultContainer == "sidecar" else { throw Failure.assertion }
+        fixture.actions.confirmPodLogs(selectionID: choice.id, container: "web")
     }
 
     private static func openMenu(table: NSTableView, window: NSWindow) throws {

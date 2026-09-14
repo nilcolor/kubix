@@ -35,6 +35,7 @@ public extension AppActions {
         )
         podShellSelection = selection
         store.isLoadingPodDetails = true
+        store.pendingContainerPurpose = .shell
         podDetailTasks[selection.id] = Task { [weak self] in
             defer { self?.podDetailTasks.removeValue(forKey: selection.id) }
             do {
@@ -47,6 +48,7 @@ public extension AppActions {
             } catch {
                 guard let self, self.isCurrentPodSelection(selection) else { return }
                 self.store.isLoadingPodDetails = false
+                self.store.pendingContainerPurpose = nil
                 self.store.podShellDiagnostic = Self.podDetailsDiagnostic(error)
             }
         }
@@ -80,6 +82,7 @@ extension AppActions {
         shellChoices = [:]
         store.containerPicker = nil
         store.isLoadingPodDetails = false
+        store.pendingContainerPurpose = nil
         store.podShellDiagnostic = nil
         for task in podDetailTasks.values { task.cancel() }
         // Running sessions have already relinquished their selection guard and remain immutable.
@@ -99,6 +102,7 @@ extension AppActions {
         _ choices: ContainerSelection, selection: PodShellSelection, preferred: String? = nil
     ) {
         store.isLoadingPodDetails = false
+        store.pendingContainerPurpose = nil
         guard let candidate = choices.defaultShell else {
             store.podShellDiagnostic = choices.unavailableExplanation
             return
@@ -109,7 +113,7 @@ extension AppActions {
         } else if choices.shell.count == 1 { dispatchPodShell(selection, container: candidate) } else {
             store.containerPicker = ContainerPickerPresentation(
                 id: selection.id, purpose: .shell, pod: selection.row.metadata.name ?? "",
-                containers: choices.shell, defaultContainer: candidate
+                containers: choices.shell, defaultContainer: candidate, annotated: choices.annotated
             )
         }
     }
