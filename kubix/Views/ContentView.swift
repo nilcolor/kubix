@@ -30,7 +30,9 @@ struct ContentView: View {
                             Divider()
                             CollapsedDeckBar(store: store, actions: actions).frame(height: deck)
                         } else {
-                            DeckResizeHandle(actions: actions, total: proxy.size.height)
+                            DeckResizeHandle(
+                                actions: actions, top: proxy.frame(in: .global).minY, total: proxy.size.height
+                            )
                             ExecSessionDeck(store: store, actions: actions).frame(height: deck)
                         }
                     }

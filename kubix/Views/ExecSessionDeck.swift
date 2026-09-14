@@ -294,11 +294,15 @@ struct CollapsedDeckBar: View {
     private var count: Int { store.openSessions.count }
 }
 
-/// Drags the boundary between the pod table and the session deck. Same shape as the sidebar handle:
-/// the width follows the absolute cursor position rather than accumulated translation, and the grab
-/// strip is taller than the line it draws.
+/// Drags the boundary between the pod table and the session deck. The height follows the absolute
+/// cursor position rather than accumulated translation, so it cannot drift; the grab strip is taller
+/// than the line it draws.
 struct DeckResizeHandle: View {
     let actions: AppActions
+    /// Where the pane starts in the same space the gesture reports. A drag's location is in window
+    /// coordinates, which include the toolbar and everything else above the pane, so measuring the
+    /// fraction without this offset jumps the boundary to a different point on mouse-down.
+    let top: CGFloat
     let total: CGFloat
 
     var body: some View {
@@ -320,7 +324,7 @@ struct DeckResizeHandle: View {
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { value in
                         guard total > 0 else { return }
-                        actions.setDeckFraction(1 - value.location.y / total)
+                        actions.setDeckFraction(DeckGeometry.fraction(at: value.location.y, top: top, total: total))
                     }
             )
     }
