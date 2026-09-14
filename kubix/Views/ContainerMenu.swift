@@ -27,6 +27,9 @@ struct ContainerMenu: View {
                     .padding(.horizontal, 12).padding(.vertical, 8)
             }
             .frame(width: 290)
+            // The first choice takes key focus when the menu opens, and its ring reads as a state
+            // the menu does not have: there is no keyboard traversal here to indicate.
+            .focusEffectDisabled()
             .accessibilityIdentifier("container-menu")
         }
     }

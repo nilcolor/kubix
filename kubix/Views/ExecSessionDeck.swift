@@ -171,6 +171,7 @@ private struct SessionMeta: View {
         }
         .frame(width: 260)
         .padding(.bottom, 6)
+        .focusEffectDisabled()
     }
 
     private func detail(_ name: String, current: String) -> String {
