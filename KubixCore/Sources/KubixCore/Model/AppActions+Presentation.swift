@@ -48,8 +48,7 @@ public extension AppActions {
 
     func selectShell(_ id: UUID) {
         guard store.execSessions.contains(where: { $0.id == id && !$0.isClosed }) else { return }
-        store.selectedExecSessionID = id
-        store.selectedLogSessionID = nil
+        store.selectedSession = .shell(id)
     }
 
     func saveAuthSettings() async {

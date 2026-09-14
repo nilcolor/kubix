@@ -21,7 +21,6 @@ public final class AppStore {
     public internal(set) var selectedPodUID: String?
     public internal(set) var execSessions: [ExecSession] = []
     public internal(set) var logSessions: [LogSession] = []
-    public internal(set) var selectedLogSessionID: UUID?
     public internal(set) var podLogDiagnostic: String?
     public internal(set) var authenticationSessions: [UUID: AuthSession] = [:]
     var authenticationSessionOrder: [UUID] = []
@@ -38,12 +37,30 @@ public final class AppStore {
     public internal(set) var isLoadingPodDetails = false
     public internal(set) var podShellDiagnostic: String?
     public internal(set) var containerPicker: ContainerPickerPresentation?
-    public internal(set) var selectedExecSessionID: UUID?
+    /// Open order across both kinds, which is the order the deck's one strip shows them in.
+    public internal(set) var sessionOrder: [SessionSelection] = []
+    /// The one session the deck shows. A shell and a log tail share one strip, so a pair of
+    /// independent selections could represent two visible sessions at once, which cannot happen.
+    public internal(set) var selectedSession: SessionSelection?
     public internal(set) var surfaceRevision = 0
 
     /// The exec/log deck's share of the detail pane. Half by default: a shell is the reason the deck
     /// exists, and the old automatic split opened it barely tall enough to read two lines.
     public internal(set) var deckFraction = AppStore.deckFractionDefault
+    public internal(set) var deckCollapsed = false
+
+    /// Still-open sessions in the order they were opened. A closed shell stays in `execSessions`
+    /// until its surface is freed, so membership is the wrong question to ask of either array.
+    public var openSessions: [SessionSelection] {
+        sessionOrder.filter { selection in
+            switch selection {
+            case .shell(let id): execSessions.contains { $0.id == id && !$0.isClosed }
+            case .logs(let id): logSessions.contains { $0.id == id && !$0.isClosed }
+            }
+        }
+    }
+
+    public var lastOpenSession: SessionSelection? { openSessions.last }
 
     public static let deckFractionDefault: Double = 0.5
     public static let deckFractionMinimum: Double = 0.15

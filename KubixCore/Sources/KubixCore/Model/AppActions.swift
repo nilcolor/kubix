@@ -60,6 +60,9 @@ public final class AppActions {
     var logAttempts: [UUID: UUID] = [:]
     var podLogSelection: PodShellSelection?
     var podLogGuards: [UUID: PodShellSelection] = [:]
+    /// The validated details behind an open logs menu, so confirming one needs no second request.
+    var logChoices: [UUID: PodDetails] = [:]
+    var shellChoices: [UUID: [PodDetails.Container]] = [:]
 
     public init(
         store: AppStore, exec: any ExecSessionControlling,
@@ -270,11 +273,11 @@ public final class AppActions {
 
 public extension AppActions {
     @discardableResult
-    func openShell(target: ExecTarget) -> UUID {
-        let session = ExecSession(target: target)
+    func openShell(target: ExecTarget, containers: [PodDetails.Container] = []) -> UUID {
+        let session = ExecSession(target: target, containers: containers)
         store.execSessions.append(session)
-        store.selectedExecSessionID = session.id
-        store.selectedLogSessionID = nil
+        store.sessionOrder.append(.shell(session.id))
+        store.selectedSession = .shell(session.id)
         if stopped {
             finish(session.id, result: .cancelled)
         } else {
@@ -298,9 +301,8 @@ public extension AppActions {
         }
         lifetimes.removeValue(forKey: id)?.close()
         store.surfaceRevision += 1
-        if store.selectedExecSessionID == id {
-            store.selectedExecSessionID = store.execSessions.last(where: { !$0.isClosed })?.id
-        }
+        store.sessionOrder.removeAll { $0 == .shell(id) }
+        if store.selectedSession == .shell(id) { store.selectedSession = store.lastOpenSession }
     }
 
     func retryShell(_ id: UUID) {
@@ -345,6 +347,7 @@ extension AppActions {
         if !store.execSessions[index].state.isTerminal { await exec.childTerminated(sessionID: id) }
         lifetimes.removeValue(forKey: id)?.close()
         store.surfaceRevision += 1
+        store.sessionOrder.removeAll { $0 == .shell(id) }
     }
 
     public func surface(for id: UUID) -> (any TerminalSurface)? { lifetimes[id]?.surface }

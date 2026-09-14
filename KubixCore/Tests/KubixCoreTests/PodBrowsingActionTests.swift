@@ -212,7 +212,7 @@ import Testing
         try await appEventually { store.execSessions.allSatisfy(\.isClosed) }
         // A clean exit needs no explanation left behind.
         #expect(store.podShellDiagnostic == nil)
-        #expect(store.selectedExecSessionID == nil)
+        #expect(store.selectedSession == nil)
         await actions.shutdownAndWait()
     }
 

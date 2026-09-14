@@ -3,7 +3,7 @@ import Foundation
 public extension AppActions {
     func selectLog(_ id: UUID) {
         guard logSession(id) != nil else { return }
-        store.selectedLogSessionID = id
+        store.selectedSession = .logs(id)
     }
 
     func setLogFilter(_ id: UUID, _ value: String) { logSession(id)?.filter = String(value.prefix(256)) }
@@ -24,7 +24,8 @@ public extension AppActions {
         logAttempts.removeValue(forKey: id)
         podLogGuards.removeValue(forKey: id)
         store.logSessions.removeAll { $0.id == id }
-        if store.selectedLogSessionID == id { store.selectedLogSessionID = store.logSessions.last?.id }
+        store.sessionOrder.removeAll { $0 == .logs(id) }
+        if store.selectedSession == .logs(id) { store.selectedSession = store.lastOpenSession }
     }
 
     func resumeLog(_ id: UUID) { revalidateLog(id, container: nil) }

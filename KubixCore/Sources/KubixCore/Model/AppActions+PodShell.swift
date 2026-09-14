@@ -14,7 +14,7 @@ public extension AppActions {
     }
 
     /// Both Return and the native menu use this seam; a menu passes its clicked row explicitly.
-    func openPodShell(uid: String? = nil) {
+    func openPodShell(uid: String? = nil, container: String? = nil) {
         guard !stopped else { return }
         guard !store.isLoadingConfiguration else {
             store.podShellDiagnostic = "Wait for configuration reload before opening a shell."
@@ -43,7 +43,7 @@ public extension AppActions {
                 guard let self, self.isCurrentPodSelection(selection) else { return }
                 guard pod.uid == row.id else { throw PodDetailsError.replaced }
                 guard pod.name == name, pod.namespace == selection.namespace else { throw PodDetailsError.identityMismatch }
-                self.presentContainers(ContainerSelection(details: pod), selection: selection)
+                self.presentContainers(ContainerSelection(details: pod), selection: selection, preferred: container)
             } catch {
                 guard let self, self.isCurrentPodSelection(selection) else { return }
                 self.store.isLoadingPodDetails = false
@@ -77,6 +77,7 @@ extension AppActions {
         cancelPodLogSelection()
         podSelectionGeneration = UUID()
         podShellSelection = nil
+        shellChoices = [:]
         store.containerPicker = nil
         store.isLoadingPodDetails = false
         store.podShellDiagnostic = nil
@@ -94,15 +95,21 @@ extension AppActions {
         if let selection = podShellGuards[id], !isCurrentPodSelection(selection) { throw CancellationError() }
     }
 
-    private func presentContainers(_ choices: ContainerSelection, selection: PodShellSelection) {
+    private func presentContainers(
+        _ choices: ContainerSelection, selection: PodShellSelection, preferred: String? = nil
+    ) {
         store.isLoadingPodDetails = false
         guard let candidate = choices.defaultShell else {
             store.podShellDiagnostic = choices.unavailableExplanation
             return
         }
-        if choices.shell.count == 1 { dispatchPodShell(selection, container: candidate) } else {
+        shellChoices[selection.id] = choices.shell
+        if let preferred, choices.shell.contains(where: { $0.name == preferred }) {
+            dispatchPodShell(selection, container: preferred)
+        } else if choices.shell.count == 1 { dispatchPodShell(selection, container: candidate) } else {
             store.containerPicker = ContainerPickerPresentation(
-                id: selection.id, pod: selection.row.metadata.name ?? "", containers: choices.shell.map(\.name), defaultContainer: candidate
+                id: selection.id, purpose: .shell, pod: selection.row.metadata.name ?? "",
+                containers: choices.shell, defaultContainer: candidate
             )
         }
     }
@@ -113,7 +120,7 @@ extension AppActions {
             let target = try ExecTarget(context: selection.context, namespace: selection.namespace, pod: name, container: container)
             store.containerPicker = nil
             // openShell only schedules authentication; install the guard in the same MainActor turn.
-            let id = openShell(target: target)
+            let id = openShell(target: target, containers: shellChoices[selection.id] ?? [])
             podShellGuards[id] = selection
         } catch { store.podShellDiagnostic = "The selected pod cannot be used as a shell target." }
     }

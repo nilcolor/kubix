@@ -17,7 +17,7 @@ import Testing
             stream: { _, _ in if !detail { await gate.wait() }; return bytes }
         )
         let owner = try PodShellTestOwner(transport: transport, logs: LogService { _ in transport })
-        owner.actions.openPodLogs(uid: "uid-0")
+        owner.actions.openPodLogs(uid: "uid-0", container: "web")
         try await watchEventually { await gate.isWaiting }
         try await mutate(change, owner: owner)
         await gate.open()
@@ -59,9 +59,9 @@ import Testing
         }, stream: { _, _ in bytes })
         let owner = try PodShellTestOwner(transport: transport, logs: LogService { _ in transport })
         let menu = owner.actions.podLogsMenuAction(uid: "uid-0")
-        owner.actions.openPodLogs(uid: "uid-0")
+        owner.actions.openPodLogs(uid: "uid-0", container: "web")
         try await watchEventually { await gate.isWaiting }
-        owner.actions.openPodLogs(uid: "uid-0")
+        owner.actions.openPodLogs(uid: "uid-0", container: "web")
         try await watchEventually { bytes.isWaiting }
         menu()
         await gate.open()
@@ -80,7 +80,7 @@ import Testing
             return try podDetailsData()
         }, stream: { _, _ in bytes })
         let owner = try PodShellTestOwner(transport: transport, logs: LogService { _ in transport })
-        owner.actions.openPodLogs(uid: "uid-0")
+        owner.actions.openPodLogs(uid: "uid-0", container: "web")
         try await watchEventually { bytes.isWaiting }
         let session = try #require(owner.store.logSessions.first)
         owner.actions.switchLogContainer(session.id, name: "setup")
@@ -103,7 +103,7 @@ import Testing
             return try podDetailsData()
         }, stream: { _, call in call == 1 ? first : second })
         let owner = try PodShellTestOwner(transport: transport, logs: LogService { _ in transport })
-        owner.actions.openPodLogs(uid: "uid-0")
+        owner.actions.openPodLogs(uid: "uid-0", container: "web")
         try await watchEventually { first.isWaiting }
         let session = try #require(owner.store.logSessions.first)
         owner.actions.resumeLog(session.id)
@@ -123,7 +123,7 @@ import Testing
         let bytes = MemoryByteStream()
         let transport = LogTestTransport(stream: { _, _ in bytes })
         let owner = try PodShellTestOwner(transport: transport, logs: LogService { _ in transport })
-        owner.actions.openPodLogs(uid: "uid-0")
+        owner.actions.openPodLogs(uid: "uid-0", container: "web")
         try await watchEventually { bytes.isWaiting }
         let session = try #require(owner.store.logSessions.first)
         await owner.configuration.block(on: gate)
@@ -131,7 +131,7 @@ import Testing
         try await watchEventually { await gate.isWaiting }
         owner.actions.resumeLog(session.id)
         #expect(session.state == .failed(.unavailable))
-        owner.actions.openPodLogs(uid: "uid-0")
+        owner.actions.openPodLogs(uid: "uid-0", container: "web")
         #expect(owner.store.podLogDiagnostic != nil && owner.store.logSessions.count == 1)
         #expect(await transport.requests.count == 1)
         await gate.open()

@@ -58,11 +58,15 @@ public struct ExecSession: Identifiable, Equatable, Sendable {
 
     public let id: UUID
     public let target: ExecTarget
+    /// The pod's containers as validated when this session opened, for the container switch alone.
+    /// Never a later lookup: the session's own target stays the immutable snapshot it always was.
+    public let containers: [PodDetails.Container]
     public internal(set) var state: State = .authenticating
     public internal(set) var isClosed = false
 
-    public init(id: UUID = UUID(), target: ExecTarget) {
+    public init(id: UUID = UUID(), target: ExecTarget, containers: [PodDetails.Container] = []) {
         self.id = id
         self.target = target
+        self.containers = containers
     }
 }

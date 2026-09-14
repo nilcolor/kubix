@@ -59,9 +59,9 @@ private actor SnapshotLoader: AppConfigurationLoading {
     try await appEventually { surfaces.created[id] != nil }
     let second = actions.openShell(target: try appTarget())
     actions.selectShell(id)
-    #expect(store.selectedExecSessionID == id)
+    #expect(store.selectedSession == .shell(id))
     actions.closeShell(id)
-    #expect(store.selectedExecSessionID == second)
+    #expect(store.selectedSession == .shell(second))
     #expect(surfaces.created[id]?.closes == 1)
 }
 

@@ -18,11 +18,55 @@ public struct ContainerSelection: Equatable, Sendable {
     }
 }
 
+/// One menu's worth of containers: what each one is for, and which one the pod itself nominates.
 public struct ContainerPickerPresentation: Identifiable, Equatable, Sendable {
+    public enum Purpose: Equatable, Sendable {
+        case shell, logs
+
+        public var title: String { self == .shell ? "Open shell in" : "Open logs in" }
+        public var hint: String {
+            self == .shell ? "Choosing a container opens the terminal immediately."
+                : "Choosing a container opens the log tail immediately."
+        }
+    }
+
+    public struct Item: Identifiable, Equatable, Sendable {
+        public let name: String
+        public let role: String
+        public let state: String
+        public var id: String { name }
+
+        public init(_ container: PodDetails.Container, isDefault: Bool) {
+            name = container.name
+            role = Self.role(container, isDefault: isDefault)
+            state = container.state.rawValue.capitalized
+        }
+
+        private static func role(_ container: PodDetails.Container, isDefault: Bool) -> String {
+            if isDefault { return "Default container" }
+            if container.isSidecar { return "Sidecar" }
+            switch container.kind {
+            case .regular: return "Container"
+            case .initContainer: return "Init container"
+            case .ephemeral: return "Ephemeral container"
+            }
+        }
+    }
+
     public let id: UUID
+    public let purpose: Purpose
     public let pod: String
-    public let containers: [String]
+    public let items: [Item]
     public let defaultContainer: String
+    public var containers: [String] { items.map(\.name) }
+
+    public init(id: UUID, purpose: Purpose, pod: String, containers: [PodDetails.Container], defaultContainer: String) {
+        self.id = id
+        self.purpose = purpose
+        self.pod = pod
+        items = containers.map { Item($0, isDefault: $0.name == defaultContainer) }
+        self.defaultContainer = defaultContainer
+    }
 }
 
 /// An immutable row revision and generation, never a later name lookup through the current context.

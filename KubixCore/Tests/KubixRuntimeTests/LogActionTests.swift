@@ -12,14 +12,14 @@ import Testing
         try await watchEventually { owner.store.execSessions.first?.state == .running }
         let shell = try #require(owner.store.execSessions.first)
         let surface = owner.actions.surface(for: shell.id)
-        owner.actions.openPodLogs(uid: "uid-0")
+        owner.actions.openPodLogs(uid: "uid-0", container: "web")
         try await watchEventually { owner.store.logSessions.first?.buffer.count == 2 }
         let log = try #require(owner.store.logSessions.first)
         #expect(log.target.uid == "uid-0" && log.target.container.name == "web")
         #expect(log.containers.map(\.kind) == [.regular, .regular, .initContainer, .ephemeral])
-        #expect(owner.store.selectedLogSessionID == log.id)
+        #expect(owner.store.selectedSession == .logs(log.id))
         owner.actions.selectShell(shell.id)
-        #expect(owner.store.selectedLogSessionID == nil)
+        #expect(owner.store.selectedSession == .shell(shell.id))
         #expect(log.state == .following && owner.actions.surface(for: shell.id) === surface)
         owner.actions.selectLog(log.id)
         #expect(owner.store.execSessions.first?.target == shell.target)
@@ -38,7 +38,7 @@ import Testing
         let second = MemoryByteStream([Data("second\n".utf8)], finished: true)
         let transport = LogTestTransport(stream: { _, call in call == 1 ? first : second })
         let owner = try PodShellTestOwner(transport: transport, logs: LogService { _ in transport })
-        owner.actions.openPodLogs(uid: "uid-0")
+        owner.actions.openPodLogs(uid: "uid-0", container: "web")
         try await watchEventually { first.isWaiting }
         let session = try #require(owner.store.logSessions.first)
         let target = session.target
@@ -65,7 +65,7 @@ import Testing
             stream: { _, _ in bytes }
         )
         let owner = try PodShellTestOwner(transport: transport, logs: LogService { _ in transport })
-        owner.actions.openPodLogs(uid: "uid-0")
+        owner.actions.openPodLogs(uid: "uid-0", container: "web")
         try await watchEventually { bytes.isWaiting }
         let session = try #require(owner.store.logSessions.first)
         if switching { owner.actions.switchLogContainer(session.id, name: "setup") } else { owner.actions.resumeLog(session.id) }
@@ -82,7 +82,7 @@ import Testing
         let next = MemoryByteStream([Data("new\n".utf8)])
         let transport = LogTestTransport(stream: { _, call in call == 1 ? first : next })
         let owner = try PodShellTestOwner(transport: transport, logs: LogService { _ in transport })
-        owner.actions.openPodLogs(uid: "uid-0")
+        owner.actions.openPodLogs(uid: "uid-0", container: "web")
         try await watchEventually { first.isWaiting }
         let old = try #require(owner.store.logSessions.first)
         owner.actions.switchLogContainer(old.id, name: name)
@@ -100,7 +100,7 @@ import Testing
     func unavailableLogsAreInlineStateAndRetainSegment(_ code: Int) async throws {
         let transport = LogTestTransport(stream: { _, _ in throw APIError.http(code: code, resource: "sensitive") })
         let owner = try PodShellTestOwner(transport: transport, logs: LogService { _ in transport })
-        owner.actions.openPodLogs(uid: "uid-0")
+        owner.actions.openPodLogs(uid: "uid-0", container: "web")
         let expected = LogFailure.classify(APIError.http(code: code, resource: "pods/log"))
         try await watchEventually { owner.store.logSessions.first?.state == .failed(expected) }
         let session = try #require(owner.store.logSessions.first)
@@ -112,13 +112,13 @@ import Testing
     @Test func detailsErrorsAndMissingServiceAreMeaningfulWithoutSession() async throws {
         let transport = LogTestTransport(data: { _, _ in throw APIError.http(code: 403, resource: "private") })
         let owner = try PodShellTestOwner(transport: transport, logs: LogService { _ in transport })
-        owner.actions.openPodLogs(uid: "uid-0")
+        owner.actions.openPodLogs(uid: "uid-0", container: "web")
         try await watchEventually { owner.store.podLogDiagnostic != nil }
         #expect(owner.store.podLogDiagnostic == LogFailure.forbidden.diagnostic)
         #expect(owner.store.logSessions.isEmpty && !owner.store.isLoadingPodDetails)
         await owner.actions.shutdownAndWait()
         let absent = try PodShellTestOwner(transport: transport)
-        absent.actions.openPodLogs(uid: "uid-0")
+        absent.actions.openPodLogs(uid: "uid-0", container: "web")
         #expect(absent.store.podLogDiagnostic != nil && absent.store.logSessions.isEmpty)
         await absent.actions.shutdownAndWait()
     }
@@ -127,7 +127,7 @@ import Testing
         let bytes = MemoryByteStream([Data("kept\n".utf8)])
         let transport = LogTestTransport(stream: { _, _ in bytes })
         let owner = try PodShellTestOwner(transport: transport, logs: LogService { _ in transport })
-        owner.actions.openPodLogs(uid: "uid-0")
+        owner.actions.openPodLogs(uid: "uid-0", container: "web")
         try await watchEventually { bytes.isWaiting }
         let session = try #require(owner.store.logSessions.first)
         try owner.changeRow()
@@ -158,7 +158,7 @@ import Testing
         defer { owner.actions.shutdown() }
         owner.actions.refreshPods()
         try await watchEventually { watchBytes.isWaiting && owner.store.connection == .live }
-        owner.actions.openPodLogs(uid: "uid-0")
+        owner.actions.openPodLogs(uid: "uid-0", container: "web")
         try await watchEventually { logBytes.isWaiting }
         let session = try #require(owner.store.logSessions.first)
         if replacement {
@@ -185,7 +185,7 @@ import Testing
         let transport = LogTestTransport(stream: { _, _ in bytes })
         let owner = try PodShellTestOwner(transport: transport, logs: LogService { _ in transport })
         defer { owner.actions.shutdown() }
-        owner.actions.openPodLogs(uid: "uid-0")
+        owner.actions.openPodLogs(uid: "uid-0", container: "web")
         try await watchEventually { bytes.isWaiting }
         let session = try #require(owner.store.logSessions.first)
         owner.actions.applyPodUpdate(.init(rows: [], columns: nil, connection: .connecting))

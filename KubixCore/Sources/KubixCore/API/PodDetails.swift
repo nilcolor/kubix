@@ -8,6 +8,16 @@ public struct PodDetails: Decodable, Equatable, Sendable {
         public let name: String
         public let kind: ContainerKind
         public let state: ContainerState
+        /// A Kubernetes native sidecar: an init container declared `restartPolicy: Always`, which
+        /// keeps running alongside the regular ones instead of completing before them.
+        public let isSidecar: Bool
+
+        public init(name: String, kind: ContainerKind, state: ContainerState, isSidecar: Bool = false) {
+            self.name = name
+            self.kind = kind
+            self.state = state
+            self.isSidecar = isSidecar
+        }
     }
 
     public let uid: String
@@ -27,7 +37,10 @@ public struct PodDetails: Decodable, Equatable, Sendable {
         let defaultContainer: String?
         enum CodingKeys: String, CodingKey { case defaultContainer = "kubectl.kubernetes.io/default-container" }
     }
-    private struct Declaration: Decodable { let name: String }
+    private struct Declaration: Decodable {
+        let name: String
+        let restartPolicy: String?
+    }
     private struct Spec: Decodable {
         let containers: [Declaration]
         let initContainers: [Declaration]?
@@ -88,7 +101,12 @@ public struct PodDetails: Decodable, Equatable, Sendable {
               declarations.allSatisfy({ !$0.name.isEmpty && $0.name.rangeOfCharacter(from: .whitespacesAndNewlines.union(.controlCharacters)) == nil })
         else { throw PodDetailsError.malformed }
         let byName = Dictionary(uniqueKeysWithValues: states.map { ($0.name, $0.state?.value ?? .unknown) })
-        return declarations.map { Container(name: $0.name, kind: kind, state: byName[$0.name] ?? .unknown) }
+        return declarations.map {
+            Container(
+                name: $0.name, kind: kind, state: byName[$0.name] ?? .unknown,
+                isSidecar: kind == .initContainer && $0.restartPolicy == "Always"
+            )
+        }
     }
 }
 
