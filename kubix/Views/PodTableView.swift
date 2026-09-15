@@ -8,22 +8,6 @@ struct PodTableView: View {
     var body: some View {
         let presentation = store.podTable
         VStack(alignment: .leading, spacing: 6) {
-            // A live count is the window subtitle's job; this line is for the states that need a
-            // sentence — connecting, empty, no matches, or a failure with its Retry.
-            if presentation.state != .live {
-                HStack(alignment: .top) {
-                    // A listed snapshot is still waiting on its watch, so the spinner stays until live.
-                    if presentation.state == .connecting || presentation.state == .listed {
-                        ProgressView().controlSize(.small)
-                    }
-                    Text(presentation.message)
-                        .foregroundStyle(presentation.state == .failed ? Color.orange : Color.secondary)
-                        .font(.caption).textSelection(.enabled)
-                    Spacer(minLength: 0)
-                    if presentation.state == .failed { Button("Retry pods") { actions.refreshPods() } }
-                }
-                .padding(.horizontal, textInset)
-            }
             if store.isLoadingPodDetails {
                 HStack {
                     ProgressView().controlSize(.small)
@@ -38,13 +22,47 @@ struct PodTableView: View {
             if let diagnostic = store.podLogDiagnostic {
                 Text(diagnostic).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
             }
+            // The state's own sentence goes over the table, not above it: a line that appears and
+            // disappears as a watch settles moved every row underneath it each time.
             NativePodTable(presentation: presentation, actions: actions)
+                .overlay { TableState(presentation: presentation, actions: actions) }
         }
     }
 
     /// Everything except the table carries the pane's inset; the table bleeds to the edge and insets
     /// its own cells, so one leading edge runs down the whole pane.
     private var textInset: CGFloat { PodsPane.inset }
+}
+
+/// What the table is doing, when the rows cannot say it themselves. An empty table has the room for
+/// a sentence, and a table with rows already has them to read — so a settling watch says nothing here
+/// and leaves the toolbar's spinner and subtitle to report it.
+private struct TableState: View {
+    let presentation: PodTablePresentation
+    let actions: AppActions
+
+    var body: some View {
+        if presentation.rows.isEmpty, presentation.state != .idle {
+            VStack(spacing: 10) {
+                if presentation.state == .connecting || presentation.state == .listed {
+                    ProgressView().controlSize(.small)
+                }
+                Text(presentation.message)
+                    .font(.callout)
+                    .foregroundStyle(presentation.state == .failed ? Color.orange : .secondary)
+                    .multilineTextAlignment(.center)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: 420)
+                if presentation.state == .failed {
+                    Button("Retry pods") { actions.refreshPods() }
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            // The header row stays readable and clickable behind this.
+            .allowsHitTesting(presentation.state == .failed)
+        }
+    }
 }
 
 /// Centres its label vertically: an `NSTextField` returned straight to the table is stretched to the

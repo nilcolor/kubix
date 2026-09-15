@@ -14,6 +14,11 @@ struct PodsPane: View {
     let store: AppStore
     let actions: AppActions
 
+    private var settling: Bool {
+        let state = store.podTable.state
+        return !store.rows.isEmpty && (state == .connecting || state == .listed)
+    }
+
     private var subtitle: String {
         let table = store.podTable
         switch table.state {
@@ -44,8 +49,16 @@ struct PodsPane: View {
         .navigationSubtitle(subtitle)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Button { actions.refreshPods() } label: { Image(systemName: "arrow.triangle.2.circlepath") }
-                    .help("List and watch this namespace again")
+                Button { actions.refreshPods() } label: {
+                    // A watch that is still settling with rows already on screen has nowhere else to
+                    // say so: the table keeps its rows and the toolbar keeps the same geometry.
+                    if settling {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                    }
+                }
+                .help(settling ? "Listing and watching this namespace" : "List and watch this namespace again")
                 Toggle("Wide", isOn: Binding(get: { store.podWide }, set: { actions.setPodWide($0) }))
                     .toggleStyle(.button)
                     .help("Show all server columns, including priority columns")
