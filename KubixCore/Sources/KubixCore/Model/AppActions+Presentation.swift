@@ -44,6 +44,14 @@ public extension AppActions {
         if value { resetSettingsDraft() }
     }
     func setUseDeviceCode(_ value: Bool) { store.useDeviceCode = value }
+
+    /// Dismisses the messages the pods page floats over its table. They are transient explanations of
+    /// an action that failed, not a record: the next attempt replaces them anyway.
+    func dismissPodDiagnostics() {
+        store.podShellDiagnostic = nil
+        store.podLogDiagnostic = nil
+        store.namespaceDiagnostic = nil
+    }
     func setSettingsDraft(_ value: AuthSettingsDraft) { settingsDraftRevision += 1; store.settingsDraft = value }
 
     func selectShell(_ id: UUID) {

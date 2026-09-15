@@ -34,10 +34,6 @@ struct PodsPane: View {
         VStack(alignment: .leading, spacing: 8) {
             PodsActions(store: store, actions: actions)
                 .padding(.horizontal, Self.inset)
-            if let diagnostic = store.namespaceDiagnostic {
-                Text(diagnostic).font(.caption).foregroundStyle(.orange)
-                    .padding(.horizontal, Self.inset)
-            }
             AuthSessionBanner(store: store, actions: actions)
             PodTableView(store: store, actions: actions)
         }

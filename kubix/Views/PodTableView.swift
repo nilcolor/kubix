@@ -7,31 +7,52 @@ struct PodTableView: View {
 
     var body: some View {
         let presentation = store.podTable
-        VStack(alignment: .leading, spacing: 6) {
-            if store.isLoadingPodDetails {
-                HStack {
-                    ProgressView().controlSize(.small)
-                    Text("Loading fresh Pod details…").font(.caption)
-                }
-                .padding(.horizontal, textInset)
-            }
-            if let diagnostic = store.podShellDiagnostic {
-                Text(diagnostic).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
-                    .padding(.horizontal, textInset)
-            }
-            if let diagnostic = store.podLogDiagnostic {
-                Text(diagnostic).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
-            }
-            // The state's own sentence goes over the table, not above it: a line that appears and
-            // disappears as a watch settles moved every row underneath it each time.
-            NativePodTable(presentation: presentation, actions: actions)
-                .overlay { TableState(presentation: presentation, actions: actions) }
-        }
+        // Nothing here changes the table's height: a message that comes and goes with a request
+        // would otherwise move every row under it, twice per click. The details request itself is
+        // reported by the button that started it, which spins in place.
+        NativePodTable(presentation: presentation, actions: actions)
+            .overlay { TableState(presentation: presentation, actions: actions) }
+            .overlay(alignment: .bottom) { PodDiagnostics(store: store, actions: actions) }
     }
 
     /// Everything except the table carries the pane's inset; the table bleeds to the edge and insets
     /// its own cells, so one leading edge runs down the whole pane.
     private var textInset: CGFloat { PodsPane.inset }
+}
+
+/// Messages about an action the user just took — a namespace that would not commit, a shell or log
+/// that could not open. They float over the foot of the table so a failure explains itself without
+/// moving the rows, and they are dismissible because the next attempt replaces them anyway.
+private struct PodDiagnostics: View {
+    let store: AppStore
+    let actions: AppActions
+
+    var body: some View {
+        let messages = [store.namespaceDiagnostic, store.podShellDiagnostic, store.podLogDiagnostic]
+            .compactMap { $0 }
+        if !messages.isEmpty {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(messages, id: \.self) { message in
+                        Text(message).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Button { actions.dismissPodDiagnostics() } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("Dismiss")
+            }
+            .font(.callout)
+            .padding(12)
+            .frame(maxWidth: 560, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(nsColor: .controlBackgroundColor))
+                    .shadow(color: .black.opacity(0.18), radius: 8, y: 2)
+            }
+            .padding(.bottom, 12)
+        }
+    }
 }
 
 /// What the table is doing, when the rows cannot say it themselves. An empty table has the room for
