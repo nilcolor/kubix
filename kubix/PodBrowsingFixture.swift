@@ -8,6 +8,7 @@ import KubixRuntime
     let store = AppStore()
     let transport = PodFixtureTransport()
     let authentication = PodFixtureAuth()
+    let metrics = PodFixtureMetrics()
     let surfaces = PodFixtureSurfaces()
     let actions: AppActions
 
@@ -18,7 +19,11 @@ import KubixRuntime
             podDetails: PodDetailsService(transports: { [transport] _ in transport }),
             logs: LogService(transports: { [transport] _ in transport }),
             probe: ClusterProbeService(transports: { [transport] _ in transport }),
-            namespaces: NamespaceListService(transports: { [transport] _ in transport })
+            namespaces: NamespaceListService(transports: { [transport] _ in transport }),
+            // Its own transport: a poll running under every stage would otherwise change the request
+            // counts the other stages assert.
+            metrics: PodMetricsService(transports: { [metrics] _ in metrics }),
+            metricsInterval: .milliseconds(200)
         )
     }
 }
@@ -58,6 +63,10 @@ actor PodFixtureTransport: Transport {
     private(set) var scaleRequests = 0
     private(set) var scaleWatchVersions: [String] = []
     private var scaleRelisted = false
+    /// Fixed when the page is first served, not when the fixture starts: the usage stage runs last,
+    /// and `zulu` must still be young enough to tick in seconds when it gets there. Fixed thereafter,
+    /// so a relist describes the same pods with the same ages.
+    private var timedBase: Date?
 
     /// Set before a Connect to make the next probe fail, for the driver's failure-then-Retry stage.
     var probeFailure: APIError?
@@ -84,6 +93,11 @@ actor PodFixtureTransport: Transport {
         }
         if request.accept == "application/json" { return try Self.details(request) }
         if request.path == ["api", "v1", "namespaces", "scale", "pods"] { return try await scalePage(request) }
+        if request.path == ["api", "v1", "namespaces", "timed", "pods"] {
+            let base = timedBase ?? Date()
+            timedBase = base
+            return Self.timedPage(created: base)
+        }
         guard request.path.count == 5, request.path.prefix(3) == ["api", "v1", "namespaces"],
               request.path.last == "pods", request.accept == APIRequest.tableAccept,
               ["team", "other", "known", "empty", "forbidden"].contains(request.path[3]) else { throw APIError.invalidRequest }
@@ -191,6 +205,26 @@ actor PodFixtureTransport: Transport {
             "columnDefinitions": start == 0 ? [["name": "Name", "type": "string"]] as Any : NSNull(),
             "rows": rows,
         ])
+    }
+
+    /// Printed ages that are deliberately wrong, so the driver can tell a computed Age from the
+    /// server's frozen text: `alpha` is two hours old but printed as `1h`.
+    static func timedPage(created base: Date) -> Data {
+        let rows = [("alpha", "uid-a", base.addingTimeInterval(-7200), "1h"), ("zulu", "uid-z", base.addingTimeInterval(-90), "5s")]
+            .map { name, uid, created, printed in
+                #"{"cells":["\#(name)","Running","\#(printed)"],"object":{"metadata":{"uid":"\#(uid)","name":"\#(name)","namespace":"timed","creationTimestamp":"\#(timestamp(created))"}}}"#
+            }.joined(separator: ",")
+        return Data("""
+        {"apiVersion":"meta.k8s.io/v1","kind":"Table","metadata":{"resourceVersion":"timed","continue":""},
+         "columnDefinitions":[{"name":"Name","type":"string"},{"name":"Status","type":"string"},{"name":"Age","type":"string"}],
+         "rows":[\(rows)]}
+        """.utf8)
+    }
+
+    static func timestamp(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.string(from: date)
     }
 
     static func scaleRow(_ id: Int) -> [String: Any] {
@@ -332,3 +366,28 @@ private struct PodFixtureExec: ExecSessionControlling {
     }
 }
 #endif
+
+/// The metrics API, off until the driver's usage stage turns it on: until then it answers like a
+/// metrics-server that is restarting, which keeps the cluster's availability undecided and the usage
+/// columns out of every earlier stage.
+actor PodFixtureMetrics: Transport {
+    private var usage: [String: (cpu: String, memory: String)]?
+    private(set) var requests = 0
+
+    func serve(_ usage: [String: (cpu: String, memory: String)]) { self.usage = usage }
+
+    func data(for request: APIRequest) async throws -> Data {
+        requests += 1
+        guard let usage, request.path == ["apis", "metrics.k8s.io", "v1beta1", "namespaces", "timed", "pods"] else {
+            throw APIError.http(code: 503, resource: "pods")
+        }
+        let now = PodFixtureTransport.timestamp(Date())
+        let items = usage.sorted { $0.key < $1.key }.map { name, value in
+            #"{"metadata":{"name":"\#(name)","namespace":"timed"},"timestamp":"\#(now)","window":"15s","containers":[{"name":"app","usage":{"cpu":"\#(value.cpu)","memory":"\#(value.memory)"}}]}"#
+        }.joined(separator: ",")
+        return Data(#"{"kind":"PodMetricsList","apiVersion":"metrics.k8s.io/v1beta1","items":[\#(items)]}"#.utf8)
+    }
+
+    func stream(for request: APIRequest, purpose: TransportPurpose) throws -> any HTTPByteStream { throw APIError.invalidRequest }
+    func webSocket(for request: APIRequest) throws -> any WebSocketConnection { throw APIError.invalidRequest }
+}

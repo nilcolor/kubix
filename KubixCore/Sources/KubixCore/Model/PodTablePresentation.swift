@@ -1,6 +1,10 @@
 import Foundation
 
-/// Server cell positions, never pod-specific column names, define the display and sort keys.
+/// The server's printed columns, plus what a pod list needs that the server does not print. Server
+/// cell positions still identify every server column, so a schema change never re-keys a sort. Two
+/// columns are the app's own: the Age the server prints is replaced by one computed from the pod's
+/// creation time, because a printed age freezes until the row next changes; and CPU and memory come
+/// from the metrics API, which the pod Table does not carry at all.
 public struct PodTablePresentation: Equatable, Sendable {
     public struct Sort: Equatable, Sendable {
         public let column: Int
@@ -12,13 +16,39 @@ public struct PodTablePresentation: Equatable, Sendable {
     }
 
     public struct Column: Identifiable, Equatable, Sendable {
+        public enum Kind: Equatable, Sendable {
+            /// Printed by the server; `id` is its cell position.
+            case server
+            /// The server's Age column, displayed from `Row.created` and sorted by it.
+            case age
+            case cpu
+            case memory
+        }
+
+        /// A server cell position, or a negative id for a column the app computes.
         public let id: Int
         public let definition: KubernetesTable.ColumnDefinition
+        public let kind: Kind
+
+        /// Live columns change on their own, so they are not search keys: a filter that matched
+        /// `5m` a minute ago would silently stop matching as the age ticked past it.
+        public var isSearchable: Bool { kind == .server }
+
+        public static let cpu = Column(
+            id: -1, definition: .init(name: "CPU", type: "string", description: "Usage in millicores, as kubectl top reports it"),
+            kind: .cpu
+        )
+        public static let memory = Column(
+            id: -2, definition: .init(name: "Memory", type: "string", description: "Usage in mebibytes, as kubectl top reports it"),
+            kind: .memory
+        )
     }
 
     public struct Row: Identifiable, Equatable, Sendable {
         public let id: String
         public let cells: [String]
+        /// The pod's creation time, from which the Age cell is drawn at the moment it is shown.
+        public let created: Date?
     }
 
     public enum State: Equatable, Sendable {
@@ -36,10 +66,17 @@ public struct PodTablePresentation: Equatable, Sendable {
     public init(
         rows source: [PodRow], columns schema: [KubernetesTable.ColumnDefinition]?,
         connection: PodConnection, filter: String = "", wide: Bool = false,
-        sort: Sort? = nil, selectedUID: String? = nil
+        sort: Sort? = nil, selectedUID: String? = nil, metrics: [String: PodUsage]? = nil
     ) {
-        let columns = (schema ?? []).enumerated().compactMap {
-            wide || !$0.element.isWideOnly ? Column(id: $0.offset, definition: $0.element) : nil
+        var columns = (schema ?? []).enumerated().compactMap { index, definition -> Column? in
+            guard wide || !definition.isWideOnly else { return nil }
+            let age = definition.name.caseInsensitiveCompare("Age") == .orderedSame
+            return Column(id: index, definition: definition, kind: age ? .age : .server)
+        }
+        // Usage sits where every other client puts it, just before Age.
+        if metrics != nil {
+            let position = columns.firstIndex { $0.kind == .age } ?? columns.endIndex
+            columns.insert(contentsOf: [.cpu, .memory], at: position)
         }
         self.columns = columns
         // A hidden column must not invisibly control either sorting or filtering.
@@ -48,13 +85,14 @@ public struct PodTablePresentation: Equatable, Sendable {
         let query = filter.trimmingCharacters(in: .whitespacesAndNewlines)
         var displayed = valid ? source.filter { row in
             query.isEmpty || columns.contains {
-                row.cells[$0.id].displayText.range(of: query, options: [.caseInsensitive, .diacriticInsensitive], locale: Self.locale) != nil
+                $0.isSearchable && row.cells[$0.id].displayText
+                    .range(of: query, options: [.caseInsensitive, .diacriticInsensitive], locale: Self.locale) != nil
             }
         } : []
-        if let sort = self.sort {
+        if let sort = self.sort, let column = columns.first(where: { $0.id == sort.column }) {
             displayed = displayed.enumerated().sorted { lhs, rhs in
-                let left = lhs.element.cells[sort.column]
-                let right = rhs.element.cells[sort.column]
+                let left = Self.key(lhs.element, column, metrics: metrics)
+                let right = Self.key(rhs.element, column, metrics: metrics)
                 if left == .null || right == .null {
                     if left != right { return right == .null }
                 }
@@ -63,7 +101,12 @@ public struct PodTablePresentation: Equatable, Sendable {
                 return comparison == (sort.ascending ? .orderedAscending : .orderedDescending)
             }.map(\.element)
         }
-        let rows = displayed.map { row in Row(id: row.id, cells: columns.map { row.cells[$0.id].displayText }) }
+        let rows = displayed.map { row in
+            Row(
+                id: row.id, cells: columns.map { Self.text(row, $0, metrics: metrics) },
+                created: row.metadata.creationTimestamp
+            )
+        }
         self.rows = rows
         self.selectedUID = selectedUID.flatMap { uid in rows.contains { $0.id == uid } ? uid : nil }
         total = source.count
@@ -85,6 +128,44 @@ public struct PodTablePresentation: Equatable, Sendable {
     }
 
     private static let locale = Locale(identifier: "en_US_POSIX")
+
+    /// What a column sorts by. Age sorts by creation time, which never changes, so the order stays
+    /// correct without a clock; usage sorts by the exact value rather than the rounded display.
+    private static func key(_ row: PodRow, _ column: Column, metrics: [String: PodUsage]?) -> TableCell {
+        switch column.kind {
+        case .server: return row.cells[column.id]
+        case .age:
+            guard let created = row.metadata.creationTimestamp else { return row.cells[column.id] }
+            // Youngest first when ascending, which is what a smaller age means.
+            return .number(Decimal(-created.timeIntervalSince1970))
+        case .cpu: return usage(row, metrics).map { .number($0.cpuNanocores) } ?? .null
+        case .memory: return usage(row, metrics).map { .number($0.memoryBytes) } ?? .null
+        }
+    }
+
+    private static func text(_ row: PodRow, _ column: Column, metrics: [String: PodUsage]?) -> String {
+        switch column.kind {
+        // The Age text is drawn from `Row.created` when shown; this is only the fallback for a row
+        // the server sent without a creation time.
+        case .server, .age: return row.cells[column.id].displayText
+        case .cpu: return usage(row, metrics).map { UsageFormat.cpu($0.cpuNanocores) } ?? absent
+        case .memory: return usage(row, metrics).map { UsageFormat.memory($0.memoryBytes) } ?? absent
+        }
+    }
+
+    /// A pod with no numbers is not a pod using nothing: Pending, completed and newly started pods
+    /// have no sample yet, and a third of a busy namespace can be in that state.
+    public static let absent = "—"
+
+    /// The metrics API names a pod but carries no UID, so a pod recreated under the same name — a
+    /// StatefulSet replica — could briefly inherit its predecessor's numbers. A sample whose window
+    /// began before this pod existed cannot describe it. A second of slack covers the timestamps'
+    /// whole-second precision.
+    static func usage(_ row: PodRow, _ metrics: [String: PodUsage]?) -> PodUsage? {
+        guard let name = row.metadata.name, let sample = metrics?[name] else { return nil }
+        if let created = row.metadata.creationTimestamp, sample.windowStart < created.addingTimeInterval(-1) { return nil }
+        return sample
+    }
 
     private static func compare(_ left: TableCell, _ right: TableCell) -> ComparisonResult {
         // Comparing some mixed pairs as text but others numerically can form sort cycles.

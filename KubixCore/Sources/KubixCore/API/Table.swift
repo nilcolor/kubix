@@ -29,6 +29,15 @@ public struct KubernetesTable: Decodable, Equatable, Sendable {
 
         enum CodingKeys: String, CodingKey { case name, type, format, description, priority }
 
+        /// For the columns the app computes itself; the server's own arrive decoded.
+        public init(name: String, type: String, format: String? = nil, description: String? = nil, priority: Int = 0) {
+            self.name = name
+            self.type = type
+            self.format = format
+            self.description = description
+            self.priority = priority
+        }
+
         public init(from decoder: any Decoder) throws {
             let values = try decoder.container(keyedBy: CodingKeys.self)
             name = try values.decode(String.self, forKey: .name)

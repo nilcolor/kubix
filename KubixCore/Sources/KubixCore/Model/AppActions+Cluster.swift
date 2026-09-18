@@ -27,6 +27,8 @@ public extension AppActions {
         retireClusterTask(name)
         clusterGenerations[name] = UUID()
         store.clusters[index].state = .disconnected
+        // A reconnect may reach a cluster whose metrics-server was installed or removed meanwhile.
+        store.clusters[index].metrics = .unknown
         demotePodsSelection(of: name)
         discardNamespaces(of: name)
         guard store.selectedContext?.name == name else { return }

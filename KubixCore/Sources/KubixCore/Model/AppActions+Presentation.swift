@@ -117,3 +117,13 @@ extension AppActions {
         }
     }
 }
+
+extension AppActions {
+    static func authDiagnostic(_ error: any Error) -> String {
+        if let error = error as? AuthenticationError { return error.errorDescription ?? "Authentication failed." }
+        if let error = error as? AuthError { return error.description }
+        if let error = error as? any AuthenticationDiagnosticProviding { return error.authenticationDiagnostic }
+        if error is CancellationError { return "Authentication was cancelled." }
+        return "Authentication failed. Check the configured plugin/profile and explicitly retry."
+    }
+}

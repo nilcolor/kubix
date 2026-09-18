@@ -328,6 +328,34 @@ arrives; see the namespace discovery section below.
 Refresh/context/reload cancels prior watch work and clears its presentation.
 Generation checks reject late publications.
 
+### Columns the app computes
+
+The pod Table was once displayed exactly as printed. Two things a pod list needs are not in it, so the
+presentation adds them on top of the server's columns, which keep their cell positions as ids.
+
+- **Age.** The server prints an age once, when it builds the row, so a quiet pod's Age froze at its
+  last event. The server's Age column is recognised by name and drawn from `metadata.creationTimestamp`
+  instead, formatted as `kubectl get` does (`duration.HumanDuration`). It sorts by creation time,
+  which never changes, so the presentation needs no clock; only the native table ticks, once a
+  second, redrawing the Age cells that are on screen. A row without a creation time keeps the text
+  the server printed.
+- **CPU and Memory.** From `metrics.k8s.io/v1beta1`, which has no watch: it is polled every fifteen
+  seconds for as long as the pod watch runs, under the watch's generation, and retires with it. Values
+  read as `kubectl top` prints them — CPU rounded up to a millicore, memory down to a mebibyte — and
+  sort by the exact value. A pod with no sample shows `—` and sorts last either way: Pending,
+  completed and just-started pods have none, which was a third of a live namespace.
+
+Availability is per cluster, so the columns do not vanish and return with each namespace change. A
+404 means no metrics API and is not asked again until reconnect; a 403 stops that namespace's poll
+without judging the cluster; anything else is retried. Numbers that stop being refreshed are cleared
+after three minutes rather than shown as current. The metrics API names a pod but carries no UID, so
+a sample whose window began before the pod was created is rejected: it belongs to a predecessor
+recreated under the same name.
+
+Live columns are not search keys — a filter matching `5m` would silently stop matching as the age
+ticked past it. And a presentation that changes only cell contents redraws only those rows instead of
+reloading the table, so a poll does not fight the user's scroll position and selection.
+
 ### Per-cluster connection versus the single active watch
 
 `AppStore.clusters` holds one `ClusterStatus` per resolved context, each carrying

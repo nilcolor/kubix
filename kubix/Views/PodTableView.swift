@@ -10,8 +10,12 @@ struct PodTableView: View {
         // Nothing here changes the table's height: a message that comes and goes with a request
         // would otherwise move every row under it, twice per click. The details request itself is
         // reported by the button that started it, which spins in place.
-        NativePodTable(presentation: presentation, actions: actions)
-            .overlay { TableState(presentation: presentation, actions: actions) }
+        // Age is drawn from each pod's creation time at the moment it is shown, so the table ticks
+        // once a second on its own; the presentation, and with it the sort, never needs a clock.
+        TimelineView(.periodic(from: .now, by: 1)) { timeline in
+            NativePodTable(presentation: presentation, now: timeline.date, actions: actions)
+        }
+        .overlay { TableState(presentation: presentation, actions: actions) }
 
     }
 
@@ -118,6 +122,7 @@ final class PodCellView: NSTableCellView {
 /// NSTableView supports runtime-defined columns on macOS 14, including repeated server labels.
 struct NativePodTable: NSViewRepresentable {
     let presentation: PodTablePresentation
+    let now: Date
     let actions: AppActions
 
     func makeCoordinator() -> Coordinator { Coordinator(actions: actions) }
@@ -150,18 +155,19 @@ struct NativePodTable: NSViewRepresentable {
         scroll.hasHorizontalScroller = true
         scroll.autohidesScrollers = true
         scroll.documentView = table
-        context.coordinator.update(table, presentation: presentation)
+        context.coordinator.update(table, presentation: presentation, now: now)
         return scroll
     }
 
     func updateNSView(_ view: NSScrollView, context: Context) {
         guard let table = view.documentView as? NSTableView else { return }
-        context.coordinator.update(table, presentation: presentation)
+        context.coordinator.update(table, presentation: presentation, now: now)
     }
 
     @MainActor final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         let actions: AppActions
         private var presentation: PodTablePresentation?
+        private var now = Date()
         private var updating = false
 
         init(actions: AppActions) { self.actions = actions }
@@ -178,11 +184,19 @@ struct NativePodTable: NSViewRepresentable {
             return actions.podLogsMenuAction(uid: presentation.rows[row].id)
         }
 
-        func update(_ table: NSTableView, presentation next: PodTablePresentation) {
-            guard presentation != next else { return }
+        func update(_ table: NSTableView, presentation next: PodTablePresentation, now: Date) {
+            let previous = presentation
+            guard previous != next else {
+                if self.now != now {
+                    self.now = now
+                    refreshAges(table)
+                }
+                return
+            }
+            self.now = now
             updating = true
             defer { updating = false }
-            let columnsChanged = presentation?.columns != next.columns
+            let columnsChanged = previous?.columns != next.columns
             if columnsChanged {
                 for column in table.tableColumns { table.removeTableColumn(column) }
                 for column in next.columns {
@@ -195,13 +209,40 @@ struct NativePodTable: NSViewRepresentable {
                     table.addTableColumn(native)
                 }
             }
-            let rowsChanged = presentation?.rows != next.rows
             presentation = next
             let descriptors = next.sort.map { [NSSortDescriptor(key: String($0.column), ascending: $0.ascending)] } ?? []
             if table.sortDescriptors != descriptors { table.sortDescriptors = descriptors }
-            if rowsChanged || columnsChanged { table.reloadData() }
+            if columnsChanged || previous?.rows.map(\.id) != next.rows.map(\.id) {
+                table.reloadData()
+            } else if let previous {
+                // Same rows in the same order: only their cells changed — a usage poll, a watch event on
+                // one pod. Redrawing just those rows keeps scroll position and selection where they
+                // were; a full reload on every poll would fight both.
+                let changed = IndexSet(next.rows.indices.filter { previous.rows[$0] != next.rows[$0] })
+                if !changed.isEmpty {
+                    table.reloadData(forRowIndexes: changed, columnIndexes: IndexSet(integersIn: 0..<table.numberOfColumns))
+                }
+            }
             let selected = next.rows.firstIndex { $0.id == next.selectedUID }
             table.selectRowIndexes(selected.map { IndexSet(integer: $0) } ?? [], byExtendingSelection: false)
+        }
+
+        /// A tick redraws only the Age cells that are on screen: nothing else moved, and the rows out
+        /// of view are drawn with the current time when they scroll in.
+        private func refreshAges(_ table: NSTableView) {
+            guard let presentation, let column = presentation.columns.firstIndex(where: { $0.kind == .age }) else { return }
+            let visible = table.rows(in: table.visibleRect)
+            guard visible.length > 0 else { return }
+            table.reloadData(forRowIndexes: IndexSet(integersIn: visible.location..<NSMaxRange(visible)), columnIndexes: [column])
+        }
+
+        func text(row: Int, column: Int) -> String {
+            guard let presentation else { return "" }
+            let entry = presentation.rows[row]
+            if presentation.columns[column].kind == .age, let created = entry.created {
+                return HumanDuration.format(now.timeIntervalSince(created))
+            }
+            return entry.cells[column]
         }
 
         func numberOfRows(in tableView: NSTableView) -> Int { presentation?.rows.count ?? 0 }
@@ -213,7 +254,7 @@ struct NativePodTable: NSViewRepresentable {
             let identifier = NSUserInterfaceItemIdentifier("pod-cell")
             let cell = tableView.makeView(withIdentifier: identifier, owner: nil) as? PodCellView ?? PodCellView()
             cell.identifier = identifier
-            cell.textField?.stringValue = presentation.rows[row].cells[column]
+            cell.textField?.stringValue = text(row: row, column: column)
             cell.toolTip = cell.textField?.stringValue
             return cell
         }

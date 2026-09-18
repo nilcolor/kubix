@@ -47,6 +47,9 @@ public final class AppActions {
     var clusterTasks: [String: Task<Void, Never>] = [:]
     var retiringClusterTasks: [UUID: Task<Void, Never>] = [:]
     var podTask: Task<Void, Never>?
+    let podMetricsListing: (any PodMetricsListing)?
+    let metricsInterval: Duration
+    var podMetricsTask: Task<Void, Never>?
     var retiringPodTasks: [UUID: Task<Void, Never>] = [:]
     var podGeneration = UUID()
     var namespaceSelection = NamespaceSelection()
@@ -72,6 +75,10 @@ public final class AppActions {
         pods: (any PodWatching)? = nil, podDetails: (any PodDetailsProviding)? = nil,
         logs: (any LogStreaming)? = nil, probe: (any ClusterProbing)? = nil,
         namespaces: (any NamespaceListing)? = nil,
+        metrics: (any PodMetricsListing)? = nil,
+        // Samples average over a window of roughly fifteen to forty-five seconds; polling faster only
+        // re-reads the same numbers.
+        metricsInterval: Duration = .seconds(15),
         monotonicNow: @escaping @Sendable () -> TimeInterval = {
             TimeInterval(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000
         }
@@ -85,6 +92,8 @@ public final class AppActions {
         self.pods = pods
         self.probe = probe
         namespaceListing = namespaces
+        podMetricsListing = metrics
+        self.metricsInterval = metricsInterval
         self.monotonicNow = monotonicNow
         self.podDetails = podDetails
         self.logs = logs
@@ -262,6 +271,7 @@ public final class AppActions {
         for task in authenticationTasks.values { task.cancel() }
         for task in tasks.values { task.cancel() }
         podTask?.cancel()
+        podMetricsTask?.cancel()
         for task in retiringPodTasks.values { task.cancel() }
         for task in clusterTasks.values { task.cancel() }
         for task in retiringClusterTasks.values { task.cancel() }
@@ -368,7 +378,7 @@ extension AppActions {
         let settings = Array(settingsTasks.values)
         let progress = progressTask
         let presentation = presentationTask
-        let podWork = Array(retiringPodTasks.values) + (podTask.map { [$0] } ?? [])
+        let podWork = Array(retiringPodTasks.values) + [podTask, podMetricsTask].compactMap { $0 }
         let clusterWork = Array(clusterTasks.values) + Array(retiringClusterTasks.values)
             + namespaceFetches.values.compactMap(\.task) + Array(retiringNamespaceTasks.values)
         let detailWork = Array(podDetailTasks.values)
@@ -385,13 +395,5 @@ extension AppActions {
         for task in detailWork { await task.value }
         for task in logWork { await task.value }
         await authenticationDrain
-    }
-
-    static func authDiagnostic(_ error: any Error) -> String {
-        if let error = error as? AuthenticationError { return error.errorDescription ?? "Authentication failed." }
-        if let error = error as? AuthError { return error.description }
-        if let error = error as? any AuthenticationDiagnosticProviding { return error.authenticationDiagnostic }
-        if error is CancellationError { return "Authentication was cancelled." }
-        return "Authentication failed. Check the configured plugin/profile and explicitly retry."
     }
 }

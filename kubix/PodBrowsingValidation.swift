@@ -113,6 +113,8 @@ import KubixCore
         try await checkDraftsAndStates(fixture, window: window, table: table)
         stage = "1253-row encoded pagination, expiry and measured native events"
         evidence["scale"] = try await PodScaleNativeValidation.check(fixture, table: table)
+        stage = "usage columns and computed age"
+        evidence["usage"] = try await PodMetricsValidation.check(fixture, table: table)
     }
 
     private static func checkTable(_ fixture: PodBrowsingFixture, window: NSWindow, table: NSTableView) async throws {

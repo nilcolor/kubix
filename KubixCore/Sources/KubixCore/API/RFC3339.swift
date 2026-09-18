@@ -1,7 +1,7 @@
 import Foundation
 
-enum RFC3339 {
-    static func date(from value: String) -> Date? {
+public enum RFC3339 {
+    public static func date(from value: String) -> Date? {
         let pattern = #"^[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]+)?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$"#
         guard value.range(of: pattern, options: .regularExpression) != nil else { return nil }
         // ISO8601DateFormatter normalizes impossible dates (e.g. February 30); reject them first.

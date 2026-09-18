@@ -78,10 +78,15 @@ exec paths resolve against the kubeconfig file that supplied the entry.
    Typing alone is a draft — committing re-lists only while **Pods** is
    selected on a connected cluster.
 5. Use **Shell** and **Logs** above the table, or a row's context menu, or Return
-   on a row. When a pod has several eligible containers the choice appears as a
-   bar above the table rather than a dialog, so the pod list stays visible.
+   on a row. When a pod has several eligible containers each button opens a menu
+   of them, with the role the pod gives each one; choosing one opens the session.
+   Sessions of both kinds share one tab strip under the table.
 6. Use the **Search** field, **Wide**, column sorting, and arrow-key selection.
-   Columns come from the server's Table schema. Pages are collected completely
+   Columns come from the server's Table schema, plus three the app computes:
+   **Age** from each pod's creation time, so it keeps ticking and sorts by age
+   rather than as text, and **CPU** and **Memory** from the metrics API when the
+   cluster serves it (they read as `kubectl top` prints them, and show `—` for a
+   pod with no sample yet). Pages are collected completely
    before watching, and a complete list says **Listed** while its watch is still
    being established — an idle namespace can wait about a minute for the
    apiserver's first bookmark, and those rows are already correct.

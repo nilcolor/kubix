@@ -53,6 +53,7 @@ public extension AppActions {
                 self.applyPodUpdate(update)
             }
         }
+        startPodMetrics(context: context, namespace: namespace, generation: generation)
     }
 
     @discardableResult
@@ -111,15 +112,19 @@ extension AppActions {
     func cancelPods() {
         cancelPodShellSelection()
         podGeneration = UUID()
-        guard let task = podTask else { return }
-        podTask = nil
-        task.cancel()
-        let id = UUID()
-        retiringPodTasks[id] = task
-        Task { [weak self] in
-            await task.value
-            self?.retiringPodTasks.removeValue(forKey: id)
+        if store.podMetrics != nil { store.podMetrics = nil }
+        // The metrics poll belongs to the same scope as the watch and retires with it.
+        for task in [podTask, podMetricsTask].compactMap({ $0 }) {
+            task.cancel()
+            let id = UUID()
+            retiringPodTasks[id] = task
+            Task { [weak self] in
+                await task.value
+                self?.retiringPodTasks.removeValue(forKey: id)
+            }
         }
+        podTask = nil
+        podMetricsTask = nil
     }
 
     func applyPodUpdate(_ update: PodWatchUpdate) {

@@ -68,10 +68,17 @@ public final class AppStore {
     public static let deckFractionMinimum: Double = 0.15
     public static let deckFractionMaximum: Double = 0.85
 
+    /// Usage by pod name for the watched namespace; nil until the first sample for this scope.
+    public internal(set) var podMetrics: [String: PodUsage]?
+
     public var podTable: PodTablePresentation {
-        PodTablePresentation(
+        // The usage columns belong to the cluster, not the sample: they appear once the cluster has
+        // served metrics and stay while the next namespace's first sample is on its way.
+        let available = clusters.first { $0.context == selectedContext }?.metrics == .available
+        return PodTablePresentation(
             rows: rows, columns: columns, connection: connection, filter: podFilter,
-            wide: podWide, sort: podSort, selectedUID: selectedPodUID
+            wide: podWide, sort: podSort, selectedUID: selectedPodUID,
+            metrics: available ? (podMetrics ?? [:]) : nil
         )
     }
 
