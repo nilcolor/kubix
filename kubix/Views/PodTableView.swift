@@ -12,7 +12,7 @@ struct PodTableView: View {
         // reported by the button that started it, which spins in place.
         NativePodTable(presentation: presentation, actions: actions)
             .overlay { TableState(presentation: presentation, actions: actions) }
-            .overlay(alignment: .bottom) { PodDiagnostics(store: store, actions: actions) }
+
     }
 
     /// Everything except the table carries the pane's inset; the table bleeds to the edge and insets
@@ -23,7 +23,7 @@ struct PodTableView: View {
 /// Messages about an action the user just took — a namespace that would not commit, a shell or log
 /// that could not open. They float over the foot of the table so a failure explains itself without
 /// moving the rows, and they are dismissible because the next attempt replaces them anyway.
-private struct PodDiagnostics: View {
+struct PodDiagnostics: View {
     let store: AppStore
     let actions: AppActions
 
@@ -45,12 +45,18 @@ private struct PodDiagnostics: View {
             .font(.callout)
             .padding(12)
             .frame(maxWidth: 560, alignment: .leading)
-            .background {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(nsColor: .controlBackgroundColor))
-                    .shadow(color: .black.opacity(0.18), radius: 8, y: 2)
-            }
-            .padding(.bottom, 12)
+            .floatingCard()
+        }
+    }
+}
+
+extension View {
+    /// A card that sits over content instead of between it, so showing one moves nothing.
+    func floatingCard() -> some View {
+        background {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(nsColor: .controlBackgroundColor))
+                .shadow(color: .black.opacity(0.18), radius: 8, y: 2)
         }
     }
 }

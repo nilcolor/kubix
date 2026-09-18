@@ -18,6 +18,12 @@ import Testing
         #expect(store.focusedAuthenticationSessions.map(\.id) == [done.id])
         #expect(store.attentionAuthenticationSessions.isEmpty)
 
+        // A plugin refreshing a token needs nothing from the user and must not draw anything.
+        let refreshing = AuthSession(credentialIdentity: identity, provider: "Synthetic")
+        await auth.emit(refreshing)
+        try await appEventually { store.authenticationSessions[refreshing.id]?.state == .acquiring }
+        #expect(store.attentionAuthenticationSessions.isEmpty)
+
         var waiting = AuthSession(credentialIdentity: identity, provider: "Synthetic")
         waiting.transition(to: .waitingForBrowser)
         await auth.emit(waiting)
@@ -36,7 +42,8 @@ import Testing
         cancelled.transition(to: .cancelled)
         await auth.emit(cancelled)
         try await appEventually { store.authenticationSessions[cancelled.id]?.state == .cancelled }
-        #expect(store.visibleAuthenticationSessions.map(\.id) == [waiting.id, cancelled.id])
+        // Still on record — it is the attention list it stays out of.
+        #expect(store.visibleAuthenticationSessions.map(\.id) == [refreshing.id, waiting.id, cancelled.id])
         #expect(store.attentionAuthenticationSessions.map(\.id) == [waiting.id])
     }
 }

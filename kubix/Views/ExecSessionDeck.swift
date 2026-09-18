@@ -288,7 +288,7 @@ private struct ShellBody: View {
 
     private var status: String {
         switch session.state {
-        case .authenticating: "Waiting for credentials — sign in or retry above if needed."
+        case .authenticating: "Waiting for credentials…"
         case .connecting: "Connecting authenticated exec…"
         case .running: "Connected — v5.channel.k8s.io"
         case .finished(.exited(let code)): "Remote command exited with code \(code)."

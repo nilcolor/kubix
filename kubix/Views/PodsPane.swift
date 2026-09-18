@@ -34,8 +34,16 @@ struct PodsPane: View {
         VStack(alignment: .leading, spacing: 8) {
             PodsActions(store: store, actions: actions)
                 .padding(.horizontal, Self.inset)
-            AuthSessionBanner(store: store, actions: actions)
+            // Everything that explains an action floats over the table's foot rather than taking a
+            // row: a message that appears for the length of a request moved every row under it.
             PodTableView(store: store, actions: actions)
+                .overlay(alignment: .bottom) {
+                    VStack(spacing: 8) {
+                        AuthSessionBanner(store: store, actions: actions)
+                        PodDiagnostics(store: store, actions: actions)
+                    }
+                    .padding(.bottom, 12)
+                }
         }
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -158,12 +166,10 @@ private struct AuthSessionBanner: View {
     var body: some View {
         let sessions = store.attentionAuthenticationSessions
         if !sessions.isEmpty || store.authenticationDiagnostic != nil {
-            // Vertical padding only: horizontal padding here would indent this text past every other
-            // row in the pane, which is the ragged edge this inset exists to remove.
             AuthProgressView(store: store, actions: actions, sessions: sessions)
-                .padding(.horizontal, PodsPane.inset)
-                .padding(.vertical, 8)
-                .background(Color(nsColor: .controlBackgroundColor))
+                .padding(12)
+                .frame(maxWidth: 560, alignment: .leading)
+                .floatingCard()
         }
     }
 }

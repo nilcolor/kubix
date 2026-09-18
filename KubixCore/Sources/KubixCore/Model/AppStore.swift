@@ -83,11 +83,12 @@ public final class AppStore {
         return visibleAuthenticationSessions.filter { $0.credentialIdentity.belongs(to: context, settings: authSettings) }
     }
 
-    /// The focused cluster's sessions that still want something: credentials being acquired, a browser
-    /// approval to complete, or a failure with its Retry. A finished sign-in says only that the thing
-    /// the user just did worked, which the list it was for already shows.
+    /// The focused cluster's sessions that want something from the user: a browser approval to
+    /// complete, or a failure with its Retry. A plugin quietly refreshing an expired token asks for
+    /// nothing — it finishes in a moment and the action waiting on it says so itself — and a finished
+    /// sign-in only reports that something worked, which the list it was for already shows.
     public var attentionAuthenticationSessions: [AuthSession] {
-        focusedAuthenticationSessions.filter { $0.state != .succeeded && $0.state != .cancelled }
+        focusedAuthenticationSessions.filter { $0.state == .waitingForBrowser || $0.state == .failed }
     }
 
     public var visibleAuthenticationSessions: [AuthSession] {
