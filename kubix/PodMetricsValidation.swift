@@ -18,6 +18,14 @@ import KubixCore
             store.connection == .live && table.tableColumns.map(\.title) == ["Name", "Status", "CPU", "Memory", "Age"]
         }
         try await PodBrowsingValidation.until { cell(table, pod: "alpha", column: "CPU") == "251m" }
+        // The Name column was fitted to the longest name rather than left at a title-sized width.
+        let longName = PodFixtureTransport.longName
+        guard let name = table.tableColumns.first(where: { $0.title == "Name" }),
+              let longRow = row(table, pod: longName),
+              let label = (table.view(atColumn: table.column(withIdentifier: name.identifier), row: longRow, makeIfNecessary: true)
+                as? NSTableCellView)?.textField,
+              name.width > 110, label.intrinsicContentSize.width <= label.frame.width + 1 else { throw Failure.assertion }
+        let nameWidth = Int(name.width)
         guard cell(table, pod: "alpha", column: "Memory") == "128Mi", cell(table, pod: "zulu", column: "CPU") == "0m",
               cell(table, pod: "zulu", column: "Memory") == "64Mi" else { throw Failure.assertion }
 
@@ -39,7 +47,8 @@ import KubixCore
         actions.sortPods(.init(column: PodTablePresentation.Column.cpu.id, ascending: false))
         try await PodBrowsingValidation.until { row(table, pod: "alpha") == 0 }
         guard table.selectedRow == 0 else { throw Failure.assertion }
-        return "real metrics service and poll render CPU/Memory before Age as kubectl top prints them; "
+        return "Name column fitted to a \(longName.count)-character generated name (\(nameWidth)pt, untruncated); "
+            + "real metrics service and poll render CPU/Memory before Age as kubectl top prints them; "
             + "Age computed from creation (\(age), not the printed 1h) and ticking; a new sample reaches "
             + "its cell with the selection kept; sorting by CPU moves the selected row with it"
     }

@@ -99,10 +99,20 @@ private struct TableState: View {
 /// Centres its label vertically: an `NSTextField` returned straight to the table is stretched to the
 /// row and draws its single line against the top edge, which is what made the rows look top-heavy.
 final class PodCellView: NSTableCellView {
+    /// Named once, so the width a column is fitted to is measured in the font the cell draws with.
+    static let font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+    /// The label's own bearings on both sides plus room for the column separator.
+    static let horizontalPadding: CGFloat = 16
+
+    static func width(of text: String) -> CGFloat {
+        ceil((text as NSString).size(withAttributes: [.font: font]).width)
+    }
+
     private let label = NSTextField(labelWithString: "")
 
     init() {
         super.init(frame: .zero)
+        label.font = Self.font
         label.translatesAutoresizingMaskIntoConstraints = false
         label.lineBreakMode = .byTruncatingTail
         addSubview(label)
@@ -169,6 +179,11 @@ struct NativePodTable: NSViewRepresentable {
         private var presentation: PodTablePresentation?
         private var now = Date()
         private var updating = false
+        /// Set when the columns are rebuilt, cleared once they have been fitted to rows.
+        private var needsFit = false
+        /// Enough rows to find the long names without measuring a whole namespace; the widest pod
+        /// name is rarely further down than this in any order.
+        private static let fitSample = 200
 
         init(actions: AppActions) { self.actions = actions }
 
@@ -208,6 +223,7 @@ struct NativePodTable: NSViewRepresentable {
                     native.sortDescriptorPrototype = NSSortDescriptor(key: String(column.id), ascending: true)
                     table.addTableColumn(native)
                 }
+                needsFit = true
             }
             presentation = next
             let descriptors = next.sort.map { [NSSortDescriptor(key: String($0.column), ascending: $0.ascending)] } ?? []
@@ -223,8 +239,27 @@ struct NativePodTable: NSViewRepresentable {
                     table.reloadData(forRowIndexes: changed, columnIndexes: IndexSet(integersIn: 0..<table.numberOfColumns))
                 }
             }
+            if needsFit, !next.rows.isEmpty {
+                fitColumns(table, to: next)
+                needsFit = false
+            }
             let selected = next.rows.firstIndex { $0.id == next.selectedUID }
             table.selectRowIndexes(selected.map { IndexSet(integer: $0) } ?? [], byExtendingSelection: false)
+        }
+
+        /// Fitted once per column rebuild — a new namespace, Wide, the usage columns arriving — and
+        /// not again while those columns stand, so a column the user drags keeps its width until the
+        /// next rebuild. Only ever wider than the title-based width: a column whose content already
+        /// fits looks as it did. A pod name gets more room than anything else, because it is what the
+        /// row is read by and generated suffixes make the ends of names the part that differs.
+        private func fitColumns(_ table: NSTableView, to presentation: PodTablePresentation) {
+            let sample = presentation.rows.prefix(Self.fitSample)
+            for (index, column) in presentation.columns.enumerated() where index < table.tableColumns.count {
+                let widest = sample.map { PodCellView.width(of: $0.cells[index]) }.max() ?? 0
+                let isName = column.definition.name.caseInsensitiveCompare("Name") == .orderedSame
+                let native = table.tableColumns[index]
+                native.width = min(isName ? 480 : 320, max(native.width, widest + PodCellView.horizontalPadding))
+            }
         }
 
         /// A tick redraws only the Age cells that are on screen: nothing else moved, and the rows out

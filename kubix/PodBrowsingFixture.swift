@@ -210,7 +210,10 @@ actor PodFixtureTransport: Transport {
     /// Printed ages that are deliberately wrong, so the driver can tell a computed Age from the
     /// server's frozen text: `alpha` is two hours old but printed as `1h`.
     static func timedPage(created base: Date) -> Data {
-        let rows = [("alpha", "uid-a", base.addingTimeInterval(-7200), "1h"), ("zulu", "uid-z", base.addingTimeInterval(-90), "5s")]
+        let rows = [
+            ("alpha", "uid-a", base.addingTimeInterval(-7200), "1h"), ("zulu", "uid-z", base.addingTimeInterval(-90), "5s"),
+            (longName, "uid-long", base.addingTimeInterval(-600), "10m"),
+        ]
             .map { name, uid, created, printed in
                 #"{"cells":["\#(name)","Running","\#(printed)"],"object":{"metadata":{"uid":"\#(uid)","name":"\#(name)","namespace":"timed","creationTimestamp":"\#(timestamp(created))"}}}"#
             }.joined(separator: ",")
@@ -220,6 +223,9 @@ actor PodFixtureTransport: Transport {
          "rows":[\(rows)]}
         """.utf8)
     }
+
+    /// Shaped like a Deployment's generated pod name, and far wider than a title-sized column.
+    static let longName = "checkout-admin-api-gateway-5f7b9c4d2a-x9k2p"
 
     static func timestamp(_ date: Date) -> String {
         let formatter = ISO8601DateFormatter()
