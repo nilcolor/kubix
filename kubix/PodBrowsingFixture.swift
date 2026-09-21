@@ -371,8 +371,6 @@ private struct PodFixtureExec: ExecSessionControlling {
         return view
     }
 }
-#endif
-
 /// The metrics API, off until the driver's usage stage turns it on: until then it answers like a
 /// metrics-server that is restarting, which keeps the cluster's availability undecided and the usage
 /// columns out of every earlier stage.
@@ -397,3 +395,4 @@ actor PodFixtureMetrics: Transport {
     func stream(for request: APIRequest, purpose: TransportPurpose) throws -> any HTTPByteStream { throw APIError.invalidRequest }
     func webSocket(for request: APIRequest) throws -> any WebSocketConnection { throw APIError.invalidRequest }
 }
+#endif
