@@ -15,6 +15,10 @@ evidence boundaries are in [docs/terminal-integration.md](docs/terminal-integrat
   `project.yml` is authoritative; do not hand-edit generated Xcode projects.
   Ghostty is pinned in `scripts/setup.sh`; upgrade deliberately with native checks.
 - `make prep && make build` builds the Debug app; `make run` builds/opens it.
+  `make release` builds the shipping configuration and checks its signature,
+  entitlements and that no DEBUG driver reached the binary. Release compiles out
+  the drivers, so it can break while every Debug check passes: run it after
+  touching signing, entitlements, DEBUG-gated code or the deployment target.
   `make test` runs both host-free Swift Testing targets under
   `KubixCore/Tests/{KubixCoreTests,KubixRuntimeTests}`.
   Use `swift test --package-path KubixCore --filter <SuiteOrTest>` for focused

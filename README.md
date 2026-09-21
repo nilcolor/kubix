@@ -44,6 +44,8 @@ Ghostty commit `4dcb09ada0c0909717d92547623b26eafa50ca8a` from source, stages
 `GhosttyKit.xcframework` plus bundled themes, shell integration, and terminfo,
 and reuses matching prepared artifacts. `make build` also runs setup and XcodeGen,
 then builds the Debug app at the path above. `make run` builds and opens it.
+`make release` builds the shipping configuration and reports its signature and
+entitlements; it is not notarized, which it says rather than treating as an error.
 
 The project builds for the **host's native architecture**, not a universal
 binary. The local app is ad-hoc signed with hardened runtime; signing for
