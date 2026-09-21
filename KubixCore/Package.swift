@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "KubixCore",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v15)],
     products: [
         .library(name: "KubixCore", targets: ["KubixCore"]),
         .library(name: "KubixRuntime", targets: ["KubixRuntime"]),

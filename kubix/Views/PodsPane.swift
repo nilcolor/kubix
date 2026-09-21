@@ -175,8 +175,6 @@ private struct AuthSessionBanner: View {
 }
 
 extension View {
-    /// `.title` is macOS 15+; on 14 the toolbar keeps its title and the page simply reads it twice.
-    @ViewBuilder func toolbarTitleHidden() -> some View {
-        if #available(macOS 15.0, *) { toolbar(removing: .title) } else { self }
-    }
+    /// The page draws its own title; this drops the toolbar's copy of it.
+    func toolbarTitleHidden() -> some View { toolbar(removing: .title) }
 }

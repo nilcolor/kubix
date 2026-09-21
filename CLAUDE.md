@@ -6,7 +6,7 @@ evidence boundaries are in [docs/terminal-integration.md](docs/terminal-integrat
 
 ## Structure and tools
 
-- Swift 6, strict concurrency, macOS 14 deployment target. Full Xcode/Metal,
+- Swift 6, strict concurrency, macOS 15 deployment target. Full Xcode/Metal,
   Homebrew, XcodeGen, and Zig 0.15.2 build the native app; SwiftLint is strict.
 - `KubixCore/Package.swift` defines `KubixCore` and `KubixRuntime`. Runtime imports
   Core; the app imports both. Core must not import Runtime, AppKit, Ghostty, or

@@ -2,7 +2,7 @@ name: kubix
 options:
   bundleIdPrefix: com.nilcolor
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "15.0"
   defaultConfig: Debug
   createIntermediateGroups: true
 
@@ -15,7 +15,7 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
     SDKROOT: macosx
-    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    MACOSX_DEPLOYMENT_TARGET: "15.0"
     # setup.sh builds a native-only xcframework, not a universal binary.
     ONLY_ACTIVE_ARCH: YES
     # Keep main.swift in the executable, including its pre-AppKit bridge branch.

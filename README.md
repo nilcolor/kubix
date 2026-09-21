@@ -20,7 +20,7 @@ watches, HTTP logs, and `v5.channel.k8s.io` WebSocket exec.
 
 Requirements:
 
-- macOS 14 or later (the configured deployment target).
+- macOS 15 or later (the configured deployment target).
 - Full Xcode selected as the active developer directory, with a Swift 6
   toolchain, macOS SDK, and Metal compiler. Command Line Tools alone are not the
   app-build toolchain.

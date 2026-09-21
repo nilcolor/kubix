@@ -75,11 +75,7 @@ import Security
             return "no synthetic PKCS#12 supplied"
         }
         var options: [CFString: Any] = [kSecImportExportPassphrase: "probe"]
-        if memoryOnly {
-            // The in-memory import is macOS 15+; below that there is nothing to try here.
-            guard #available(macOS 15.0, *) else { return "unavailable below macOS 15" }
-            options[kSecImportToMemoryOnly] = true
-        }
+        if memoryOnly { options[kSecImportToMemoryOnly] = true }
         var items: CFArray?
         let result = SecPKCS12Import(data as CFData, options as CFDictionary, &items)
         guard result == errSecSuccess else { return status(result) }
