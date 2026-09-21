@@ -92,9 +92,13 @@ targets:
         basedOnDependencyAnalysis: false
         script: |
           set -euo pipefail
-          /usr/bin/codesign --force --options runtime \
-            --entitlements "$SRCROOT/kubix/kubix.entitlements" \
-            --sign - "$CODESIGNING_FOLDER_PATH"
+          # Skippable, so a build signed with a real identity keeps that signature and the
+          # entitlements its provisioning profile carries: re-signing ad-hoc would strip both.
+          if [ "${KUBIX_SKIP_ADHOC_SIGN:-0}" != "1" ]; then
+            /usr/bin/codesign --force --options runtime \
+              --entitlements "$SRCROOT/kubix/kubix.entitlements" \
+              --sign - "$CODESIGNING_FOLDER_PATH"
+          fi
           # LaunchServices caches the icon against the bundle directory's own date, which a rebuild
           # of its contents leaves untouched — so without this the Dock keeps the previous icon.
           /usr/bin/touch "$CODESIGNING_FOLDER_PATH"

@@ -47,6 +47,14 @@ struct ContentView: View {
             AuthSettingsView(store: store, actions: actions)
         }
         .task {
+            #if DEBUG
+            // Before any configuration is read: the probe answers a signing question and has no
+            // business touching the user's kubeconfig or credentials.
+            if KeychainProbe.isEnabled {
+                KeychainProbe.run()
+                return
+            }
+            #endif
             if !store.hasLoadedConfiguration { await actions.loadConfiguration() }
             #if DEBUG
             if let fixture = composition.podValidation {
