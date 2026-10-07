@@ -24,6 +24,11 @@ public struct URLSessionFactory: TransportSessionFactory {
         configuration.urlCredentialStorage = nil
         configuration.httpCookieStorage = nil
         configuration.httpShouldSetCookies = false
+        // One tab can follow a deployment's pods, which is one stream each. See
+        // `TransportPolicy.maximumConcurrentLogStreams` for why this is set rather than inherited.
+        if purpose == .logs {
+            configuration.httpMaximumConnectionsPerHost = TransportPolicy.maximumConcurrentLogStreams
+        }
         return configuration
     }
 }

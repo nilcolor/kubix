@@ -3,7 +3,10 @@ import Foundation
 /// Deliberately not Codable: no raw spec, environment, arbitrary annotations or status messages are retained.
 public struct PodDetails: Decodable, Equatable, Sendable {
     public enum ContainerKind: String, Sendable { case regular, initContainer = "init", ephemeral }
-    public enum ContainerState: String, Sendable { case running, waiting, terminated, unknown }
+    /// `declared` is a container a pod template declares, whose instances' states were never read:
+    /// a deployment has no single state across its replicas. It is not `unknown`, which means a pod
+    /// reported something this could not make sense of, and it is never a shell candidate.
+    public enum ContainerState: String, Sendable { case running, waiting, terminated, unknown, declared }
     public struct Container: Equatable, Sendable {
         public let name: String
         public let kind: ContainerKind

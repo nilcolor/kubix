@@ -13,6 +13,21 @@ public struct TransportPolicy: Equatable, Sendable {
     public static let pingInterval: TimeInterval = 15
     public static let pongTimeout: TimeInterval = 15
 
+    /// How many log streams may follow at once. A deployment's logs are one stream per pod, so this
+    /// is also the ceiling on how many of a deployment's pods a tab tails.
+    ///
+    /// It is a resource bound, not a protocol one: Kubernetes has no aggregated log endpoint, so the
+    /// number of streams is the client's choice. `kubectl` caps concurrency at 5 and refuses above
+    /// it; this tails the whole set up to here and says so when it does not fit.
+    ///
+    /// **Why the session configures `httpMaximumConnectionsPerHost` from it.** URLSession defaults to
+    /// 6 connections per host, which over HTTP/1.1 would queue the seventh stream behind the first
+    /// six — a tab that looked like it was following twelve pods while six of them sat idle. The
+    /// apiserver speaks HTTP/2, where these are multiplexed streams rather than connections and the
+    /// limit should not apply; rather than depend on being served h2, the `.logs` session raises the
+    /// limit to this number so the behaviour is the same either way.
+    public static let maximumConcurrentLogStreams = 50
+
     public static func policy(for purpose: TransportPurpose) -> Self {
         switch purpose {
         case .request: Self(idleTimeout: 30, totalTimeout: 60, serverLease: nil)
