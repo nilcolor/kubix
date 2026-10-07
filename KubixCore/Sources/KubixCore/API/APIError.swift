@@ -43,7 +43,7 @@ public enum APIError: Error, Equatable, Sendable, LocalizedError, CustomStringCo
     case tls(TLSFailure)
     case unsupportedProtocol
     case invalidRequest
-    case podSnapshot(PodSnapshotFailure)
+    case snapshot(SnapshotFailure)
     case podAuthentication
     indirect case watch(WatchFailure)
     /// Receipt only, never the credential itself; used by a long-lived watch's retry owner.
@@ -132,7 +132,7 @@ public enum APIError: Error, Equatable, Sendable, LocalizedError, CustomStringCo
         case .transport(let failure): "Transport failure: \(failure.rawValue)"
         case .unsupportedProtocol: "Exec requires negotiated v5.channel.k8s.io. Check server and intermediary support."
         case .invalidRequest: "Invalid Kubernetes server URL, resource path, or request options."
-        case .podSnapshot(let failure): "Invalid pod list snapshot: \(failure.rawValue). Refresh to retry."
+        case .snapshot(let failure): "Invalid pod list snapshot: \(failure.rawValue). Refresh to retry."
         case .podAuthentication: "Pod authentication failed. Check authentication settings and explicitly retry."
         case .watch(let failure): "Pod watch stopped: \(failure). Refresh to retry."
         case .credentialRejected(let error, _, _, _): error.description

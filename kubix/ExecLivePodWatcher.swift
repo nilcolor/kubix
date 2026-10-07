@@ -5,7 +5,7 @@ import KubixRuntime
 
 /// Legacy read-only exec validation can publish only one explicitly authorized metadata Table row.
 /// Before discovery selects that target, context/namespace activation performs no request.
-actor ExecLivePodWatcher: PodWatching {
+actor ExecLivePodWatcher: ResourceWatching {
     private let transports: @Sendable (ResolvedContext) async throws -> any Transport
     private var target: ExecTarget?
     private let integrated: Bool
@@ -27,11 +27,12 @@ actor ExecLivePodWatcher: PodWatching {
     }
 
     func run(
-        context: ResolvedContext, namespace: String, update: @escaping @MainActor @Sendable (PodWatchUpdate) -> Void
+        kind: ResourceKind, context: ResolvedContext, namespace: String,
+        update: @escaping @MainActor @Sendable (ResourceListUpdate) -> Void
     ) async {
         if integrated {
             guard armed, context.name == ExecLiveDiscovery.context, namespace == ExecLiveDiscovery.namespace else { return }
-            await WatchService(transports: transports).run(context: context, namespace: namespace, update: update)
+            await WatchService(transports: transports).run(kind: .pods, context: context, namespace: namespace, update: update)
             return
         }
         guard let target, context == target.context, namespace == target.namespace else { return }
@@ -44,13 +45,13 @@ actor ExecLivePodWatcher: PodWatching {
             ], table: true))
             try Task.checkCancellation()
             let table = try JSONDecoder().decode(KubernetesTable.self, from: data)
-            let rows = try table.rows.map { try PodRow(row: $0) }
+            let rows = try table.rows.map { try ResourceRow(row: $0) }
             guard rows.count == 1, rows[0].metadata.name == target.pod, rows[0].metadata.namespace == namespace,
                   table.metadata?.continuation?.isEmpty != false else { throw APIError.invalidRequest }
-            await update(.init(rows: rows, columns: table.columnDefinitions, connection: .live))
+            await update(.init(kind: .pods, rows: rows, columns: table.columnDefinitions, connection: .live))
         } catch {
             guard !Task.isCancelled else { return }
-            await update(.init(rows: [], columns: nil, connection: .failed((error as? APIError) ?? .invalidRequest)))
+            await update(.init(kind: .pods, rows: [], columns: nil, connection: .failed((error as? APIError) ?? .invalidRequest)))
         }
     }
 }

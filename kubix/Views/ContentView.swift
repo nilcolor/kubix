@@ -82,7 +82,7 @@ struct ContentView: View {
     @ViewBuilder private func detail(store: AppStore, actions: AppActions) -> some View {
         if let selection = store.sidebarSelection,
            let cluster = store.clusters.first(where: { $0.id == selection.clusterName }) {
-            if case .pods = selection, cluster.state == .connected {
+            if selection.kind != nil, cluster.state == .connected {
                 PodsPane(store: store, actions: actions)
             } else {
                 ClusterPane(cluster: cluster, store: store, actions: actions)

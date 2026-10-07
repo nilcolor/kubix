@@ -23,7 +23,7 @@ import KubixCore
             evidence["result"] = "failed"
             evidence["failedStage"] = stage
             evidence["failure"] = String(describing: error)
-            evidence["storeState"] = fixture.store.podTable.message
+            evidence["storeState"] = fixture.store.listTable.message
             evidence["storeRows"] = String(fixture.store.rows.count)
             evidence["nativeRows"] = String(NSApp.windows.compactMap { table(in: $0)?.numberOfRows }.first ?? -1)
             evidence["committedNamespace"] = fixture.store.selectedNamespace
@@ -93,11 +93,11 @@ import KubixCore
             + "namespace list — lists no pods, and leaves every other cluster disconnected and unlisted"
 
         stage = "pods selection lists the committed namespace"
-        fixture.actions.selectSidebar(.pods("synthetic-first"))
+        fixture.actions.selectSidebar(.list("synthetic-first", .pods))
         try await until { table(in: window) != nil }
         guard let table = table(in: window) else { throw Failure.assertion }
         try await until { await podPageRequests(fixture) == 2 }
-        guard store.connection == .connecting, table.numberOfRows == 0, store.podTable.state == .connecting,
+        guard store.connection == .connecting, table.numberOfRows == 0, store.listTable.state == .connecting,
               store.selectedNamespace == "team" else { throw Failure.assertion }
         evidence["pagination"] = "native table empty/connecting during blocked second page, not a partial live list"
         try await until { store.connection == .live && table.numberOfRows == 2 }
@@ -123,40 +123,40 @@ import KubixCore
         stage = "native selection sort and headerless watch"
         table.sortDescriptors = [NSSortDescriptor(key: "1", ascending: true)]
         try await until {
-            store.podSort?.column == 1 && (table.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTableCellView)?.textField?.stringValue == "alpha"
+            store.listSort?.column == 1 && (table.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTableCellView)?.textField?.stringValue == "alpha"
         }
         window.makeFirstResponder(table)
         table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
-        try await until { store.selectedPodUID == "uid-a" }
+        try await until { store.selectedRowUID == "uid-a" }
         guard let down = NSEvent.keyEvent(
             with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
             context: nil, characters: "\u{f701}", charactersIgnoringModifiers: "\u{f701}", isARepeat: false, keyCode: 125
         ) else { throw Failure.assertion }
         window.sendEvent(down)
-        try await until { store.selectedPodUID == "uid-z" }
+        try await until { store.selectedRowUID == "uid-z" }
         table.sortDescriptors = [NSSortDescriptor(key: "1", ascending: false)]
-        try await until { store.podSort?.column == 1 && table.selectedRow == 0 }
+        try await until { store.listSort?.column == 1 && table.selectedRow == 0 }
         await fixture.transport.modify()
         try await until {
             store.rows.contains { $0.id == "uid-z" && $0.cells.first == .string("aardvark") } && table.selectedRow == 1
         }
-        guard store.selectedPodUID == "uid-z", table.tableColumns.count == 3 else { throw Failure.assertion }
+        guard store.selectedRowUID == "uid-z", table.tableColumns.count == 3 else { throw Failure.assertion }
         evidence["selection"] = "native arrow event updates UID; native sort moves selected row; headerless watch retains columns and UID"
 
         stage = "wide columns and native filter"
-        actions.setPodWide(true)
+        actions.setListWide(true)
         try await until { table.tableColumns.count == 5 }
         guard table.tableColumns[3].title == "Workload", table.tableColumns[4].title == "Custom" else { throw Failure.assertion }
         table.sortDescriptors = [NSSortDescriptor(key: "3", ascending: true)]
-        try await until { store.podSort?.column == 3 }
-        actions.setPodWide(false)
+        try await until { store.listSort?.column == 3 }
+        actions.setListWide(false)
         try await until { table.tableColumns.count == 3 && table.sortDescriptors.isEmpty }
         try await edit("alpha", placeholder: "Search", in: window)
-        try await until { table.numberOfRows == 1 && store.selectedPodUID == nil }
+        try await until { table.numberOfRows == 1 && store.selectedRowUID == nil }
         try await edit("missing", placeholder: "Search", in: window)
-        try await until { store.podTable.state == .filteredEmpty && table.numberOfRows == 0 }
+        try await until { store.listTable.state == .filteredEmpty && table.numberOfRows == 0 }
         try await edit("", placeholder: "Search", in: window)
-        try await until { table.numberOfRows == 2 && store.selectedPodUID == nil }
+        try await until { table.numberOfRows == 2 && store.selectedRowUID == nil }
         evidence["wideFilter"] = "5 dynamic columns including duplicate names; hidden sort reset; real TextField filtering clears invisible UID"
     }
 }
@@ -205,7 +205,7 @@ import KubixCore
               views.allSatisfy({ $0.freeCount == 0 }) else { throw Failure.assertion }
         evidence["sessionsLayout"] = "two real Ghostty/local-cat surfaces; keyboard echo; stable targets/identity, "
             + "zero frees through cluster switch/filter/sort; sidebar, table and terminal usable at 1050x800 and 1000x600"
-        actions.setPodFilter("")
+        actions.setListFilter("")
     }
 
     private static func checkClusterSwitchAndLayout(
@@ -219,17 +219,17 @@ import KubixCore
         try await until { await fixture.transport.requests.count == beforeSwitch + 2 }
         guard await fixture.transport.requests.suffix(2).map(\.path)
                 == [["version"], ["api", "v1", "namespaces"]],
-              fixture.store.sidebarSelection == .pods("synthetic-first") else { throw Failure.assertion }
+              fixture.store.sidebarSelection == .list("synthetic-first", .pods) else { throw Failure.assertion }
         let liveStreams = await fixture.transport.streams.filter { !$0.cancelled }.count
-        actions.selectSidebar(.pods("synthetic-second"))
+        actions.selectSidebar(.list("synthetic-second", .pods))
         try await until { fixture.store.connection == .live && fixture.store.selectedNamespace == "other" }
         guard await fixture.transport.streams.filter({ !$0.cancelled }).count == liveStreams,
-              fixture.store.sidebarSelection == .pods("synthetic-second") else { throw Failure.assertion }
+              fixture.store.sidebarSelection == .list("synthetic-second", .pods) else { throw Failure.assertion }
         evidence["clusterSwitch"] = "connecting a second cluster adds one /version request and no watch; "
             + "moving Pods cancels the first cluster's stream and leaves exactly one live watch"
         guard let switched = Self.table(in: window) else { throw Failure.assertion }
-        actions.setPodFilter("alpha")
-        actions.sortPods(.init(column: 0))
+        actions.setListFilter("alpha")
+        actions.sortList(.init(column: 0))
         actions.selectShell(selected)
         stage = "default and minimum window layout"
         var sidebarWidths: [CGFloat] = []
@@ -264,9 +264,9 @@ import KubixCore
         stage = "empty, forbidden and auth states"
         try await until { store.connection == .live }
         try actions.selectNamespace("empty")
-        try await until { store.podTable.state == .empty && table.numberOfRows == 0 }
+        try await until { store.listTable.state == .empty && table.numberOfRows == 0 }
         try actions.selectNamespace("forbidden")
-        try await until { store.podTable.state == .failed && store.podTable.message.contains("Forbidden: pods") }
+        try await until { store.listTable.state == .failed && store.listTable.message.contains("Forbidden: pods") }
         evidence["states"] = "empty and forbidden states shown inline against a live watch"
 
         stage = "auth progress settings and configured retry"
@@ -281,7 +281,7 @@ import KubixCore
         try await until { store.visibleAuthenticationSessions.contains { $0.state == .failed } }
         guard let failed = store.visibleAuthenticationSessions.first(where: { $0.state == .failed }) else { throw Failure.assertion }
         try await actions.retryAuthentication(operationID: failed.id)
-        guard await fixture.authentication.retryCount == 1, store.podTable.state == .failed else { throw Failure.assertion }
+        guard await fixture.authentication.retryCount == 1, store.listTable.state == .failed else { throw Failure.assertion }
         evidence["auth"] = "synthetic progress and failed-plugin Retry retained; actual settings sheet opens/dismisses; successful auth does not retry forbidden pods"
     }
 

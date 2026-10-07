@@ -15,25 +15,25 @@ import Testing
         try await appEventually { store.execSessions.first?.state == .running }
         let surface = try #require(surfaces.created[session])
         let table = try presentationTable(cells: [#"["zulu"]"#, #"["alpha"]"#])
-        let rows = try table.rows.map(PodRow.init)
-        actions.applyPodUpdate(.init(rows: rows, columns: table.columnDefinitions, connection: .live))
-        actions.selectPod(uid: "uid-0")
-        actions.sortPods(.init(column: 0))
-        #expect(store.selectedPodUID == "uid-0" && store.podTable.rows.first?.id == "uid-1")
-        actions.applyPodUpdate(.init(rows: rows.reversed(), columns: table.columnDefinitions, connection: .live))
-        #expect(store.selectedPodUID == "uid-0" && store.podSort?.column == 0)
-        actions.setPodFilter("alpha")
-        #expect(store.selectedPodUID == nil)
-        actions.setPodFilter("")
-        #expect(store.selectedPodUID == nil)
-        actions.selectPod(uid: "absent")
-        #expect(store.selectedPodUID == nil)
-        actions.selectPod(uid: "uid-0")
+        let rows = try table.rows.map(ResourceRow.init)
+        actions.applyListUpdate(.init(kind: .pods, rows: rows, columns: table.columnDefinitions, connection: .live))
+        actions.selectRow(uid: "uid-0")
+        actions.sortList(.init(column: 0))
+        #expect(store.selectedRowUID == "uid-0" && store.listTable.rows.first?.id == "uid-1")
+        actions.applyListUpdate(.init(kind: .pods, rows: rows.reversed(), columns: table.columnDefinitions, connection: .live))
+        #expect(store.selectedRowUID == "uid-0" && store.listSort?.column == 0)
+        actions.setListFilter("alpha")
+        #expect(store.selectedRowUID == nil)
+        actions.setListFilter("")
+        #expect(store.selectedRowUID == nil)
+        actions.selectRow(uid: "absent")
+        #expect(store.selectedRowUID == nil)
+        actions.selectRow(uid: "uid-0")
         let replacement = try presentationTable(cells: [#"["zulu"]"#], uidPrefix: "new")
-        actions.applyPodUpdate(.init(rows: try replacement.rows.map(PodRow.init), columns: table.columnDefinitions, connection: .live))
-        #expect(store.selectedPodUID == nil)
+        actions.applyListUpdate(.init(kind: .pods, rows: try replacement.rows.map(ResourceRow.init), columns: table.columnDefinitions, connection: .live))
+        #expect(store.selectedRowUID == nil)
         try actions.selectContext(named: "second")
-        actions.setPodWide(true)
+        actions.setListWide(true)
         #expect(store.execSessions.first?.target == target)
         #expect(actions.surface(for: session) === surface && surface.closes == 0 && surfaces.created.count == 1)
         await actions.shutdownAndWait()
@@ -48,18 +48,18 @@ import Testing
             columns: #"[{"name":"Ordinary","type":"string"},{"name":"Wide","type":"string","priority":1}]"#,
             cells: [#"["alpha","match"]"#]
         )
-        actions.applyPodUpdate(.init(rows: try table.rows.map(PodRow.init), columns: table.columnDefinitions, connection: .live))
-        actions.setPodWide(true)
-        actions.sortPods(.init(column: 1))
-        actions.setPodFilter("match")
-        actions.selectPod(uid: "uid-0")
-        actions.setPodWide(false)
-        #expect(store.podSort == nil && store.selectedPodUID == nil && store.podTable.state == .filteredEmpty)
-        actions.setPodFilter("")
-        actions.sortPods(.init(column: 0))
+        actions.applyListUpdate(.init(kind: .pods, rows: try table.rows.map(ResourceRow.init), columns: table.columnDefinitions, connection: .live))
+        actions.setListWide(true)
+        actions.sortList(.init(column: 1))
+        actions.setListFilter("match")
+        actions.selectRow(uid: "uid-0")
+        actions.setListWide(false)
+        #expect(store.listSort == nil && store.selectedRowUID == nil && store.listTable.state == .filteredEmpty)
+        actions.setListFilter("")
+        actions.sortList(.init(column: 0))
         let changed = try presentationTable(cells: [#"["alpha"]"#])
-        actions.applyPodUpdate(.init(rows: try changed.rows.map(PodRow.init), columns: changed.columnDefinitions, connection: .live))
-        #expect(store.podSort == nil)
+        actions.applyListUpdate(.init(kind: .pods, rows: try changed.rows.map(ResourceRow.init), columns: changed.columnDefinitions, connection: .live))
+        #expect(store.listSort == nil)
     }
 
     @Test func draftEditsNeverStartPodsAndACommitListsOnlyWhileBrowsingPods() async throws {
@@ -69,7 +69,7 @@ import Testing
         let store = AppStore(contexts: [try appContext()])
         let actions = AppActions(
             store: store, exec: AppTestExec(), authentication: AppTestAuth(), surfaces: AppTestSurfaces(),
-            pods: probe, probe: cluster
+            lists: probe, probe: cluster
         )
         defer { actions.shutdown() }
 
@@ -88,7 +88,7 @@ import Testing
 
         actions.connect(contextNamed: "first")
         try await appEventually { store.clusters[0].state == .connected }
-        actions.selectSidebar(.pods("first"))
+        actions.selectSidebar(.list("first", .pods))
         try await appEventually { await probe.callbacks.count == 1 }
         actions.setNamespaceInput("other")
         #expect(actions.commitNamespaceInput())
@@ -104,9 +104,9 @@ import Testing
         let auth = AppTestAuth()
         await auth.gate.open()
         let store = AppStore(contexts: [try appContext()])
-        let actions = AppActions(store: store, exec: AppTestExec(), authentication: auth, surfaces: AppTestSurfaces(), pods: probe)
+        let actions = AppActions(store: store, exec: AppTestExec(), authentication: auth, surfaces: AppTestSurfaces(), lists: probe)
         defer { actions.shutdown() }
-        actions.applyPodUpdate(.init(rows: [], columns: nil, connection: .failed(failure)))
+        actions.applyListUpdate(.init(kind: .pods, rows: [], columns: nil, connection: .failed(failure)))
         await actions.authenticateSelectedContext()
         if failure.httpCode == 403 {
             #expect(store.connection == .failed(failure))
@@ -124,14 +124,14 @@ import Testing
         let auth = AppTestAuth()
         let probe = PodActionProbe()
         let store = AppStore(contexts: [first, try appContext("second")])
-        let actions = AppActions(store: store, exec: AppTestExec(), authentication: auth, surfaces: AppTestSurfaces(), pods: probe)
+        let actions = AppActions(store: store, exec: AppTestExec(), authentication: auth, surfaces: AppTestSurfaces(), lists: probe)
         defer { actions.shutdown() }
         let work = Task { try await actions.acquireCredentials(context: first) }
         try await appEventually { await auth.acquisitions.count == 1 }
         try actions.selectContext(named: "second")
-        actions.refreshPods()
+        actions.refreshList()
         try await appEventually { await probe.callbacks.count == 1 }
-        await probe.emit(.init(rows: [], columns: nil, connection: .failed(.podAuthentication)))
+        await probe.emit(.init(kind: .pods, rows: [], columns: nil, connection: .failed(.podAuthentication)))
         await auth.gate.open()
         try await work.value
         #expect(store.connection == .failed(.podAuthentication))
@@ -146,13 +146,13 @@ import Testing
         await auth.gate.open()
         let probe = PodActionProbe()
         let store = AppStore(contexts: [context])
-        let actions = AppActions(store: store, exec: AppTestExec(), authentication: auth, surfaces: AppTestSurfaces(), pods: probe)
+        let actions = AppActions(store: store, exec: AppTestExec(), authentication: auth, surfaces: AppTestSurfaces(), lists: probe)
         defer { actions.shutdown() }
         try await appEventually { await auth.subscriberCount == 1 }
         let session = AuthSession(credentialIdentity: try CredentialIdentity(from: context), provider: "synthetic", state: .failed)
         await auth.emit(session)
         try await appEventually { store.authenticationSessions[session.id] != nil }
-        actions.applyPodUpdate(.init(rows: [], columns: nil, connection: .failed(.podAuthentication)))
+        actions.applyListUpdate(.init(kind: .pods, rows: [], columns: nil, connection: .failed(.podAuthentication)))
         actions.setNamespaceInput("unfinished-draft")
         if operation == "retry" {
             try await actions.retryAuthentication(operationID: session.id)
@@ -174,9 +174,9 @@ import Testing
         await auth.fail(AppTestError.injected)
         let probe = PodActionProbe()
         let store = AppStore(contexts: [try appContext()])
-        let actions = AppActions(store: store, exec: AppTestExec(), authentication: auth, surfaces: AppTestSurfaces(), pods: probe)
+        let actions = AppActions(store: store, exec: AppTestExec(), authentication: auth, surfaces: AppTestSurfaces(), lists: probe)
         defer { actions.shutdown() }
-        actions.applyPodUpdate(.init(rows: [], columns: nil, connection: .failed(.podAuthentication)))
+        actions.applyListUpdate(.init(kind: .pods, rows: [], columns: nil, connection: .failed(.podAuthentication)))
         await actions.authenticateSelectedContext()
         #expect(store.connection == .failed(.podAuthentication) && store.authenticationDiagnostic != nil)
         #expect(await probe.callbacks.isEmpty)

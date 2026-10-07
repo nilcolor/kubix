@@ -102,7 +102,7 @@ import Testing
             context: context, credentials: authentication, factory: RecordingSessionFactory(session), warning: { _ in }
         )
         let capture = PodUpdateCapture()
-        await WatchService(transports: { _ in transport }).run(context: context, namespace: "team") { capture.values.append($0) }
+        await WatchService(transports: { _ in transport }).run(kind: .pods, context: context, namespace: "team") { capture.values.append($0) }
         #expect(capture.values.last?.connection == .failed(.podAuthentication))
         #expect(await process.requests().isEmpty)
         #expect(await session.requests.isEmpty)
@@ -111,7 +111,7 @@ import Testing
     @Test func processErrorsOutsideCredentialAcquisitionAreNotTaggedAsAuthentication() async throws {
         let capture = PodUpdateCapture()
         let service = WatchService(transports: { _ in throw ProcessFailure.exited(17) })
-        await service.run(context: try runtimeContext(), namespace: "team") { capture.values.append($0) }
+        await service.run(kind: .pods, context: try runtimeContext(), namespace: "team") { capture.values.append($0) }
         #expect(capture.values.last?.connection == .failed(.transport(.invalidResponse)))
     }
 
@@ -185,18 +185,18 @@ import Testing
         )
         store = AppStore(contexts: [context])
         actions = AppActions(
-            store: store, exec: PodShellExec(), authentication: authentication, surfaces: PodShellSurfaces(), pods: watcher
+            store: store, exec: PodShellExec(), authentication: authentication, surfaces: PodShellSurfaces(), lists: watcher
         )
         try await actions.updateAuthSettings(settings)
     }
 
     func start() throws {
         try actions.selectNamespace("committed-team")
-        actions.refreshPods()
+        actions.refreshList()
     }
 }
 
-private actor PluginRecoveryWatcher: PodWatching {
+private actor PluginRecoveryWatcher: ResourceWatching {
     let service: WatchService
     let capture: PodUpdateCapture
     private(set) var contexts: [ResolvedContext] = []
@@ -204,17 +204,20 @@ private actor PluginRecoveryWatcher: PodWatching {
 
     init(service: WatchService, capture: PodUpdateCapture) { self.service = service; self.capture = capture }
 
-    func run(context: ResolvedContext, namespace: String, update: @escaping @MainActor @Sendable (PodWatchUpdate) -> Void) async {
+    func run(
+        kind: ResourceKind, context: ResolvedContext, namespace: String,
+        update: @escaping @MainActor @Sendable (ResourceListUpdate) -> Void
+    ) async {
         contexts.append(context)
         namespaces.append(namespace)
-        await service.run(context: context, namespace: namespace) { [capture] in
+        await service.run(kind: kind, context: context, namespace: namespace) { [capture] in
             capture.values.append($0)
             update($0)
         }
     }
 }
 
-private extension PodConnection {
+private extension ListConnection {
     var isFailed: Bool {
         if case .failed = self { return true }
         return false

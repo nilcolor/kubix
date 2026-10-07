@@ -30,14 +30,14 @@ import Testing
     private func mutate(_ change: Change, owner: PodShellTestOwner) async throws {
         switch change {
         case .row, .deleted, .replaced: try mutateRow(change, owner: owner)
-        case .selection: owner.actions.selectPod(uid: "uid-1"); owner.actions.selectPod(uid: "uid-0")
-        case .filter: owner.actions.setPodFilter("pod-1")
+        case .selection: owner.actions.selectRow(uid: "uid-1"); owner.actions.selectRow(uid: "uid-0")
+        case .filter: owner.actions.setListFilter("pod-1")
         case .context: try owner.actions.selectContext(named: "second")
         case .namespace: try owner.actions.selectNamespace("other")
         case .reload: await owner.actions.loadConfiguration()
-        case .refresh: owner.actions.refreshPods()
+        case .refresh: owner.actions.refreshList()
         case .close:
-            if let id = owner.store.logSessions.first?.id { owner.actions.closeLog(id) } else { owner.actions.selectPod(uid: nil) }
+            if let id = owner.store.logSessions.first?.id { owner.actions.closeLog(id) } else { owner.actions.selectRow(uid: nil) }
         case .shutdown: owner.actions.shutdown()
         }
     }
@@ -47,7 +47,7 @@ import Testing
         if change == .deleted { try owner.install(ids: [1]); return }
         let bytes = String(decoding: try podPage(ids: [0]), as: UTF8.self).replacingOccurrences(of: "uid-0", with: "replacement")
         let table = try JSONDecoder().decode(KubernetesTable.self, from: Data(bytes.utf8))
-        owner.actions.applyPodUpdate(.init(rows: try table.rows.map { try PodRow(row: $0) }, columns: table.columnDefinitions, connection: .live))
+        owner.actions.applyListUpdate(.init(kind: .pods, rows: try table.rows.map { try ResourceRow(row: $0) }, columns: table.columnDefinitions, connection: .live))
     }
 
     @Test func supersededDetailsAndOldMenuCannotReplaceNewSession() async throws {

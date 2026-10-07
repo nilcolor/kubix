@@ -28,7 +28,7 @@ struct WatchTests {
         let row = try #require(sparse.rows.first)
         #expect(row.cells.count == 9 && sparse.columnDefinitions == nil)
         #expect(row.object?.metadata?.uid == nil && row.object?.metadata?.name == nil)
-        #expect(throws: DecodingError.self) { try PodRow(row: row) }
+        #expect(throws: DecodingError.self) { try ResourceRow(row: row) }
         var state = try WatchState(rows: [], columns: nil, resourceVersion: "list")
         _ = state.resume()
         #expect(state.receive(try results[0].get()) == .applied)
@@ -202,7 +202,7 @@ let watchColumns = #"[{"name":"Name","type":"string"}]"#
 
 func watchState() throws -> WatchState {
     let table = try watchTable(columns: watchColumns)
-    var state = try WatchState(rows: table.rows.map(PodRow.init), columns: table.columnDefinitions, resourceVersion: "list-rv")
+    var state = try WatchState(rows: table.rows.map(ResourceRow.init), columns: table.columnDefinitions, resourceVersion: "list-rv")
     #expect(state.resume() == .watch(resourceVersion: "list-rv"))
     return state
 }

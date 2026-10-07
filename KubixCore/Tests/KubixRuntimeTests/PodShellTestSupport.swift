@@ -13,7 +13,7 @@ import Testing
 
     init(
         transport: any Transport, auth: PodShellAuth = PodShellAuth(), exec: PodShellExec = PodShellExec(),
-        watch: (any PodWatching)? = nil, logs: (any LogStreaming)? = nil
+        watch: (any ResourceWatching)? = nil, logs: (any LogStreaming)? = nil
     ) throws {
         self.auth = auth
         self.exec = exec
@@ -27,21 +27,21 @@ import Testing
         configuration = PodShellConfiguration(contexts: contexts)
         actions = AppActions(
             store: store, exec: exec, authentication: auth, surfaces: surfaces, configurations: configuration,
-            pods: watch, podDetails: PodDetailsService { _ in transport }, logs: logs
+            lists: watch, podDetails: PodDetailsService { _ in transport }, logs: logs
         )
         try install()
     }
 
     func install(ids: [Int] = [0, 1], version: String = "initial") throws {
         let table = try JSONDecoder().decode(KubernetesTable.self, from: podPage(ids: ids, version: version))
-        actions.applyPodUpdate(.init(rows: try table.rows.map { try PodRow(row: $0) }, columns: table.columnDefinitions, connection: .live))
+        actions.applyListUpdate(.init(kind: .pods, rows: try table.rows.map { try ResourceRow(row: $0) }, columns: table.columnDefinitions, connection: .live))
     }
 
     func changeRow() throws {
         let bytes = String(decoding: try podPage(ids: [0, 1]), as: UTF8.self)
             .replacingOccurrences(of: "row-0", with: "changed-revision")
         let table = try JSONDecoder().decode(KubernetesTable.self, from: Data(bytes.utf8))
-        actions.applyPodUpdate(.init(rows: try table.rows.map { try PodRow(row: $0) }, columns: table.columnDefinitions, connection: .live))
+        actions.applyListUpdate(.init(kind: .pods, rows: try table.rows.map { try ResourceRow(row: $0) }, columns: table.columnDefinitions, connection: .live))
     }
 }
 

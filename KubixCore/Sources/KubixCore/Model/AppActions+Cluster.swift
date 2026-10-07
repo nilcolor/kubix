@@ -29,33 +29,37 @@ public extension AppActions {
         store.clusters[index].state = .disconnected
         // A reconnect may reach a cluster whose metrics-server was installed or removed meanwhile.
         store.clusters[index].metrics = .unknown
-        demotePodsSelection(of: name)
+        demoteListSelection(of: name)
         discardNamespaces(of: name)
         guard store.selectedContext?.name == name else { return }
-        cancelPods()
-        applyPodUpdate(PodWatchUpdate(rows: [], columns: nil, connection: .idle))
+        cancelList()
+        clearList(store.listKind)
     }
 }
 
 public extension AppActions {
-    /// The only route into discovery: `Pods` under a connected cluster. A cluster row is focus alone,
-    /// and one watch at a time follows the selection rather than accumulating per cluster.
+    /// The only route into discovery: a list row under a connected cluster. A cluster row is focus
+    /// alone, and one watch at a time follows the selection rather than accumulating per cluster or
+    /// per kind — moving between `Pods` and `Deployments` retires the previous watch like moving
+    /// between clusters does.
     func selectSidebar(_ selection: SidebarSelection) {
         guard !stopped, let cluster = store.clusters.first(where: { $0.id == selection.clusterName }) else { return }
-        if case .pods = selection, cluster.state != .connected { return }
+        if selection.kind != nil, cluster.state != .connected { return }
         let unchanged = store.sidebarSelection == selection
         store.sidebarSelection = selection
         focus(cluster.context)
-        guard case .pods = selection else { return }
+        guard let kind = selection.kind else { return }
         guard !unchanged || store.connection == .idle else { return }
-        refreshPods()
+        refreshList(kind)
     }
 }
 
 extension AppActions {
-    var isBrowsingPods: Bool {
-        guard case .pods(let name) = store.sidebarSelection else { return false }
-        return store.clusters.first { $0.id == name }?.state == .connected
+    /// The kind the sidebar is listing on a connected cluster, or nil when nothing is being listed.
+    var browsingKind: ResourceKind? {
+        guard case .list(let name, let kind) = store.sidebarSelection,
+              store.clusters.first(where: { $0.id == name })?.state == .connected else { return nil }
+        return kind
     }
 
     /// Everything `selectContext` used to do apart from starting discovery.
@@ -83,7 +87,7 @@ extension AppActions {
         store.clusters[index].state = failure.map { .failed(reason: Self.connectReason($0)) } ?? .connected
         store.clusters[index].serverVersion = version
         if failure != nil {
-            demotePodsSelection(of: name)
+            demoteListSelection(of: name)
             discardNamespaces(of: name)
             return
         }
@@ -105,10 +109,10 @@ extension AppActions {
         }
     }
 
-    /// A `Pods` selection cannot outlive its cluster's connection: it would keep showing a table for a
+    /// A list selection cannot outlive its cluster's connection: it would keep showing a table for a
     /// cluster the app is no longer talking to.
-    func demotePodsSelection(of name: String) {
-        guard case .pods(let selected) = store.sidebarSelection, selected == name else { return }
+    func demoteListSelection(of name: String) {
+        guard case .list(let selected, _) = store.sidebarSelection, selected == name else { return }
         store.sidebarSelection = .cluster(name)
     }
 

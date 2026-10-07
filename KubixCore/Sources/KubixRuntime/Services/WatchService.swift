@@ -1,7 +1,7 @@
 import Foundation
 import KubixCore
 
-public struct WatchService: PodWatching {
+public struct WatchService: ResourceWatching {
     public typealias TransportFactory = @Sendable (ResolvedContext) async throws -> any Transport
     private let transports: TransportFactory
     private let clock: any TransportClock
@@ -17,10 +17,10 @@ public struct WatchService: PodWatching {
     }
 
     public func run(
-        context: ResolvedContext, namespace: String,
-        update: @escaping @MainActor @Sendable (PodWatchUpdate) -> Void
+        kind: ResourceKind, context: ResolvedContext, namespace: String,
+        update: @escaping @MainActor @Sendable (ResourceListUpdate) -> Void
     ) async {
-        var run = PodWatchRun(namespace: namespace, clock: clock, jitter: jitter, update: update)
+        var run = ResourceWatchRun(kind: kind, namespace: namespace, clock: clock, jitter: jitter, update: update)
         do {
             guard NamespaceSelection.isValid(namespace) else { throw APIError.invalidRequest }
             try Task.checkCancellation()
@@ -29,16 +29,17 @@ public struct WatchService: PodWatching {
             try await run.execute(transport)
         } catch {
             guard !Task.isCancelled else { return }
-            await run.publish(.failed(podWatchError(error)))
+            await run.publish(.failed(listWatchError(error)))
         }
     }
 }
 
-private struct PodWatchRun {
+private struct ResourceWatchRun {
+    let kind: ResourceKind
     let namespace: String
     let clock: any TransportClock
     let jitter: @Sendable () -> Double
-    let update: @MainActor @Sendable (PodWatchUpdate) -> Void
+    let update: @MainActor @Sendable (ResourceListUpdate) -> Void
     var state = WatchState()
     var rejection: APIError?
 
@@ -79,26 +80,29 @@ private struct PodWatchRun {
         do {
             let snapshot = try await list(transport)
             try Task.checkCancellation()
-            guard let version = snapshot.resourceVersion else { throw APIError.podSnapshot(.missingResourceVersion) }
+            guard let version = snapshot.resourceVersion else { throw APIError.snapshot(.missingResourceVersion) }
             let decision = state.installSnapshot(rows: snapshot.rows, columns: snapshot.columns, resourceVersion: version)
             // The snapshot is installed and complete; only live updates are still outstanding.
             if case .watch = decision { await publish(.listed) }
             return decision
         } catch {
             try Task.checkCancellation()
-            let failure = podWatchError(error)
+            let failure = listWatchError(error)
             rejection = failure
             return state.failedRequest(failure, jitter: jitter())
         }
     }
 
-    private func list(_ transport: any Transport) async throws -> PodSnapshot {
-        var snapshot = PodSnapshot()
+    private func list(_ transport: any Transport) async throws -> ResourceSnapshot {
+        var snapshot = ResourceSnapshot()
         repeat {
             try Task.checkCancellation()
             var query = [URLQueryItem(name: "limit", value: "500"), URLQueryItem(name: "includeObject", value: "Metadata")]
             if !snapshot.cursor.isEmpty { query.append(URLQueryItem(name: "continue", value: snapshot.cursor)) }
-            let request = APIRequest(resource: "pods", namespace: namespace, query: query, table: true, managesCredentialRefresh: true)
+            let request = APIRequest(
+                resource: kind.resource, namespace: namespace, apiPath: kind.apiPath,
+                query: query, table: true, managesCredentialRefresh: true
+            )
             let data = try await transport.data(for: request)
             try Task.checkCancellation()
             try snapshot.append(data, namespace: namespace)
@@ -118,7 +122,10 @@ private struct PodWatchRun {
             URLQueryItem(name: "timeoutSeconds", value: String(TransportPolicy.policy(for: .watch).serverLease!)),
             URLQueryItem(name: "resourceVersion", value: version),
         ]
-        let request = APIRequest(resource: "pods", namespace: namespace, query: query, table: true, managesCredentialRefresh: true)
+        let request = APIRequest(
+            resource: kind.resource, namespace: namespace, apiPath: kind.apiPath,
+            query: query, table: true, managesCredentialRefresh: true
+        )
         do {
             let stream = try await withTransportDeadline(until: deadline, clock: clock) {
                 let stream = try await transport.stream(for: request, purpose: .watch)
@@ -131,7 +138,7 @@ private struct PodWatchRun {
             return try await consume(stream, started: started, deadline: deadline)
         } catch {
             try Task.checkCancellation()
-            let failure = podWatchError(error)
+            let failure = listWatchError(error)
             rejection = failure
             return state.failedRequest(failure, jitter: jitter())
         }
@@ -168,14 +175,14 @@ private struct PodWatchRun {
         switch event {
         case .added(let table), .modified(let table):
             let newIDs = Set(table.rows.compactMap { $0.object?.metadata?.uid }).filter { state.rowsByUID[$0] == nil }
-            guard newIDs.count <= PodSnapshot.maximumRows - state.rowsByUID.count else { throw APIError.podSnapshot(.rowLimit) }
+            guard newIDs.count <= ResourceSnapshot.maximumRows - state.rowsByUID.count else { throw APIError.snapshot(.rowLimit) }
         default: break
         }
     }
 
-    func publish(_ connection: PodConnection) async {
+    func publish(_ connection: ListConnection) async {
         guard !Task.isCancelled else { return }
-        await update(PodWatchUpdate(rows: state.rows, columns: state.columns, connection: connection))
+        await update(ResourceListUpdate(kind: kind, rows: state.rows, columns: state.columns, connection: connection))
     }
 
     private func decisionError(_ decision: WatchDecision) -> APIError {
@@ -187,10 +194,10 @@ private struct PodWatchRun {
     }
 }
 
-private func podWatchError(_ error: any Error) -> APIError {
+private func listWatchError(_ error: any Error) -> APIError {
     if let error = error as? APIError { return error }
     if error is CredentialAcquisitionFailure { return .podAuthentication }
     if error is AuthError || error is AuthenticationError || error is KubeconfigError { return .podAuthentication }
-    if error is DecodingError { return .podSnapshot(.malformedTable) }
+    if error is DecodingError { return .snapshot(.malformedTable) }
     return .transport(.invalidResponse)
 }

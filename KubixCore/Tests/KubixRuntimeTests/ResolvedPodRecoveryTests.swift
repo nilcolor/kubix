@@ -18,17 +18,17 @@ import Testing
         let (auth, _) = orchestration(process: process, resolver: testResolver(settings: settings, environment: ["CONFIG": "synthetic"]))
         let probe = RecoveryProbe()
         let store = AppStore(contexts: [context])
-        let actions = AppActions(store: store, exec: PodShellExec(), authentication: auth, surfaces: PodShellSurfaces(), pods: probe)
+        let actions = AppActions(store: store, exec: PodShellExec(), authentication: auth, surfaces: PodShellSurfaces(), lists: probe)
         defer { actions.shutdown() }
         try await actions.updateAuthSettings(settings)
         try actions.selectNamespace("committed-team")
-        actions.refreshPods()
+        actions.refreshList()
         try await watchEventually { await probe.targets.count == 1 }
         await actions.authenticateSelectedContext()
         try await watchEventually { store.authenticationSessions.values.contains { $0.state == .failed } }
         let failed = try #require(store.authenticationSessions.values.first { $0.state == .failed })
         #expect(failed.credentialIdentity != (try CredentialIdentity(from: context)))
-        actions.applyPodUpdate(.init(rows: [], columns: nil, connection: .failed(failure)))
+        actions.applyListUpdate(.init(kind: .pods, rows: [], columns: nil, connection: .failed(failure)))
         actions.setNamespaceInput("unfinished-draft")
         switch operation {
         case "retry": try await actions.retryAuthentication(operationID: failed.id)
@@ -53,7 +53,7 @@ import Testing
         let (auth, _) = orchestration(process: process, resolver: testResolver())
         let probe = RecoveryProbe()
         let store = AppStore(contexts: [first, other])
-        let actions = AppActions(store: store, exec: PodShellExec(), authentication: auth, surfaces: PodShellSurfaces(), pods: probe)
+        let actions = AppActions(store: store, exec: PodShellExec(), authentication: auth, surfaces: PodShellSurfaces(), lists: probe)
         defer { actions.shutdown() }
         let work = Task { await actions.authenticateSelectedContext() }
         try await watchEventually { await process.requests().count == 1 }
@@ -63,7 +63,7 @@ import Testing
         case "namespace": try actions.selectNamespace("new-team")
         default: try actions.selectContext(named: "other"); try actions.selectContext(named: first.name)
         }
-        actions.applyPodUpdate(.init(rows: [], columns: nil, connection: .failed(.podAuthentication)))
+        actions.applyListUpdate(.init(kind: .pods, rows: [], columns: nil, connection: .failed(.podAuthentication)))
         await gate.open()
         await work.value
         #expect(store.connection == .failed(.podAuthentication))
@@ -72,10 +72,13 @@ import Testing
     }
 }
 
-private actor RecoveryProbe: PodWatching {
+private actor RecoveryProbe: ResourceWatching {
     struct Target: Sendable { let context: ResolvedContext; let namespace: String }
     private(set) var targets: [Target] = []
-    func run(context: ResolvedContext, namespace: String, update: @escaping @MainActor @Sendable (PodWatchUpdate) -> Void) async {
+    func run(
+        kind: ResourceKind, context: ResolvedContext, namespace: String,
+        update: @escaping @MainActor @Sendable (ResourceListUpdate) -> Void
+    ) async {
         targets.append(Target(context: context, namespace: namespace))
     }
 }

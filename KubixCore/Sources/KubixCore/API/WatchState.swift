@@ -27,14 +27,14 @@ public struct WatchState: Sendable {
     }
 
     public private(set) var phase: Phase = .ready
-    public private(set) var rowsByUID: [String: PodRow]
+    public private(set) var rowsByUID: [String: ResourceRow]
     public private(set) var orderedUIDs: [String]
     public private(set) var columns: [KubernetesTable.ColumnDefinition]?
     public private(set) var resourceVersion: String
     public private(set) var retryAttempts = 0
     public private(set) var credentialRefreshes = 0
     public private(set) var relistAttempts = 0
-    public var rows: [PodRow] { orderedUIDs.compactMap { rowsByUID[$0] } }
+    public var rows: [ResourceRow] { orderedUIDs.compactMap { rowsByUID[$0] } }
     public static let maximumRetries = 6
     public static let maximumCredentialRefreshes = 1
 
@@ -54,7 +54,7 @@ public struct WatchState: Sendable {
         return .relist
     }
 
-    public init(rows: [PodRow], columns: [KubernetesTable.ColumnDefinition]?, resourceVersion: String) throws {
+    public init(rows: [ResourceRow], columns: [KubernetesTable.ColumnDefinition]?, resourceVersion: String) throws {
         try Self.validateSnapshot(rows, columns: columns, resourceVersion: resourceVersion)
         rowsByUID = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
         orderedUIDs = rows.map(\.id)
@@ -123,7 +123,7 @@ public struct WatchState: Sendable {
 
     /// A complete relist snapshot can be installed without resetting failed-session budgets.
     public mutating func installSnapshot(
-        rows: [PodRow], columns: [KubernetesTable.ColumnDefinition]?, resourceVersion: String
+        rows: [ResourceRow], columns: [KubernetesTable.ColumnDefinition]?, resourceVersion: String
     ) -> WatchDecision {
         if let terminal { return terminal }
         guard phase == .relisting || phase == .listing else { return fail(.invalidTransition) }
@@ -218,7 +218,7 @@ public struct WatchState: Sendable {
     }
 
     private static func validateSnapshot(
-        _ rows: [PodRow], columns: [KubernetesTable.ColumnDefinition]?, resourceVersion: String
+        _ rows: [ResourceRow], columns: [KubernetesTable.ColumnDefinition]?, resourceVersion: String
     ) throws {
         guard !resourceVersion.isEmpty, Set(rows.map(\.id)).count == rows.count,
               columns.map({ schema in rows.allSatisfy { $0.cells.count == schema.count } }) ?? true else {

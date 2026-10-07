@@ -139,7 +139,7 @@ struct WatchStateTests {
 
     @Test func snapshotValidationAndInvalidTransitionsAreExplicit() throws {
         let table = try watchTable(columns: watchColumns)
-        let row = try PodRow(row: #require(table.rows.first))
+        let row = try ResourceRow(row: #require(table.rows.first))
         #expect(throws: WatchDecodingError.invalidPayload) {
             try WatchState(rows: [row, row], columns: nil, resourceVersion: "list")
         }

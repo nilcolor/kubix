@@ -55,7 +55,7 @@ struct WatchRetryTests {
         #expect(state.receive(.error(try watchStatus(reason: "Expired"))) == .relist)
         #expect(state.rows.isEmpty && state.rowsByUID.isEmpty && state.columns == nil && state.resourceVersion.isEmpty)
         let table = try watchTable(columns: watchColumns)
-        #expect(state.installSnapshot(rows: try table.rows.map(PodRow.init), columns: table.columnDefinitions, resourceVersion: "fresh") == .watch(resourceVersion: "fresh"))
+        #expect(state.installSnapshot(rows: try table.rows.map(ResourceRow.init), columns: table.columnDefinitions, resourceVersion: "fresh") == .watch(resourceVersion: "fresh"))
         #expect(state.retryAttempts == 1 && state.credentialRefreshes == 1)
         #expect(state.resume() == .watch(resourceVersion: "fresh"))
         #expect(state.failedRequest(.http(code: 401, resource: "pods")) == .failed(.credentialRefreshLimit))
@@ -65,7 +65,7 @@ struct WatchRetryTests {
         var state = try watchState()
         _ = state.failedRequest(.http(code: 410, resource: "pods"))
         let table = try watchTable()
-        #expect(state.installSnapshot(rows: try table.rows.map(PodRow.init), columns: [], resourceVersion: "fresh") == .failed(.decoding(.invalidPayload)))
+        #expect(state.installSnapshot(rows: try table.rows.map(ResourceRow.init), columns: [], resourceVersion: "fresh") == .failed(.decoding(.invalidPayload)))
         #expect(state.rows.isEmpty && state.resourceVersion.isEmpty && state.columns == nil)
     }
 

@@ -30,7 +30,7 @@ import KubixCore
         guard store.clusters[1].state == .connected, store.authenticationDiagnostic == nil,
               store.namespaceDiagnostic == nil else { throw Failure.assertion }
         let denied = await fixture.transport.namespaceRequests
-        fixture.actions.selectSidebar(.pods("synthetic-second"))
+        fixture.actions.selectSidebar(.list("synthetic-second", .pods))
         try await PodBrowsingValidation.until { store.connection == .live }
         guard store.namespaces == ["other"], await fixture.transport.namespaceRequests == denied else {
             throw Failure.assertion
@@ -44,7 +44,7 @@ import KubixCore
             + "instead of a pop-up, and no further namespace request from any path; typing does not "
             + "commit, Return commits once, an invalid draft is rejected and keeps the last namespace"
         await fixture.transport.failNamespaceList(nil)
-        fixture.actions.selectSidebar(.pods("synthetic-first"))
+        fixture.actions.selectSidebar(.list("synthetic-first", .pods))
         try await PodBrowsingValidation.until { store.connection == .live && store.selectedNamespace == "team" }
         // A listed cluster shows the server's namespaces, not the names typed into another cluster.
         guard store.namespaces == ["empty", "known", "other", "team"] else { throw Failure.assertion }

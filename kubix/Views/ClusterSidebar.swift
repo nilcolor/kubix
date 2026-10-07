@@ -55,7 +55,7 @@ private struct ClusterSection: View {
         if cluster.state == .connected, expanded {
             Label("Pods", systemImage: "shippingbox")
                 .padding(.leading, Self.indent)
-                .tag(SidebarSelection.pods(cluster.id))
+                .tag(SidebarSelection.list(cluster.id, .pods))
         }
     }
 

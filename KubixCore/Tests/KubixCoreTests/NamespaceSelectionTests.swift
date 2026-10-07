@@ -8,18 +8,18 @@ struct NamespaceSelectionTests {
         let store = AppStore()
         let actions = AppActions(
             store: store, exec: AppTestExec(), authentication: AppTestAuth(), surfaces: AppTestSurfaces(),
-            configurations: PodConfiguration(), pods: probe
+            configurations: PodConfiguration(), lists: probe
         )
         defer { actions.shutdown() }
         await actions.loadConfiguration()
         #expect(store.selectedNamespace == "first-namespace" && store.connection == .idle)
         #expect(await probe.callbacks.isEmpty)
-        actions.refreshPods()
+        actions.refreshList()
         try await appEventually { await probe.callbacks.count == 1 }
         await actions.loadConfiguration()
         try await appEventually { await probe.ended == 1 }
         #expect(store.connection == .idle)
-        await probe.emit(PodWatchUpdate(rows: [], columns: nil, connection: .live))
+        await probe.emit(ResourceListUpdate(kind: .pods, rows: [], columns: nil, connection: .live))
         #expect(store.connection == .idle)
         await actions.shutdownAndWait()
     }
@@ -67,13 +67,14 @@ struct NamespaceSelectionTests {
     }
 }
 
-actor PodActionProbe: PodWatching {
+actor PodActionProbe: ResourceWatching {
     let gate = AppTestGate()
-    private(set) var callbacks: [@MainActor @Sendable (PodWatchUpdate) -> Void] = []
+    private(set) var callbacks: [@MainActor @Sendable (ResourceListUpdate) -> Void] = []
     private(set) var targets: [(context: ResolvedContext, namespace: String)] = []
     private(set) var ended = 0
     func run(
-        context: ResolvedContext, namespace: String, update: @escaping @MainActor @Sendable (PodWatchUpdate) -> Void
+        kind: ResourceKind, context: ResolvedContext, namespace: String,
+        update: @escaping @MainActor @Sendable (ResourceListUpdate) -> Void
     ) async {
         callbacks.append(update)
         targets.append((context, namespace))
@@ -82,5 +83,5 @@ actor PodActionProbe: PodWatching {
         } catch { Issue.record("Unexpected gate error.") }
         ended += 1
     }
-    func emit(_ value: PodWatchUpdate, call: Int = 0) async { await callbacks[call](value) }
+    func emit(_ value: ResourceListUpdate, call: Int = 0) async { await callbacks[call](value) }
 }

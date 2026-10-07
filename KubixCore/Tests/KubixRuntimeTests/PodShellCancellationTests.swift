@@ -13,17 +13,17 @@ import Testing
         case .context, .contextReplacement: try await changeContext(change, owner: owner)
         case .namespace: try owner.actions.selectNamespace("other")
         case .selectionAwayBack:
-            owner.actions.selectPod(uid: "uid-1")
-            owner.actions.selectPod(uid: "uid-0")
+            owner.actions.selectRow(uid: "uid-1")
+            owner.actions.selectRow(uid: "uid-0")
         case .rowRevision: try owner.changeRow()
         case .rowDeleted: try owner.install(ids: [1])
         case .rowReplaced:
             let json = String(decoding: try podPage(ids: [0]), as: UTF8.self).replacingOccurrences(of: "uid-0", with: "replacement")
             let table = try JSONDecoder().decode(KubernetesTable.self, from: Data(json.utf8))
-            owner.actions.applyPodUpdate(.init(rows: try table.rows.map { try PodRow(row: $0) }, columns: table.columnDefinitions, connection: .live))
-        case .filtered: owner.actions.setPodFilter("pod-1")
+            owner.actions.applyListUpdate(.init(kind: .pods, rows: try table.rows.map { try ResourceRow(row: $0) }, columns: table.columnDefinitions, connection: .live))
+        case .filtered: owner.actions.setListFilter("pod-1")
         case .reload: await owner.actions.loadConfiguration()
-        case .refresh: owner.actions.refreshPods()
+        case .refresh: owner.actions.refreshList()
         case .rowAwayBack: try owner.changeRow(); try owner.install()
         }
     }
@@ -126,7 +126,7 @@ import Testing
             }, stream: { _, _ in stream }
         )
         let owner = try PodShellTestOwner(transport: transport, watch: WatchService(transports: { _ in transport }))
-        owner.actions.refreshPods()
+        owner.actions.refreshList()
         try await watchEventually { owner.store.connection == .live }
         owner.actions.openPodShell(uid: "uid-0")
         try await watchEventually { owner.store.containerPicker != nil }
@@ -182,7 +182,7 @@ import Testing
         #expect(owner.surfaces.created.count == 2 && owner.surfaces.created[id] != nil)
         // Both are running, so both have relinquished their selection guard and a scope change
         // leaves them alone — a shell outlives the row it was started from.
-        owner.actions.selectPod(uid: "uid-1")
+        owner.actions.selectRow(uid: "uid-1")
         #expect(owner.store.execSessions.allSatisfy { !$0.isClosed } && owner.store.openSessions.count == 2)
         await owner.actions.shutdownAndWait()
     }

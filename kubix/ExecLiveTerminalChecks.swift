@@ -21,7 +21,7 @@ final class ExecLiveTerminalChecks {
         guard let pods = composition.validationPods else { throw ExecLiveValidation.Failure.configuration }
         try await pods.select(target)
         try composition.actions.selectNamespace(target.namespace)
-        composition.actions.refreshPods()
+        composition.actions.refreshList()
         try await ExecLiveValidation.until { self.composition.store.rows.contains { $0.metadata.name == self.target.pod } }
         for _ in 0..<2 {
             sessions.append(try await openRowShell())

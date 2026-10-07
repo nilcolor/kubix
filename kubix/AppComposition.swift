@@ -62,12 +62,12 @@ final class AppComposition {
         #endif
         let transports = Self.transports(registry)
         let exec = Self.execService(transports: transports)
-        let pods: (any PodWatching)?
+        let lists: (any ResourceWatching)?
         #if DEBUG
         validationPods = ExecLiveValidation.isEnabled ? ExecLivePodWatcher(transports: transports, integrated: ExecLiveValidation.isAcceptance) : nil
-        if let validationPods { pods = validationPods } else { pods = Self.podWatcher(transports: transports) }
+        if let validationPods { lists = validationPods } else { lists = Self.listWatcher(transports: transports) }
         #else
-        pods = Self.podWatcher(transports: transports)
+        lists = Self.listWatcher(transports: transports)
         #endif
         let factory = ExecSurfaceFactory()
         store = AppStore()
@@ -75,7 +75,7 @@ final class AppComposition {
             store: store, exec: exec, authentication: authentication, surfaces: factory, browser: BrowserLauncher(),
             configurations: AppConfigurationLoader(
                 loader: KubeconfigLoader(environment: environment, homeDirectory: home), settings: settings
-            ), pods: pods, podDetails: PodDetailsService(transports: transports), logs: LogService(transports: transports),
+            ), lists: lists, podDetails: PodDetailsService(transports: transports), logs: LogService(transports: transports),
             probe: Self.clusterProbe(transports: transports),
             namespaces: Self.namespaceListing(transports: transports),
             metrics: Self.metricsListing(transports: transports)
@@ -128,7 +128,7 @@ final class AppComposition {
         return PodMetricsService(transports: transports)
     }
 
-    private static func podWatcher(transports: @escaping ExecService.TransportFactory) -> (any PodWatching)? {
+    private static func listWatcher(transports: @escaping ExecService.TransportFactory) -> (any ResourceWatching)? {
         #if DEBUG
         // Existing constrained exec/auth validation must never grow a discovery request implicitly.
         if ExecLiveValidation.isEnabled || AuthLoginValidation.isEnabled || AWSVaultIsolationValidation.root != nil { return nil }

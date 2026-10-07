@@ -48,7 +48,7 @@ extension AppActions {
         }
     }
 
-    func reconcileLogPods(_ update: PodWatchUpdate) {
+    func reconcileLogPods(_ update: ResourceListUpdate) {
         // Connecting/relist snapshots are not authoritative evidence of deletion.
         guard update.connection == .live else { return }
         let retained = Set(update.rows.map(\.id))

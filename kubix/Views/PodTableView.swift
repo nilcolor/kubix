@@ -6,7 +6,7 @@ struct PodTableView: View {
     let actions: AppActions
 
     var body: some View {
-        let presentation = store.podTable
+        let presentation = store.listTable
         // Nothing here changes the table's height: a message that comes and goes with a request
         // would otherwise move every row under it, twice per click. The details request itself is
         // reported by the button that started it, which spins in place.
@@ -69,7 +69,7 @@ extension View {
 /// a sentence, and a table with rows already has them to read — so a settling watch says nothing here
 /// and leaves the toolbar's spinner and subtitle to report it.
 private struct TableState: View {
-    let presentation: PodTablePresentation
+    let presentation: ResourceTablePresentation
     let actions: AppActions
 
     var body: some View {
@@ -85,7 +85,7 @@ private struct TableState: View {
                     .textSelection(.enabled)
                     .frame(maxWidth: 420)
                 if presentation.state == .failed {
-                    Button("Retry pods") { actions.refreshPods() }
+                    Button("Retry pods") { actions.refreshList() }
                 }
             }
             .padding(24)
@@ -131,7 +131,7 @@ final class PodCellView: NSTableCellView {
 
 /// NSTableView supports runtime-defined columns on macOS 14, including repeated server labels.
 struct NativePodTable: NSViewRepresentable {
-    let presentation: PodTablePresentation
+    let presentation: ResourceTablePresentation
     let now: Date
     let actions: AppActions
 
@@ -176,7 +176,7 @@ struct NativePodTable: NSViewRepresentable {
 
     @MainActor final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         let actions: AppActions
-        private var presentation: PodTablePresentation?
+        private var presentation: ResourceTablePresentation?
         private var now = Date()
         private var updating = false
         /// Set when the columns are rebuilt, cleared once they have been fitted to rows.
@@ -199,7 +199,7 @@ struct NativePodTable: NSViewRepresentable {
             return actions.podLogsMenuAction(uid: presentation.rows[row].id)
         }
 
-        func update(_ table: NSTableView, presentation next: PodTablePresentation, now: Date) {
+        func update(_ table: NSTableView, presentation next: ResourceTablePresentation, now: Date) {
             let previous = presentation
             guard previous != next else {
                 if self.now != now {
@@ -252,7 +252,7 @@ struct NativePodTable: NSViewRepresentable {
         /// next rebuild. Only ever wider than the title-based width: a column whose content already
         /// fits looks as it did. A pod name gets more room than anything else, because it is what the
         /// row is read by and generated suffixes make the ends of names the part that differs.
-        private func fitColumns(_ table: NSTableView, to presentation: PodTablePresentation) {
+        private func fitColumns(_ table: NSTableView, to presentation: ResourceTablePresentation) {
             let sample = presentation.rows.prefix(Self.fitSample)
             for (index, column) in presentation.columns.enumerated() where index < table.tableColumns.count {
                 let widest = sample.map { PodCellView.width(of: $0.cells[index]) }.max() ?? 0
@@ -296,15 +296,15 @@ struct NativePodTable: NSViewRepresentable {
 
         func tableViewSelectionDidChange(_ notification: Notification) {
             guard !updating, let table = notification.object as? NSTableView, let presentation else { return }
-            actions.selectPod(uid: presentation.rows.indices.contains(table.selectedRow) ? presentation.rows[table.selectedRow].id : nil)
+            actions.selectRow(uid: presentation.rows.indices.contains(table.selectedRow) ? presentation.rows[table.selectedRow].id : nil)
         }
 
         func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
             guard !updating else { return }
             let sort = tableView.sortDescriptors.first.flatMap { descriptor in
-                descriptor.key.flatMap(Int.init).map { PodTablePresentation.Sort(column: $0, ascending: descriptor.ascending) }
+                descriptor.key.flatMap(Int.init).map { ResourceTablePresentation.Sort(column: $0, ascending: descriptor.ascending) }
             }
-            actions.sortPods(sort)
+            actions.sortList(sort)
         }
     }
 }

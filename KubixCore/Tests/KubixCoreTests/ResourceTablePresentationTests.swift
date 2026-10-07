@@ -61,11 +61,11 @@ struct PodTablePresentationTests {
 
     @Test func selectionSurvivesReorderButNotFilteringDeletionOrSameNameReplacement() throws {
         let table = try presentationTable(cells: [#"["same"]"#, #"["another"]"#])
-        let source = try table.rows.map(PodRow.init)
-        let selected = PodTablePresentation(rows: source.reversed(), columns: table.columnDefinitions, connection: .live, selectedUID: "uid-0")
+        let source = try table.rows.map(ResourceRow.init)
+        let selected = ResourceTablePresentation(rows: source.reversed(), columns: table.columnDefinitions, connection: .live, selectedUID: "uid-0")
         #expect(selected.selectedUID == "uid-0")
         #expect(try present(table, filter: "another", selected: "uid-0").selectedUID == nil)
-        let deleted = PodTablePresentation(rows: Array(source.dropFirst()), columns: table.columnDefinitions, connection: .live, selectedUID: "uid-0")
+        let deleted = ResourceTablePresentation(rows: Array(source.dropFirst()), columns: table.columnDefinitions, connection: .live, selectedUID: "uid-0")
         #expect(deleted.selectedUID == nil)
         let replaced = try presentationTable(cells: [#"["same"]"#], uidPrefix: "replacement")
         #expect(try present(replaced, selected: "uid-0").selectedUID == nil)
@@ -75,19 +75,19 @@ struct PodTablePresentationTests {
         let empty = try presentationTable(cells: [])
         #expect(try present(empty).state == .empty)
         let table = try presentationTable(cells: [#"["alpha"]"#])
-        let rows = try table.rows.map(PodRow.init)
-        let cases: [(PodConnection, PodTablePresentation.State)] = [
+        let rows = try table.rows.map(ResourceRow.init)
+        let cases: [(ListConnection, ResourceTablePresentation.State)] = [
             (.idle, .idle), (.connecting, .connecting), (.failed(.podAuthentication), .failed), (.live, .live),
         ]
         for (connection, state) in cases {
-            let value = PodTablePresentation(rows: rows, columns: table.columnDefinitions, connection: connection)
+            let value = ResourceTablePresentation(rows: rows, columns: table.columnDefinitions, connection: connection)
             #expect(value.state == state)
             if state == .failed || state == .connecting { #expect(value.message.contains("not live")) }
         }
-        let connecting = PodTablePresentation(rows: [], columns: nil, connection: .connecting)
+        let connecting = ResourceTablePresentation(rows: [], columns: nil, connection: .connecting)
         #expect(connecting.state == .connecting && connecting.message.contains("complete"))
-        #expect(PodTablePresentation(rows: [], columns: nil, connection: .live).state == .failed)
-        let denied = PodTablePresentation(rows: [], columns: nil, connection: .failed(.http(code: 403, resource: "pods")))
+        #expect(ResourceTablePresentation(rows: [], columns: nil, connection: .live).state == .failed)
+        let denied = ResourceTablePresentation(rows: [], columns: nil, connection: .failed(.http(code: 403, resource: "pods")))
         #expect(denied.state == .failed && denied.message.contains("Forbidden: pods"))
     }
 
@@ -95,11 +95,11 @@ struct PodTablePresentationTests {
         let table = try presentationTable(cells: [#"["first"]"#])
         let event = try presentationTable(columns: "null", cells: [#"["updated"]"#])
         let columns = event.columns(reusing: table.columnDefinitions)
-        let value = PodTablePresentation(rows: try event.rows.map(PodRow.init), columns: columns, connection: .live)
+        let value = ResourceTablePresentation(rows: try event.rows.map(ResourceRow.init), columns: columns, connection: .live)
         #expect(value.columns.map(\.definition.name) == ["Arbitrary"])
         #expect(value.rows.first?.cells == ["updated"])
         for schema in [nil, [], try presentationTable(columns: "[]", cells: []).columnDefinitions] {
-            let malformed = PodTablePresentation(rows: try table.rows.map(PodRow.init), columns: schema, connection: .live, selectedUID: "uid-0")
+            let malformed = ResourceTablePresentation(rows: try table.rows.map(ResourceRow.init), columns: schema, connection: .live, selectedUID: "uid-0")
             #expect(malformed.state == .failed && malformed.rows.isEmpty && malformed.selectedUID == nil)
         }
     }
@@ -120,10 +120,10 @@ func presentationTable(
 
 private func present(
     _ table: KubernetesTable, filter: String = "", wide: Bool = false,
-    sort: PodTablePresentation.Sort? = nil, selected: String? = nil
-) throws -> PodTablePresentation {
-    PodTablePresentation(
-        rows: try table.rows.map(PodRow.init), columns: table.columnDefinitions, connection: .live,
+    sort: ResourceTablePresentation.Sort? = nil, selected: String? = nil
+) throws -> ResourceTablePresentation {
+    ResourceTablePresentation(
+        rows: try table.rows.map(ResourceRow.init), columns: table.columnDefinitions, connection: .live,
         filter: filter, wide: wide, sort: sort, selectedUID: selected
     )
 }
@@ -133,23 +133,23 @@ private func present(
     /// on an idle namespace — so the snapshot must not be described as if nothing had arrived.
     @Test func aListedSnapshotReadsAsCompleteRatherThanConnecting() throws {
         let table = try presentationTable(cells: [#"["zulu"]"#, #"["alpha"]"#])
-        let rows = try table.rows.map(PodRow.init)
+        let rows = try table.rows.map(ResourceRow.init)
 
-        let listed = PodTablePresentation(rows: rows, columns: table.columnDefinitions, connection: .listed)
+        let listed = ResourceTablePresentation(rows: rows, columns: table.columnDefinitions, connection: .listed)
         #expect(listed.state == .listed)
         #expect(listed.message == "Listed — 2 of 2 pods. Waiting for live updates to start.")
         #expect(listed.rows.count == 2)
 
-        let empty = PodTablePresentation(rows: [], columns: table.columnDefinitions, connection: .listed)
+        let empty = ResourceTablePresentation(rows: [], columns: table.columnDefinitions, connection: .listed)
         #expect(empty.message == "Listed — no pods in this namespace. Waiting for live updates to start.")
 
-        let filtered = PodTablePresentation(
+        let filtered = ResourceTablePresentation(
             rows: rows, columns: table.columnDefinitions, connection: .listed, filter: "alpha"
         )
         #expect(filtered.message == "Listed — 1 of 2 pods. Waiting for live updates to start.")
 
         // Reconnecting still means the rows may be stale; listing means they are not.
-        let reconnecting = PodTablePresentation(rows: rows, columns: table.columnDefinitions, connection: .connecting)
+        let reconnecting = ResourceTablePresentation(rows: rows, columns: table.columnDefinitions, connection: .connecting)
         #expect(reconnecting.message.contains("last-known"))
     }
 }
@@ -158,19 +158,19 @@ private func present(
     /// The window subtitle is a count and a state, not the pane's sentence.
     @Test func theSubtitleCountsWhatIsShownAgainstWhatExists() throws {
         let table = try presentationTable(cells: [#"["zulu"]"#, #"["alpha"]"#])
-        let rows = try table.rows.map(PodRow.init)
+        let rows = try table.rows.map(ResourceRow.init)
 
-        #expect(PodTablePresentation(rows: rows, columns: table.columnDefinitions, connection: .live).subtitle == "2 pods")
-        #expect(PodTablePresentation(
+        #expect(ResourceTablePresentation(rows: rows, columns: table.columnDefinitions, connection: .live).subtitle == "2 pods")
+        #expect(ResourceTablePresentation(
             rows: rows, columns: table.columnDefinitions, connection: .live, filter: "alpha"
         ).subtitle == "1 of 2 pods")
-        #expect(PodTablePresentation(rows: [], columns: table.columnDefinitions, connection: .live).subtitle == "No pods")
-        #expect(PodTablePresentation(
+        #expect(ResourceTablePresentation(rows: [], columns: table.columnDefinitions, connection: .live).subtitle == "No pods")
+        #expect(ResourceTablePresentation(
             rows: rows, columns: table.columnDefinitions, connection: .live, filter: "absent"
         ).subtitle == "No matches")
-        #expect(PodTablePresentation(rows: rows, columns: table.columnDefinitions, connection: .listed).subtitle == "Listed")
-        #expect(PodTablePresentation(rows: [], columns: nil, connection: .idle).subtitle == "Not connected")
-        #expect(PodTablePresentation(
+        #expect(ResourceTablePresentation(rows: rows, columns: table.columnDefinitions, connection: .listed).subtitle == "Listed")
+        #expect(ResourceTablePresentation(rows: [], columns: nil, connection: .idle).subtitle == "Not connected")
+        #expect(ResourceTablePresentation(
             rows: [], columns: nil, connection: .failed(.invalidRequest)
         ).subtitle == "Failed")
     }

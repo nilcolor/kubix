@@ -12,7 +12,7 @@ import Testing
         let store = AppStore(contexts: [try appContext(), try appContext("second")])
         let actions = AppActions(
             store: store, exec: AppTestExec(), authentication: AppTestAuth(), surfaces: AppTestSurfaces(),
-            pods: pods, probe: probe, namespaces: lister, monotonicNow: clock.read
+            lists: pods, probe: probe, namespaces: lister, monotonicNow: clock.read
         )
         actions.connect(contextNamed: "first")
         try await appEventually { store.clusters[0].state == .connected }
@@ -44,7 +44,7 @@ import Testing
 
         // No path retries it on its own.
         actions.refreshNamespaces(contextNamed: "first")
-        actions.selectSidebar(.pods("first"))
+        actions.selectSidebar(.list("first", .pods))
         #expect(await lister.contexts.count == 1)
         await actions.shutdownAndWait()
     }
@@ -56,7 +56,7 @@ import Testing
         let store = AppStore(contexts: [try appContext()])
         let actions = AppActions(
             store: store, exec: AppTestExec(), authentication: AppTestAuth(), surfaces: AppTestSurfaces(),
-            pods: PodActionProbe(), probe: probe, namespaces: lister
+            lists: PodActionProbe(), probe: probe, namespaces: lister
         )
         defer { actions.shutdown() }
 
@@ -165,7 +165,7 @@ import Testing
         let store = AppStore()
         let actions = AppActions(
             store: store, exec: AppTestExec(), authentication: AppTestAuth(), surfaces: AppTestSurfaces(),
-            configurations: loader, pods: PodActionProbe(), probe: probe, namespaces: lister
+            configurations: loader, lists: PodActionProbe(), probe: probe, namespaces: lister
         )
         defer { actions.shutdown() }
         await actions.loadConfiguration()

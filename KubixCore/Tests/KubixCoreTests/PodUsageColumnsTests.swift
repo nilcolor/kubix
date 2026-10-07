@@ -17,11 +17,11 @@ func usageTable(_ pods: [(name: String, printedAge: String, created: String?)]) 
 }
 
 private func present(
-    _ table: KubernetesTable, filter: String = "", sort: PodTablePresentation.Sort? = nil,
+    _ table: KubernetesTable, filter: String = "", sort: ResourceTablePresentation.Sort? = nil,
     metrics: [String: PodUsage]? = nil
-) throws -> PodTablePresentation {
-    PodTablePresentation(
-        rows: try table.rows.map(PodRow.init), columns: table.columnDefinitions, connection: .live,
+) throws -> ResourceTablePresentation {
+    ResourceTablePresentation(
+        rows: try table.rows.map(ResourceRow.init), columns: table.columnDefinitions, connection: .live,
         filter: filter, sort: sort, metrics: metrics
     )
 }
@@ -72,13 +72,13 @@ private func sample(_ name: String, cpu: Decimal, memory: Decimal, windowStart: 
         #expect(try present(table).columns.map(\.definition.name) == ["Name", "Status", "Age"])
         let waiting = try present(table, metrics: [:])
         #expect(waiting.columns.map(\.definition.name) == ["Name", "Status", "CPU", "Memory", "Age"])
-        #expect(waiting.rows.first?.cells == ["web", "Running", PodTablePresentation.absent, PodTablePresentation.absent, "5m"])
+        #expect(waiting.rows.first?.cells == ["web", "Running", ResourceTablePresentation.absent, ResourceTablePresentation.absent, "5m"])
     }
 
     @Test func usageColumnsAppendWhenTheServerPrintsNoAge() throws {
         let table = try presentationTable(cells: [#"["alpha"]"#])
-        let presentation = PodTablePresentation(
-            rows: try table.rows.map(PodRow.init), columns: table.columnDefinitions, connection: .live, metrics: [:]
+        let presentation = ResourceTablePresentation(
+            rows: try table.rows.map(ResourceRow.init), columns: table.columnDefinitions, connection: .live, metrics: [:]
         )
         #expect(presentation.columns.map(\.definition.name) == ["Arbitrary", "CPU", "Memory"])
     }
@@ -98,11 +98,11 @@ private func sample(_ name: String, cpu: Decimal, memory: Decimal, windowStart: 
             // Rounds up to the same 2m as a whole 2m would, but is less, and sorts that way.
             "fraction": sample("fraction", cpu: 1_200_000, memory: 2_097_151),
         ]
-        let cpu = PodTablePresentation.Column.cpu.id
+        let cpu = ResourceTablePresentation.Column.cpu.id
         let ascending = try present(table, sort: .init(column: cpu, ascending: true), metrics: usage)
         #expect(ascending.rows.map(\.cells.first) == ["small", "fraction", "large", "pending"])
-        #expect(ascending.rows.map { $0.cells[2] } == ["1m", "2m", "251m", PodTablePresentation.absent])
-        #expect(ascending.rows.map { $0.cells[3] } == ["1Mi", "1Mi", "512Mi", PodTablePresentation.absent])
+        #expect(ascending.rows.map { $0.cells[2] } == ["1m", "2m", "251m", ResourceTablePresentation.absent])
+        #expect(ascending.rows.map { $0.cells[3] } == ["1Mi", "1Mi", "512Mi", ResourceTablePresentation.absent])
         let descending = try present(table, sort: .init(column: cpu, ascending: false), metrics: usage)
         #expect(descending.rows.map(\.cells.first) == ["large", "fraction", "small", "pending"])
     }
@@ -113,7 +113,7 @@ private func sample(_ name: String, cpu: Decimal, memory: Decimal, windowStart: 
         let created = try #require(RFC3339.date(from: "2026-09-12T23:00:00Z"))
         let table = try usageTable([("web-0", "30s", "2026-09-12T23:00:00Z")])
         let predecessor = sample("web-0", cpu: 5_000_000, memory: 1_048_576, windowStart: created.addingTimeInterval(-30))
-        #expect(try present(table, metrics: ["web-0": predecessor]).rows.first?.cells[2] == PodTablePresentation.absent)
+        #expect(try present(table, metrics: ["web-0": predecessor]).rows.first?.cells[2] == ResourceTablePresentation.absent)
         // Whole-second timestamps: a window opening in the same second as the pod is still its own.
         let own = sample("web-0", cpu: 5_000_000, memory: 1_048_576, windowStart: created.addingTimeInterval(-0.5))
         #expect(try present(table, metrics: ["web-0": own]).rows.first?.cells[2] == "5m")

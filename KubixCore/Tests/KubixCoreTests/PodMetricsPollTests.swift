@@ -60,7 +60,7 @@ private let web = PodUsage(
         let pods = PodActionProbe()
         let actions = AppActions(
             store: store, exec: AppTestExec(), authentication: AppTestAuth(), surfaces: AppTestSurfaces(),
-            pods: pods, metrics: metrics, metricsInterval: .milliseconds(10), monotonicNow: { clock.now }
+            lists: pods, metrics: metrics, metricsInterval: .milliseconds(10), monotonicNow: { clock.now }
         )
         return (store, actions, pods)
     }
@@ -68,9 +68,9 @@ private let web = PodUsage(
     @Test func aSampleMakesTheClusterServeUsageAndThePodsTableShowIt() async throws {
         let metrics = ScriptedMetrics([.success([web])])
         let (store, actions, _) = try owner(metrics)
-        actions.refreshPods()
+        actions.refreshList()
         try await appEventually { store.clusters[0].metrics == .available && store.podMetrics?["web"] == web }
-        #expect(store.podTable.columns.contains { $0.kind == .cpu })
+        #expect(store.listTable.columns.contains { $0.kind == .cpu })
         // It keeps polling while the watch runs.
         try await appEventually { await metrics.calls.count >= 3 }
         #expect(await Set(metrics.calls) == [store.selectedNamespace])
@@ -82,12 +82,12 @@ private let web = PodUsage(
     @Test func aClusterWithoutTheMetricsAPIIsNotAskedAgain() async throws {
         let metrics = ScriptedMetrics([.failure(APIError.http(code: 404, resource: "pods"))])
         let (store, actions, _) = try owner(metrics)
-        actions.refreshPods()
+        actions.refreshList()
         try await appEventually { store.clusters[0].metrics == .unavailable }
         try await Task.sleep(for: .milliseconds(60))
         #expect(await metrics.calls.count == 1)
-        #expect(!store.podTable.columns.contains { $0.kind == .cpu })
-        actions.refreshPods()
+        #expect(!store.listTable.columns.contains { $0.kind == .cpu })
+        actions.refreshList()
         try await Task.sleep(for: .milliseconds(60))
         #expect(await metrics.calls.count == 1)
         await actions.shutdownAndWait()
@@ -101,14 +101,14 @@ private let web = PodUsage(
     func credentialFailuresStopThePollInsteadOfRerunningThePlugin(_ stop: PollStop) async throws {
         let metrics = ScriptedMetrics([.success([web]), .failure(stop.error)])
         let (store, actions, _) = try owner(metrics)
-        actions.refreshPods()
+        actions.refreshList()
         try await appEventually { await metrics.calls.count == 2 }
         try await appEventually { store.podMetrics == [:] }
         try await Task.sleep(for: .milliseconds(60))
         #expect(await metrics.calls.count == 2)
         #expect(store.clusters[0].metrics == .available)
         // The explicit Retry — any refresh of the watch — starts the poll again.
-        actions.refreshPods()
+        actions.refreshList()
         try await appEventually { await metrics.calls.count == 3 }
         await actions.shutdownAndWait()
     }
@@ -130,7 +130,7 @@ private let web = PodUsage(
     @Test func aDeniedNamespaceStopsItsPollWithoutJudgingTheCluster() async throws {
         let metrics = ScriptedMetrics([.failure(APIError.http(code: 403, resource: "pods"))])
         let (store, actions, _) = try owner(metrics)
-        actions.refreshPods()
+        actions.refreshList()
         try await appEventually { await metrics.calls.count == 1 }
         try await Task.sleep(for: .milliseconds(60))
         #expect(await metrics.calls.count == 1)
@@ -144,7 +144,7 @@ private let web = PodUsage(
         let clock = TestClock()
         let metrics = ScriptedMetrics([.success([web]), .failure(APIError.http(code: 503, resource: "pods"))])
         let (store, actions, _) = try owner(metrics, clock: clock)
-        actions.refreshPods()
+        actions.refreshList()
         try await appEventually { store.podMetrics?["web"] != nil }
         let failing = await metrics.calls.count
         try await appEventually { await metrics.calls.count >= failing + 2 }
@@ -153,7 +153,7 @@ private let web = PodUsage(
         try await appEventually { store.podMetrics == [:] }
         // The cluster still serves metrics: the columns stay, showing blanks.
         #expect(store.clusters[0].metrics == .available)
-        #expect(store.podTable.columns.contains { $0.kind == .cpu })
+        #expect(store.listTable.columns.contains { $0.kind == .cpu })
         await actions.shutdownAndWait()
     }
 
@@ -164,12 +164,12 @@ private let web = PodUsage(
         let metrics = ScriptedMetrics([.success([web])], gate: gate)
         let (store, actions, _) = try owner(metrics)
         let initial = store.selectedNamespace
-        actions.refreshPods()
+        actions.refreshList()
         try await appEventually { await metrics.calls.count == 1 }
         try actions.selectNamespace("other")
         #expect(store.podMetrics == nil)
         // The Pods page is not open in this test, so the watch is restarted the way it opens one.
-        actions.refreshPods()
+        actions.refreshList()
         try await appEventually { await metrics.calls.count == 2 }
         await gate.open()
         try await appEventually { store.podMetrics?["web"] != nil }
@@ -181,7 +181,7 @@ private let web = PodUsage(
         let metrics = ScriptedMetrics([.success([web])])
         let (store, actions, _) = try owner(metrics)
         store.clusters[0].state = .connected
-        actions.refreshPods()
+        actions.refreshList()
         try await appEventually { store.clusters[0].metrics == .available }
         actions.disconnect(contextNamed: store.clusters[0].id)
         #expect(store.clusters[0].metrics == .unknown && store.podMetrics == nil)
@@ -192,7 +192,7 @@ private let web = PodUsage(
         let gate = AppTestGate()
         let metrics = ScriptedMetrics([.success([web])], gate: gate)
         let (_, actions, _) = try owner(metrics)
-        actions.refreshPods()
+        actions.refreshList()
         try await appEventually {
             let waiting = await gate.count
             return await metrics.calls.count == 1 && waiting == 1

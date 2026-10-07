@@ -11,7 +11,7 @@ import KubixCore
     static func check(_ fixture: PodBrowsingFixture, table: NSTableView) async throws -> String {
         let store = fixture.store
         let actions = fixture.actions
-        guard !store.podTable.columns.contains(where: { $0.kind == .cpu }) else { throw Failure.assertion }
+        guard !store.listTable.columns.contains(where: { $0.kind == .cpu }) else { throw Failure.assertion }
         await fixture.metrics.serve(["alpha": ("250400000n", "131072Ki"), "zulu": ("0", "64Mi")])
         try actions.selectNamespace("timed")
         try await PodBrowsingValidation.until {
@@ -39,12 +39,12 @@ import KubixCore
 
         guard let alpha = row(table, pod: "alpha") else { throw Failure.assertion }
         table.selectRowIndexes(IndexSet(integer: alpha), byExtendingSelection: false)
-        try await PodBrowsingValidation.until { store.selectedPodUID == "uid-a" }
+        try await PodBrowsingValidation.until { store.selectedRowUID == "uid-a" }
         await fixture.metrics.serve(["alpha": ("1500000000n", "131072Ki"), "zulu": ("0", "64Mi")])
         try await PodBrowsingValidation.until { cell(table, pod: "alpha", column: "CPU") == "1500m" }
-        guard store.selectedPodUID == "uid-a", table.selectedRow == row(table, pod: "alpha") else { throw Failure.assertion }
+        guard store.selectedRowUID == "uid-a", table.selectedRow == row(table, pod: "alpha") else { throw Failure.assertion }
 
-        actions.sortPods(.init(column: PodTablePresentation.Column.cpu.id, ascending: false))
+        actions.sortList(.init(column: ResourceTablePresentation.Column.cpu.id, ascending: false))
         try await PodBrowsingValidation.until { row(table, pod: "alpha") == 0 }
         guard table.selectedRow == 0 else { throw Failure.assertion }
         return "Name column fitted to a \(longName.count)-character generated name (\(nameWidth)pt, untruncated); "

@@ -9,7 +9,7 @@ struct TableTests {
         let table = try fixture("captured")
         let columns = try #require(table.columnDefinitions)
         let row = try #require(table.rows.first)
-        let pod = try PodRow(row: row)
+        let pod = try ResourceRow(row: row)
         #expect(table.apiVersion == "meta.k8s.io/v1" && table.kind == "Table")
         #expect(columns.map(\.name) == ["Name", "Ready", "Status", "Restarts", "Age", "IP", "Node", "Nominated Node", "Readiness Gates"])
         #expect(columns.map(\.type) == Array(repeating: "string", count: 9))
@@ -45,7 +45,7 @@ struct TableTests {
         ])
         let encoded = try JSONEncoder().encode(row.cells)
         #expect(try JSONDecoder().decode([TableCell].self, from: encoded) == row.cells)
-        let pod = try PodRow(row: row)
+        let pod = try ResourceRow(row: row)
         #expect(pod.id == "opaque-pod-uid" && pod.metadata.name == "sample-pod")
         #expect(pod.metadata.creationTimestamp == Date(timeIntervalSince1970: 1_767_323_045.125))
     }
@@ -53,7 +53,7 @@ struct TableTests {
     @Test func interleavedWideColumnsDoNotShiftCellsAndUnknownTypesStillDisplay() throws {
         let table = try fixture("cells")
         let columns = try #require(table.columnDefinitions)
-        let pod = try PodRow(row: #require(table.rows.first))
+        let pod = try ResourceRow(row: #require(table.rows.first))
         #expect(columns[0].priority == 0)
         #expect(columns[1].isWideOnly && columns[6].isWideOnly)
         #expect(!columns[9].isWideOnly)
@@ -90,8 +90,8 @@ struct TableTests {
         #expect(event.columnDefinitions == nil)
         #expect(event.columns(reusing: nil) == nil)
         #expect(event.columns(reusing: list.columnDefinitions) == list.columnDefinitions)
-        let pod = try PodRow(row: #require(event.rows.first))
-        let original = try PodRow(row: #require(list.rows.first))
+        let pod = try ResourceRow(row: #require(event.rows.first))
+        let original = try ResourceRow(row: #require(list.rows.first))
         #expect(pod.id == original.id)
         #expect(pod.metadata.resourceVersion == "rv-pod-101")
         #expect(try pod.displayCells(using: #require(event.columns(reusing: list.columnDefinitions))) == [
@@ -119,7 +119,7 @@ struct TableTests {
         #expect(metadata.resourceVersion == "rv-progress-only")
         #expect(metadata.uid == nil && metadata.name == nil && metadata.namespace == nil)
         #expect(metadata.creationTimestamp == nil)
-        #expect(throws: DecodingError.self) { try PodRow(row: row) }
+        #expect(throws: DecodingError.self) { try ResourceRow(row: row) }
     }
 
     @Test(arguments: [
@@ -129,20 +129,20 @@ struct TableTests {
     func absentMetadataAndCellsRemainSparseButCannotMaterializePods(_ json: String) throws {
         let row = try JSONDecoder().decode(KubernetesTable.Row.self, from: Data(json.utf8))
         #expect(row.cells.isEmpty)
-        #expect(throws: DecodingError.self) { try PodRow(row: row) }
+        #expect(throws: DecodingError.self) { try ResourceRow(row: row) }
     }
 
     @Test(arguments: [#"null"#, #""""#, #"" ""#, #""uid with space""#, #""uid\n""#, #""uid\u0000""#])
     func missingEmptyAndInvalidUIDsCannotBecomeResourceRows(_ uid: String) throws {
         let json = #"{"cells":["not-a-uid"],"object":{"metadata":{"uid":"# + uid + #","name":"sample-pod"}}}"#
         let row = try JSONDecoder().decode(KubernetesTable.Row.self, from: Data(json.utf8))
-        #expect(throws: DecodingError.self) { try PodRow(row: row) }
+        #expect(throws: DecodingError.self) { try ResourceRow(row: row) }
     }
 
     @Test func deleteRecreateUsesUIDNotNameNamespaceOrDisplayCells() throws {
-        func row(_ uid: String, _ display: String) throws -> PodRow {
+        func row(_ uid: String, _ display: String) throws -> ResourceRow {
             let json = #"{"cells":["\#(display)"],"object":{"metadata":{"uid":"\#(uid)","name":"same-name","namespace":"same-ns"}}}"#
-            return try PodRow(row: JSONDecoder().decode(KubernetesTable.Row.self, from: Data(json.utf8)))
+            return try ResourceRow(row: JSONDecoder().decode(KubernetesTable.Row.self, from: Data(json.utf8)))
         }
         let first = try row("opaque-uid-1", "old")
         let changed = try row("opaque-uid-1", "new")
@@ -153,7 +153,7 @@ struct TableTests {
 
     @Test func schemaCellCountMismatchFailsVisiblyRatherThanTruncating() throws {
         let table = try fixture("captured")
-        let pod = try PodRow(row: #require(table.rows.first))
+        let pod = try ResourceRow(row: #require(table.rows.first))
         let columns = try #require(table.columnDefinitions)
         #expect(throws: DecodingError.self) { try pod.displayCells(using: Array(columns.dropLast())) }
         #expect(throws: DecodingError.self) { try pod.displayCells(using: columns + columns, wide: true) }
@@ -189,7 +189,7 @@ struct TableTests {
          "spec":{"containers":[{"name":"ignored"}]},"status":{"phase":"ignored"}}}
         """
         let row = try JSONDecoder().decode(KubernetesTable.Row.self, from: Data(json.utf8))
-        #expect(try PodRow(row: row).id == "opaque")
+        #expect(try ResourceRow(row: row).id == "opaque")
         #expect(!String(reflecting: row).contains("ignored"))
     }
 

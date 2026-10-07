@@ -1,6 +1,6 @@
 import Foundation
 
-public struct PodRow: Identifiable, Equatable, Sendable {
+public struct ResourceRow: Identifiable, Equatable, Sendable {
     public let id: String
     public let metadata: KubernetesObjectMetadata
     public let cells: [TableCell]

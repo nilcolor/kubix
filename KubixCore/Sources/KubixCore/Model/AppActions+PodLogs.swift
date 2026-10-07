@@ -2,7 +2,7 @@ import Foundation
 
 public extension AppActions {
     func podLogsMenuAction(uid: String) -> @MainActor () -> Void {
-        selectPod(uid: uid)
+        selectRow(uid: uid)
         // This menu opens logs, so it is stale when the pending log request it was built against is.
         let generation = podLogSelectionGeneration
         let row = store.rows.first { $0.id == uid }
@@ -15,17 +15,17 @@ public extension AppActions {
 
     func openPodLogs(uid: String? = nil, container: String? = nil) {
         guard !stopped else { return }
-        if let uid { selectPod(uid: uid) }
+        if let uid { selectRow(uid: uid) }
         cancelPendingLogs()
         guard !store.isLoadingConfiguration, logs != nil, let details = podDetails,
               let context = store.selectedContext,
-              let row = store.rows.first(where: { $0.id == store.podTable.selectedUID }),
+              let row = store.rows.first(where: { $0.id == store.listTable.selectedUID }),
               let name = row.metadata.name, row.metadata.namespace == store.selectedNamespace else {
             store.podLogDiagnostic = "Select an available pod after configuration loads to open logs."
             return
         }
-        let selection = PodShellSelection(
-            id: UUID(), purpose: .logs, generation: podLogSelectionGeneration, podGeneration: podGeneration,
+        let selection = RowSelection(
+            id: UUID(), purpose: .logs, generation: podLogSelectionGeneration, listGeneration: listGeneration,
             configurationRevision: configurationRevision, context: context, namespace: store.selectedNamespace, row: row
         )
         podLogSelection = selection
@@ -85,7 +85,7 @@ public extension AppActions {
 
 extension AppActions {
     func dispatchPodLogs(
-        _ selection: PodShellSelection, context: ResolvedContext, pod: PodDetails, container: PodDetails.Container
+        _ selection: RowSelection, context: ResolvedContext, pod: PodDetails, container: PodDetails.Container
     ) {
         guard isCurrentPodSelection(selection) else { return }
         store.containerPicker = nil

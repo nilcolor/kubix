@@ -20,7 +20,7 @@ import KubixCore
             guard composition.store.authenticationDiagnostic == nil else { throw ExecLiveValidation.Failure.authentication }
             await composition.validationPods?.armAcceptance()
             try composition.actions.selectNamespace(ExecLiveDiscovery.namespace)
-            composition.actions.refreshPods()
+            composition.actions.refreshList()
             try await ExecLiveValidation.until { composition.store.connection == .live }
             try await verifyNativeTable(composition)
             let selected = try await target(composition)
@@ -105,7 +105,7 @@ import KubixCore
         }
     }
 
-    private static func target(_ composition: AppComposition) async throws -> PodRow {
+    private static func target(_ composition: AppComposition) async throws -> ResourceRow {
         let rows = composition.store.rows.filter { $0.metadata.name?.hasPrefix(ExecLiveDiscovery.prefix) == true }
         guard let context = composition.store.selectedContext, context.name == ExecLiveDiscovery.context else {
             throw ExecLiveValidation.Failure.configuration

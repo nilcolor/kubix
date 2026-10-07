@@ -15,12 +15,12 @@ struct PodsPane: View {
     let actions: AppActions
 
     private var settling: Bool {
-        let state = store.podTable.state
+        let state = store.listTable.state
         return !store.rows.isEmpty && (state == .connecting || state == .listed)
     }
 
     private var subtitle: String {
-        let table = store.podTable
+        let table = store.listTable
         switch table.state {
         case .live: return table.subtitle + " · live"
         case .listed: return table.subtitle + " · waiting for live updates"
@@ -53,7 +53,7 @@ struct PodsPane: View {
         .navigationSubtitle(subtitle)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Button { actions.refreshPods() } label: {
+                Button { actions.refreshList() } label: {
                     // A watch that is still settling with rows already on screen has nowhere else to
                     // say so: the table keeps its rows and the toolbar keeps the same geometry.
                     if settling {
@@ -63,13 +63,13 @@ struct PodsPane: View {
                     }
                 }
                 .help(settling ? "Listing and watching this namespace" : "List and watch this namespace again")
-                Toggle("Wide", isOn: Binding(get: { store.podWide }, set: { actions.setPodWide($0) }))
+                Toggle("Wide", isOn: Binding(get: { store.listWide }, set: { actions.setListWide($0) }))
                     .toggleStyle(.button)
                     .help("Show all server columns, including priority columns")
             }
         }
         .searchable(
-            text: Binding(get: { store.podFilter }, set: { actions.setPodFilter($0) }),
+            text: Binding(get: { store.listFilter }, set: { actions.setListFilter($0) }),
             placement: .toolbar, prompt: "Search"
         )
     }
@@ -86,18 +86,18 @@ private struct PodsActions: View {
             NamespaceControl(store: store, actions: actions)
             RoundAction(
                 symbol: "apple.terminal", help: "Open a shell in one of the selected pod's containers",
-                disabled: store.podTable.selectedUID == nil, busy: isChoosing(.shell)
+                disabled: store.listTable.selectedUID == nil, busy: isChoosing(.shell)
             ) {
-                if let uid = store.podTable.selectedUID { actions.openPodShell(uid: uid) }
+                if let uid = store.listTable.selectedUID { actions.openPodShell(uid: uid) }
             }
             .popover(isPresented: menu(for: .shell), arrowEdge: .bottom) {
                 ContainerMenu(store: store, actions: actions)
             }
             RoundAction(
                 symbol: "doc.text", help: "Follow one of the selected pod's container logs",
-                disabled: store.podTable.selectedUID == nil, busy: isChoosing(.logs)
+                disabled: store.listTable.selectedUID == nil, busy: isChoosing(.logs)
             ) {
-                if let uid = store.podTable.selectedUID { actions.openPodLogs(uid: uid) }
+                if let uid = store.listTable.selectedUID { actions.openPodLogs(uid: uid) }
             }
             .popover(isPresented: menu(for: .logs), arrowEdge: .bottom) {
                 ContainerMenu(store: store, actions: actions)
@@ -126,7 +126,7 @@ private struct PodsActions: View {
     }
 
     private var pending: ContainerPickerPresentation.Purpose? {
-        store.podTable.selectedUID == nil ? nil : store.pendingContainerPurpose
+        store.listTable.selectedUID == nil ? nil : store.pendingContainerPurpose
     }
 }
 

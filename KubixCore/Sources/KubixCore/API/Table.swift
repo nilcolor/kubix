@@ -87,7 +87,7 @@ public struct KubernetesTable: Decodable, Equatable, Sendable {
     }
 }
 
-/// Optional identity fields also allow progress-only metadata; PodRow validates actual resource identity.
+/// Optional identity fields also allow progress-only metadata; ResourceRow validates actual resource identity.
 public struct KubernetesObjectMetadata: Decodable, Equatable, Sendable {
     public let uid: String?
     public let name: String?

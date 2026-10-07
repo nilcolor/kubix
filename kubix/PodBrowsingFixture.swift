@@ -15,7 +15,7 @@ import KubixRuntime
     init() {
         actions = AppActions(
             store: store, exec: PodFixtureExec(), authentication: authentication, surfaces: surfaces,
-            configurations: PodFixtureConfiguration(), pods: WatchService(transports: { [transport] _ in transport }),
+            configurations: PodFixtureConfiguration(), lists: WatchService(transports: { [transport] _ in transport }),
             podDetails: PodDetailsService(transports: { [transport] _ in transport }),
             logs: LogService(transports: { [transport] _ in transport }),
             probe: ClusterProbeService(transports: { [transport] _ in transport }),

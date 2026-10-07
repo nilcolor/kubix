@@ -9,7 +9,7 @@ import Testing
         let store = AppStore(contexts: contexts)
         let actions = AppActions(
             store: store, exec: AppTestExec(), authentication: AppTestAuth(), surfaces: AppTestSurfaces(),
-            pods: pods, probe: probe
+            lists: pods, probe: probe
         )
         return (store, actions)
     }
@@ -95,7 +95,7 @@ import Testing
         try await appEventually { store.clusters.allSatisfy { $0.state == .connected } }
 
         let session = actions.openShell(target: try appTarget())
-        actions.refreshPods()
+        actions.refreshList()
         try await appEventually { await pods.callbacks.count == 1 }
         #expect(store.connection == .connecting)
 
@@ -131,7 +131,7 @@ import Testing
         defer { actions.shutdown() }
 
         // A disconnected cluster cannot be browsed, and its row is focus alone.
-        actions.selectSidebar(.pods("first"))
+        actions.selectSidebar(.list("first", .pods))
         #expect(store.sidebarSelection == .cluster("first"))
         #expect(await pods.callbacks.isEmpty)
         actions.selectSidebar(.cluster("second"))
@@ -147,13 +147,13 @@ import Testing
         await probe.open()
         actions.connect(contextNamed: "first")
         try await appEventually { store.clusters[0].state == .connected }
-        actions.selectSidebar(.pods("first"))
-        #expect(store.sidebarSelection == .pods("first"))
+        actions.selectSidebar(.list("first", .pods))
+        #expect(store.sidebarSelection == .list("first", .pods))
         try await appEventually { await pods.callbacks.count == 1 }
         #expect(await pods.targets.map(\.context.name) == ["first"])
 
         // Reselecting the same live node must not restart the watch.
-        actions.selectSidebar(.pods("first"))
+        actions.selectSidebar(.list("first", .pods))
         #expect(await pods.callbacks.count == 1)
         await actions.shutdownAndWait()
     }
@@ -168,18 +168,18 @@ import Testing
         actions.connect(contextNamed: "second")
         try await appEventually { store.clusters.allSatisfy { $0.state == .connected } }
 
-        actions.selectSidebar(.pods("first"))
+        actions.selectSidebar(.list("first", .pods))
         try await appEventually { await pods.callbacks.count == 1 }
-        actions.selectSidebar(.pods("second"))
+        actions.selectSidebar(.list("second", .pods))
         try await appEventually { await pods.callbacks.count == 2 }
         try await appEventually { await pods.ended == 1 }
-        #expect(actions.retiringPodTasks.isEmpty)
+        #expect(actions.retiringListTasks.isEmpty)
         #expect(await pods.targets.map(\.context.name) == ["first", "second"])
-        #expect(store.sidebarSelection == .pods("second"))
+        #expect(store.sidebarSelection == .list("second", .pods))
 
         // A late update from the abandoned cluster cannot reach the store.
         let table = try presentationTable(cells: [#"["zulu"]"#])
-        await pods.emit(.init(rows: try table.rows.map(PodRow.init), columns: table.columnDefinitions, connection: .live), call: 0)
+        await pods.emit(.init(kind: .pods, rows: try table.rows.map(ResourceRow.init), columns: table.columnDefinitions, connection: .live), call: 0)
         #expect(store.rows.isEmpty && store.connection == .connecting)
         await actions.shutdownAndWait()
     }
@@ -191,8 +191,8 @@ import Testing
         await probe.open()
         actions.connect(contextNamed: "first")
         try await appEventually { store.clusters[0].state == .connected }
-        actions.selectSidebar(.pods("first"))
-        #expect(store.sidebarSelection == .pods("first"))
+        actions.selectSidebar(.list("first", .pods))
+        #expect(store.sidebarSelection == .list("first", .pods))
 
         actions.disconnect(contextNamed: "first")
         #expect(store.sidebarSelection == .cluster("first"))
@@ -249,7 +249,7 @@ import Testing
         let store = AppStore()
         let actions = AppActions(
             store: store, exec: AppTestExec(), authentication: AppTestAuth(), surfaces: AppTestSurfaces(),
-            configurations: loader, pods: pods, probe: probe
+            configurations: loader, lists: pods, probe: probe
         )
         return (store, actions)
     }
@@ -264,7 +264,7 @@ import Testing
         await actions.loadConfiguration()
         actions.connect(contextNamed: "first")
         try await appEventually { store.clusters[0].state == .connected }
-        actions.selectSidebar(.pods("first"))
+        actions.selectSidebar(.list("first", .pods))
         try await appEventually { await pods.callbacks.count == 1 }
 
         await loader.replace(contexts: [try appContext("second")])
@@ -286,7 +286,7 @@ import Testing
         await actions.loadConfiguration()
         actions.connect(contextNamed: "first")
         try await appEventually { store.clusters[0].state == .connected }
-        actions.selectSidebar(.pods("first"))
+        actions.selectSidebar(.list("first", .pods))
 
         await loader.replace(contexts: [try redefinedContext("first")])
         await actions.loadConfiguration()

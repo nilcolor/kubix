@@ -16,9 +16,9 @@ private func changedContext(_ name: String) throws -> ResolvedContext {
         #expect(ClusterStatus(context: context, state: .failed(reason: "a")) != ClusterStatus(context: context, state: .failed(reason: "b")))
         #expect(ClusterStatus(context: context) == ClusterStatus(context: context, state: .disconnected))
         #expect(ClusterStatus(context: context).id == "first")
-        #expect(SidebarSelection.cluster("a") != SidebarSelection.pods("a"))
-        #expect(SidebarSelection.pods("a").clusterName == "a")
-        #expect(Set([SidebarSelection.cluster("a"), .cluster("a"), .pods("a")]).count == 2)
+        #expect(SidebarSelection.cluster("a") != SidebarSelection.list("a", .pods))
+        #expect(SidebarSelection.list("a", .pods).clusterName == "a")
+        #expect(Set([SidebarSelection.cluster("a"), .cluster("a"), .list("a", .pods)]).count == 2)
     }
 
     @Test func reconcileKeepsUnchangedSnapshotsAndResetsChangedOnes() throws {
@@ -44,8 +44,8 @@ private func changedContext(_ name: String) throws -> ResolvedContext {
             ClusterStatus(context: try appContext(), state: .connected),
             ClusterStatus(context: try appContext("second"), state: .connecting),
         ]
-        #expect(SidebarSelection.reconcile(.pods("first"), clusters: clusters, preferred: "second") == .pods("first"))
-        #expect(SidebarSelection.reconcile(.pods("second"), clusters: clusters, preferred: nil) == .cluster("second"))
+        #expect(SidebarSelection.reconcile(.list("first", .pods), clusters: clusters, preferred: "second") == .list("first", .pods))
+        #expect(SidebarSelection.reconcile(.list("second", .pods), clusters: clusters, preferred: nil) == .cluster("second"))
         #expect(SidebarSelection.reconcile(.cluster("gone"), clusters: clusters, preferred: "second") == .cluster("second"))
         #expect(SidebarSelection.reconcile(.cluster("gone"), clusters: clusters, preferred: nil) == .cluster("first"))
         #expect(SidebarSelection.reconcile(nil, clusters: clusters, preferred: "second") == .cluster("second"))
@@ -60,7 +60,7 @@ private func changedContext(_ name: String) throws -> ResolvedContext {
         let actions = AppActions(
             store: store, exec: AppTestExec(), authentication: AppTestAuth(), surfaces: AppTestSurfaces(),
             configurations: ClusterTestLoader(contexts: [try appContext(), try appContext("second")], preferred: "second"),
-            pods: probe
+            lists: probe
         )
         defer { actions.shutdown() }
         await actions.loadConfiguration()
@@ -80,7 +80,7 @@ private func changedContext(_ name: String) throws -> ResolvedContext {
         let loader = ClusterTestLoader(contexts: [try appContext(), try appContext("second")], preferred: "first")
         let actions = AppActions(
             store: store, exec: AppTestExec(), authentication: AppTestAuth(), surfaces: AppTestSurfaces(),
-            configurations: loader, pods: probe
+            configurations: loader, lists: probe
         )
         defer { actions.shutdown() }
         await actions.loadConfiguration()

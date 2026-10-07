@@ -12,13 +12,16 @@ public final class AppStore {
     public internal(set) var selectedNamespace: String
     public internal(set) var namespaceDraft: String
     public internal(set) var namespaceDiagnostic: String?
-    public internal(set) var rows: [PodRow] = []
+    public internal(set) var rows: [ResourceRow] = []
     public internal(set) var columns: [KubernetesTable.ColumnDefinition]?
-    public internal(set) var connection: PodConnection = .idle
-    public internal(set) var podFilter = ""
-    public internal(set) var podWide = false
-    public internal(set) var podSort: PodTablePresentation.Sort?
-    public internal(set) var selectedPodUID: String?
+    public internal(set) var connection: ListConnection = .idle
+    /// Which kind the one list slot above currently describes. Exactly one watch runs, so the rows,
+    /// columns and connection belong to this kind and to no other.
+    public internal(set) var listKind: ResourceKind = .pods
+    public internal(set) var listFilter = ""
+    public internal(set) var listWide = false
+    public internal(set) var listSort: ResourceTablePresentation.Sort?
+    public internal(set) var selectedRowUID: String?
     public internal(set) var execSessions: [ExecSession] = []
     public internal(set) var logSessions: [LogSession] = []
     public internal(set) var podLogDiagnostic: String?
@@ -71,13 +74,14 @@ public final class AppStore {
     /// Usage by pod name for the watched namespace; nil until the first sample for this scope.
     public internal(set) var podMetrics: [String: PodUsage]?
 
-    public var podTable: PodTablePresentation {
+    public var listTable: ResourceTablePresentation {
         // The usage columns belong to the cluster, not the sample: they appear once the cluster has
         // served metrics and stay while the next namespace's first sample is on its way.
-        let available = clusters.first { $0.context == selectedContext }?.metrics == .available
-        return PodTablePresentation(
-            rows: rows, columns: columns, connection: connection, filter: podFilter,
-            wide: podWide, sort: podSort, selectedUID: selectedPodUID,
+        let available = listKind.supportsUsageColumns
+            && clusters.first { $0.context == selectedContext }?.metrics == .available
+        return ResourceTablePresentation(
+            kind: listKind, rows: rows, columns: columns, connection: connection, filter: listFilter,
+            wide: listWide, sort: listSort, selectedUID: selectedRowUID,
             metrics: available ? (podMetrics ?? [:]) : nil
         )
     }

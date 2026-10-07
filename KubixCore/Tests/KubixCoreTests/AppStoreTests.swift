@@ -8,36 +8,36 @@ extension AppStoreTests {
         let probe = PodActionProbe()
         let store = AppStore(contexts: [try appContext(), try appContext("second")])
         let actions = AppActions(
-            store: store, exec: AppTestExec(), authentication: AppTestAuth(), surfaces: AppTestSurfaces(), pods: probe
+            store: store, exec: AppTestExec(), authentication: AppTestAuth(), surfaces: AppTestSurfaces(), lists: probe
         )
         defer { actions.shutdown() }
-        actions.refreshPods()
+        actions.refreshList()
         try await appEventually { await probe.callbacks.count == 1 }
         let table = try watchTable(columns: watchColumns)
-        let value = PodWatchUpdate(rows: try table.rows.map(PodRow.init), columns: table.columnDefinitions, connection: .live)
+        let value = ResourceListUpdate(kind: .pods, rows: try table.rows.map(ResourceRow.init), columns: table.columnDefinitions, connection: .live)
         await probe.emit(value)
         let changed = ObservationFlag()
         withObservationTracking {
             _ = store.rows
             _ = store.columns
             _ = store.connection
-            _ = store.selectedPodUID
+            _ = store.selectedRowUID
         } onChange: { changed.mark() }
         await probe.emit(value)
         #expect(!changed.value)
         #expect(store.rows == value.rows && store.columns == value.columns && store.connection == .live)
         try actions.selectNamespace("new")
-        actions.refreshPods()
+        actions.refreshList()
         try await appEventually { await probe.callbacks.count == 2 }
         #expect(changed.value && store.rows.isEmpty && store.connection == .connecting)
         await probe.emit(value)
         #expect(store.rows.isEmpty && store.connection == .connecting)
         try actions.selectContext(named: "second")
-        actions.refreshPods()
+        actions.refreshList()
         try await appEventually { await probe.callbacks.count == 3 }
         await probe.emit(value, call: 1)
         #expect(store.rows.isEmpty)
-        actions.refreshPods()
+        actions.refreshList()
         try await appEventually { await probe.callbacks.count == 4 }
         await probe.emit(value, call: 2)
         #expect(store.rows.isEmpty)

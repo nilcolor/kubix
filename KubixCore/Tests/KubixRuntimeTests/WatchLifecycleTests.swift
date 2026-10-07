@@ -156,7 +156,7 @@ import Testing
         owner.start()
         try await watchEventually { owner.clock.deadlines == [1] }
         #expect(first.cancelled && owner.store.rows.map(\.id) == ["uid-2"])
-        owner.actions.refreshPods()
+        owner.actions.refreshList()
         try await watchEventually { await transport.requests.count == 3 && owner.clock.deadlines == [1] }
         #expect(owner.store.rows.map(\.id) == ["uid-3"])
         await owner.stop()

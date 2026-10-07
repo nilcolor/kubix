@@ -100,17 +100,17 @@ import Testing
     }
 
     @Test(arguments: [
-        PodSnapshotFailure.missingResourceVersion, .inconsistentResourceVersion, .missingSchema, .inconsistentSchema,
+        SnapshotFailure.missingResourceVersion, .inconsistentResourceVersion, .missingSchema, .inconsistentSchema,
         .duplicateUID, .cursorCycle, .cursorTooLong, .invalidRow, .malformedTable,
     ])
-    func invalidSnapshotsAreExplicitAndNeverPartiallyPublished(_ failure: PodSnapshotFailure) async throws {
+    func invalidSnapshotsAreExplicitAndNeverPartiallyPublished(_ failure: SnapshotFailure) async throws {
         let transport = WatchTestTransport { _, call in
             switch failure {
             case .missingResourceVersion: return try podPage(version: nil)
             case .missingSchema: return try podPage(columns: nil)
             case .malformedTable: return Data("not-json".utf8)
             case .invalidRow: return try podPage(namespace: "wrong")
-            case .cursorTooLong: return try podPage(cursor: String(repeating: "c", count: PodSnapshot.maximumCursorBytes + 1))
+            case .cursorTooLong: return try podPage(cursor: String(repeating: "c", count: ResourceSnapshot.maximumCursorBytes + 1))
             case .inconsistentResourceVersion: return try podPage(ids: [call], version: "\(call)", cursor: "next")
             case .inconsistentSchema:
                 return try podPage(ids: [call], cursor: call == 1 ? "next" : "", columns: [["name": "\(call)", "type": "string"]])
@@ -122,7 +122,7 @@ import Testing
         let owner = try WatchTestOwner(transport: transport)
         defer { owner.actions.shutdown() }
         owner.start()
-        try await watchEventually { owner.store.connection == .failed(.podSnapshot(failure)) }
+        try await watchEventually { owner.store.connection == .failed(.snapshot(failure)) }
         #expect(owner.store.rows.isEmpty && owner.store.columns == nil)
         #expect(await transport.streams.isEmpty)
         #expect(owner.capture.values.allSatisfy { $0.rows.isEmpty })
@@ -134,8 +134,8 @@ import Testing
         let owner = try WatchTestOwner(transport: transport)
         defer { owner.actions.shutdown() }
         owner.start()
-        try await watchEventually { owner.store.connection == .failed(.podSnapshot(.pageLimit)) }
-        #expect(await transport.requests.count == PodSnapshot.maximumPages)
+        try await watchEventually { owner.store.connection == .failed(.snapshot(.pageLimit)) }
+        #expect(await transport.requests.count == ResourceSnapshot.maximumPages)
         #expect(await transport.streams.isEmpty)
         await owner.stop()
     }

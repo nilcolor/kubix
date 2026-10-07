@@ -35,7 +35,7 @@ public final class AppActions {
     var settingsSaveRevision = 0
     private var authenticationRevision = 0
     var stopped = false
-    let pods: (any PodWatching)?
+    let lists: (any ResourceWatching)?
     let probe: (any ClusterProbing)?
     let namespaceListing: (any NamespaceListing)?
     /// Monotonic seconds, never wall-clock dates, so a clock change or a sleep/wake cannot make the
@@ -46,24 +46,24 @@ public final class AppActions {
     var clusterGenerations: [String: UUID] = [:]
     var clusterTasks: [String: Task<Void, Never>] = [:]
     var retiringClusterTasks: [UUID: Task<Void, Never>] = [:]
-    var podTask: Task<Void, Never>?
+    var listTask: Task<Void, Never>?
     let podMetricsListing: (any PodMetricsListing)?
     let metricsInterval: Duration
     var podMetricsTask: Task<Void, Never>?
-    var retiringPodTasks: [UUID: Task<Void, Never>] = [:]
-    var podGeneration = UUID()
+    var retiringListTasks: [UUID: Task<Void, Never>] = [:]
+    var listGeneration = UUID()
     var namespaceSelection = NamespaceSelection()
     let podDetails: (any PodDetailsProviding)?
     var podSelectionGeneration = UUID()
     var podLogSelectionGeneration = UUID()
-    var podShellSelection: PodShellSelection?
+    var podShellSelection: RowSelection?
     var podDetailTasks: [UUID: Task<Void, Never>] = [:]
-    var podShellGuards: [UUID: PodShellSelection] = [:]
+    var podShellGuards: [UUID: RowSelection] = [:]
     let logs: (any LogStreaming)?
     var logTasks: [UUID: Task<Void, Never>] = [:]
     var logAttempts: [UUID: UUID] = [:]
-    var podLogSelection: PodShellSelection?
-    var podLogGuards: [UUID: PodShellSelection] = [:]
+    var podLogSelection: RowSelection?
+    var podLogGuards: [UUID: RowSelection] = [:]
     /// The validated details behind an open logs menu, so confirming one needs no second request.
     var logChoices: [UUID: PodDetails] = [:]
     var shellChoices: [UUID: [PodDetails.Container]] = [:]
@@ -72,7 +72,7 @@ public final class AppActions {
         store: AppStore, exec: any ExecSessionControlling,
         authentication: any AuthenticationControlling, surfaces: any TerminalSurfaceCreating,
         browser: (any BrowserOpening)? = nil, configurations: (any AppConfigurationLoading)? = nil,
-        pods: (any PodWatching)? = nil, podDetails: (any PodDetailsProviding)? = nil,
+        lists: (any ResourceWatching)? = nil, podDetails: (any PodDetailsProviding)? = nil,
         logs: (any LogStreaming)? = nil, probe: (any ClusterProbing)? = nil,
         namespaces: (any NamespaceListing)? = nil,
         metrics: (any PodMetricsListing)? = nil,
@@ -89,7 +89,7 @@ public final class AppActions {
         self.surfaces = surfaces
         self.browser = browser
         self.configurations = configurations
-        self.pods = pods
+        self.lists = lists
         self.probe = probe
         namespaceListing = namespaces
         podMetricsListing = metrics
@@ -132,7 +132,7 @@ public final class AppActions {
     }
 
     public func signIn(context: ResolvedContext, useDeviceCode: Bool = false) async throws {
-        let generation = podGeneration
+        let generation = listGeneration
         let credential = try await authenticate { [authentication] in
             try await authentication.signIn(for: context, useDeviceCode: useDeviceCode)
         }
@@ -141,7 +141,7 @@ public final class AppActions {
     }
 
     public func retryAuthentication(operationID: UUID) async throws {
-        let generation = podGeneration
+        let generation = listGeneration
         let credential = try await authenticate { [authentication] in
             try await authentication.retry(operationID: operationID)
         }
@@ -270,9 +270,9 @@ public final class AppActions {
         for task in settingsTasks.values { task.cancel() }
         for task in authenticationTasks.values { task.cancel() }
         for task in tasks.values { task.cancel() }
-        podTask?.cancel()
+        listTask?.cancel()
         podMetricsTask?.cancel()
-        for task in retiringPodTasks.values { task.cancel() }
+        for task in retiringListTasks.values { task.cancel() }
         for task in clusterTasks.values { task.cancel() }
         for task in retiringClusterTasks.values { task.cancel() }
         for fetch in namespaceFetches.values { fetch.task?.cancel() }
@@ -333,7 +333,7 @@ extension AppActions {
         stopped = true
         cancelClusterWork()
         cancelNamespaceWork()
-        cancelPods()
+        cancelList()
         if store.connection != .idle { store.connection = .idle }
         for session in store.execSessions { closeShell(session.id) }
         for session in store.logSessions { closeLog(session.id) }
@@ -364,7 +364,7 @@ extension AppActions {
     public func surface(for id: UUID) -> (any TerminalSurface)? { lifetimes[id]?.surface }
 
     public func acquireCredentials(context: ResolvedContext) async throws {
-        let generation = podGeneration
+        let generation = listGeneration
         let credential = try await authenticate { [authentication] in
             try await authentication.acquire(for: context)
         }
@@ -378,7 +378,7 @@ extension AppActions {
         let settings = Array(settingsTasks.values)
         let progress = progressTask
         let presentation = presentationTask
-        let podWork = Array(retiringPodTasks.values) + [podTask, podMetricsTask].compactMap { $0 }
+        let podWork = Array(retiringListTasks.values) + [listTask, podMetricsTask].compactMap { $0 }
         let clusterWork = Array(clusterTasks.values) + Array(retiringClusterTasks.values)
             + namespaceFetches.values.compactMap(\.task) + Array(retiringNamespaceTasks.values)
         let detailWork = Array(podDetailTasks.values)

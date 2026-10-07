@@ -12,7 +12,7 @@ import KubixCore
         let store = fixture.store
         fixture.actions.connect(contextNamed: "synthetic-first")
         try? await PodBrowsingValidation.until { store.clusters.first?.state == .connected }
-        fixture.actions.selectSidebar(.pods("synthetic-first"))
+        fixture.actions.selectSidebar(.list("synthetic-first", .pods))
         try? await PodBrowsingValidation.until { store.connection == .live }
         // One session of each kind, on different pods, so the deck's strip is worth looking at.
         fixture.actions.openPodShell(uid: "uid-a")

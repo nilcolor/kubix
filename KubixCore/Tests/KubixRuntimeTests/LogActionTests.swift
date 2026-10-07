@@ -131,7 +131,7 @@ import Testing
         try await watchEventually { bytes.isWaiting }
         let session = try #require(owner.store.logSessions.first)
         try owner.changeRow()
-        owner.actions.setPodFilter("pod-1")
+        owner.actions.setListFilter("pod-1")
         #expect(session.state == .following && !bytes.cancelled)
         try owner.actions.selectContext(named: "second")
         try await watchEventually { bytes.cancelled && owner.actions.logTasks.isEmpty }
@@ -156,7 +156,7 @@ import Testing
             transport: transport, watch: WatchService { _ in transport }, logs: LogService { _ in transport }
         )
         defer { owner.actions.shutdown() }
-        owner.actions.refreshPods()
+        owner.actions.refreshList()
         try await watchEventually { watchBytes.isWaiting && owner.store.connection == .live }
         owner.actions.openPodLogs(uid: "uid-0", container: "web")
         try await watchEventually { logBytes.isWaiting }
@@ -188,7 +188,7 @@ import Testing
         owner.actions.openPodLogs(uid: "uid-0", container: "web")
         try await watchEventually { bytes.isWaiting }
         let session = try #require(owner.store.logSessions.first)
-        owner.actions.applyPodUpdate(.init(rows: [], columns: nil, connection: .connecting))
+        owner.actions.applyListUpdate(.init(kind: .pods, rows: [], columns: nil, connection: .connecting))
         #expect(session.state == .following && !bytes.cancelled)
         try owner.install(ids: [0])
         #expect(session.state == .following && !bytes.cancelled)

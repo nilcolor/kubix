@@ -68,7 +68,7 @@ import Testing
         let store = AppStore(contexts: [try appContext(), try appContext("second")])
         let actions = AppActions(
             store: store, exec: AppTestExec(), authentication: AppTestAuth(), surfaces: AppTestSurfaces(),
-            pods: PodActionProbe(), probe: probe, namespaces: lister
+            lists: PodActionProbe(), probe: probe, namespaces: lister
         )
         defer { actions.shutdown() }
         #expect(store.namespaces == ["first-namespace"])
@@ -97,7 +97,7 @@ import Testing
         let store = AppStore(contexts: [try appContext()])
         let actions = AppActions(
             store: store, exec: AppTestExec(), authentication: AppTestAuth(), surfaces: AppTestSurfaces(),
-            pods: PodActionProbe(), probe: probe, namespaces: NamespaceTestLister(names: ["listed-one"])
+            lists: PodActionProbe(), probe: probe, namespaces: NamespaceTestLister(names: ["listed-one"])
         )
         defer { actions.shutdown() }
         actions.connect(contextNamed: "first")

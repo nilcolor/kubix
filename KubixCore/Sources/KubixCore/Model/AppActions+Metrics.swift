@@ -34,7 +34,7 @@ extension AppActions {
         _ outcome: Result<[PodUsage], any Error>, context: ResolvedContext, generation: UUID,
         lastSuccess: inout TimeInterval?
     ) -> Bool {
-        guard !stopped, !Task.isCancelled, podGeneration == generation else { return false }
+        guard !stopped, !Task.isCancelled, listGeneration == generation else { return false }
         switch outcome {
         case .success(let usage):
             lastSuccess = monotonicNow()

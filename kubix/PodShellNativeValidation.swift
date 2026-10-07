@@ -7,10 +7,10 @@ import KubixCore
     static func open(_ fixture: PodBrowsingFixture, window: NSWindow, table: NSTableView) async throws -> [UUID] {
         let actions = fixture.actions
         let store = fixture.store
-        guard let alpha = store.podTable.rows.firstIndex(where: { $0.id == "uid-a" }) else { throw Failure.assertion }
+        guard let alpha = store.listTable.rows.firstIndex(where: { $0.id == "uid-a" }) else { throw Failure.assertion }
         window.makeFirstResponder(table)
         table.selectRowIndexes(IndexSet(integer: alpha), byExtendingSelection: false)
-        try await until { store.selectedPodUID == "uid-a" }
+        try await until { store.selectedRowUID == "uid-a" }
         guard let enter = NSEvent.keyEvent(
             with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
             context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36
@@ -26,7 +26,7 @@ import KubixCore
         guard window.attachedSheet == nil else { throw Failure.assertion }
         let stale = try picker(store)
         phase = "cancel stale picker"
-        actions.selectPod(uid: "uid-a")
+        actions.selectRow(uid: "uid-a")
         actions.confirmPodShell(selectionID: stale.id, container: "sidecar")
         try await until { store.containerPicker == nil && menuWindow() == nil }
         guard store.execSessions.count == 1 else { throw Failure.assertion }
@@ -64,7 +64,7 @@ import KubixCore
     }
 
     private static func menu(uid: String, store: AppStore, window: NSWindow, table: NSTableView) throws {
-        guard let row = store.podTable.rows.firstIndex(where: { $0.id == uid }) else { throw Failure.assertion }
+        guard let row = store.listTable.rows.firstIndex(where: { $0.id == uid }) else { throw Failure.assertion }
         let rect = table.rect(ofRow: row)
         let point = table.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)
         guard let event = NSEvent.mouseEvent(

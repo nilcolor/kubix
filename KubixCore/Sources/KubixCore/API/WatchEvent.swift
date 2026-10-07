@@ -58,10 +58,10 @@ public enum WatchEvent: Decodable, Equatable, Sendable {
         }
     }
 
-    static func dataRows(_ table: KubernetesTable) throws -> (rows: [PodRow], resourceVersion: String) {
+    static func dataRows(_ table: KubernetesTable) throws -> (rows: [ResourceRow], resourceVersion: String) {
         guard !table.rows.isEmpty, table.metadata?.continuation?.isEmpty != false else { throw WatchDecodingError.invalidPayload }
         do {
-            let rows = try table.rows.map(PodRow.init)
+            let rows = try table.rows.map(ResourceRow.init)
             guard Set(rows.map(\.id)).count == rows.count,
                   rows.allSatisfy({ ($0.metadata.resourceVersion ?? table.metadata?.resourceVersion)?.isEmpty == false }),
                   let version = table.metadata?.resourceVersion ?? rows.last?.metadata.resourceVersion,

@@ -83,16 +83,17 @@ actor WatchTestTransport: Transport {
 }
 
 @MainActor final class PodUpdateCapture {
-    var values: [PodWatchUpdate] = []
+    var values: [ResourceListUpdate] = []
 }
 
-struct RecordingPodWatcher: PodWatching {
+struct RecordingPodWatcher: ResourceWatching {
     let service: WatchService
     let capture: PodUpdateCapture
     func run(
-        context: ResolvedContext, namespace: String, update: @escaping @MainActor @Sendable (PodWatchUpdate) -> Void
+        kind: ResourceKind, context: ResolvedContext, namespace: String,
+        update: @escaping @MainActor @Sendable (ResourceListUpdate) -> Void
     ) async {
-        await service.run(context: context, namespace: namespace) { value in
+        await service.run(kind: kind, context: context, namespace: namespace) { value in
             capture.values.append(value)
             update(value)
         }
@@ -116,11 +117,11 @@ struct RecordingPodWatcher: PodWatching {
         store = AppStore(contexts: contexts)
         actions = AppActions(
             store: store, exec: UnusedPodExec(), authentication: UnusedPodAuth(), surfaces: UnusedPodSurface(),
-            pods: RecordingPodWatcher(service: WatchService(transports: { _ in transport }, clock: clock, jitter: { 1 }), capture: capture)
+            lists: RecordingPodWatcher(service: WatchService(transports: { _ in transport }, clock: clock, jitter: { 1 }), capture: capture)
         )
     }
 
-    func start() { actions.refreshPods() }
+    func start() { actions.refreshList() }
     func stop() async { await actions.shutdownAndWait() }
 }
 

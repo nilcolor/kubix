@@ -1,11 +1,11 @@
 import Foundation
 
-/// The server's printed columns, plus what a pod list needs that the server does not print. Server
-/// cell positions still identify every server column, so a schema change never re-keys a sort. Two
-/// columns are the app's own: the Age the server prints is replaced by one computed from the pod's
+/// The server's printed columns, plus what a list needs that the server does not print. Server cell
+/// positions still identify every server column, so a schema change never re-keys a sort. Two
+/// columns are the app's own: the Age the server prints is replaced by one computed from the row's
 /// creation time, because a printed age freezes until the row next changes; and CPU and memory come
-/// from the metrics API, which the pod Table does not carry at all.
-public struct PodTablePresentation: Equatable, Sendable {
+/// from the metrics API, which no Table carries and which only pods have at all.
+public struct ResourceTablePresentation: Equatable, Sendable {
     public struct Sort: Equatable, Sendable {
         public let column: Int
         public let ascending: Bool
@@ -55,6 +55,7 @@ public struct PodTablePresentation: Equatable, Sendable {
         case idle, connecting, listed, failed, empty, filteredEmpty, live
     }
 
+    public let kind: ResourceKind
     public let columns: [Column]
     public let rows: [Row]
     public let sort: Sort?
@@ -64,10 +65,15 @@ public struct PodTablePresentation: Equatable, Sendable {
     public let total: Int
 
     public init(
-        rows source: [PodRow], columns schema: [KubernetesTable.ColumnDefinition]?,
-        connection: PodConnection, filter: String = "", wide: Bool = false,
+        kind: ResourceKind = .pods,
+        rows source: [ResourceRow], columns schema: [KubernetesTable.ColumnDefinition]?,
+        connection: ListConnection, filter: String = "", wide: Bool = false,
         sort: Sort? = nil, selectedUID: String? = nil, metrics: [String: PodUsage]? = nil
     ) {
+        self.kind = kind
+        // Usage is per pod and has no deployment equivalent, so a caller that offers samples for a
+        // kind that cannot have them is ignored rather than trusted.
+        let metrics = kind.supportsUsageColumns ? metrics : nil
         var columns = (schema ?? []).enumerated().compactMap { index, definition -> Column? in
             guard wide || !definition.isWideOnly else { return nil }
             let age = definition.name.caseInsensitiveCompare("Age") == .orderedSame
@@ -110,7 +116,9 @@ public struct PodTablePresentation: Equatable, Sendable {
         self.rows = rows
         self.selectedUID = selectedUID.flatMap { uid in rows.contains { $0.id == uid } ? uid : nil }
         total = source.count
-        (state, message) = Self.status(connection, valid: valid, total: source.count, visible: rows.count)
+        (state, message) = Self.status(
+            connection, kind: kind, valid: valid, total: source.count, visible: rows.count
+        )
     }
 
     /// The short form for a window subtitle: a count and its state, without the sentence the pane
@@ -121,17 +129,25 @@ public struct PodTablePresentation: Equatable, Sendable {
         case .connecting: rows.isEmpty ? "Connecting…" : "Reconnecting…"
         case .listed: "Listed"
         case .failed: "Failed"
-        case .empty: "No pods"
+        case .empty: "No \(kind.noun.many)"
         case .filteredEmpty: "No matches"
-        case .live: rows.count == total ? "\(total) pods" : "\(rows.count) of \(total) pods"
+        case .live: rows.count == total
+            ? "\(total) \(noun(total))"
+            : "\(rows.count) of \(total) \(noun(total))"
         }
+    }
+
+    private func noun(_ count: Int) -> String { count == 1 ? kind.noun.one : kind.noun.many }
+
+    private static func noun(_ count: Int, _ kind: ResourceKind) -> String {
+        count == 1 ? kind.noun.one : kind.noun.many
     }
 
     private static let locale = Locale(identifier: "en_US_POSIX")
 
     /// What a column sorts by. Age sorts by creation time, which never changes, so the order stays
     /// correct without a clock; usage sorts by the exact value rather than the rounded display.
-    private static func key(_ row: PodRow, _ column: Column, metrics: [String: PodUsage]?) -> TableCell {
+    private static func key(_ row: ResourceRow, _ column: Column, metrics: [String: PodUsage]?) -> TableCell {
         switch column.kind {
         case .server: return row.cells[column.id]
         case .age:
@@ -143,7 +159,7 @@ public struct PodTablePresentation: Equatable, Sendable {
         }
     }
 
-    private static func text(_ row: PodRow, _ column: Column, metrics: [String: PodUsage]?) -> String {
+    private static func text(_ row: ResourceRow, _ column: Column, metrics: [String: PodUsage]?) -> String {
         switch column.kind {
         // The Age text is drawn from `Row.created` when shown; this is only the fallback for a row
         // the server sent without a creation time.
@@ -161,7 +177,7 @@ public struct PodTablePresentation: Equatable, Sendable {
     /// StatefulSet replica — could briefly inherit its predecessor's numbers. A sample whose window
     /// began before this pod existed cannot describe it. A second of slack covers the timestamps'
     /// whole-second precision.
-    static func usage(_ row: PodRow, _ metrics: [String: PodUsage]?) -> PodUsage? {
+    static func usage(_ row: ResourceRow, _ metrics: [String: PodUsage]?) -> PodUsage? {
         guard let name = row.metadata.name, let sample = metrics?[name] else { return nil }
         if let created = row.metadata.creationTimestamp, sample.windowStart < created.addingTimeInterval(-1) { return nil }
         return sample
@@ -191,25 +207,33 @@ public struct PodTablePresentation: Equatable, Sendable {
         }
     }
 
-    private static func status(_ connection: PodConnection, valid: Bool, total: Int, visible: Int) -> (State, String) {
-        guard valid else { return (.failed, "Pod cells do not match the server column definitions. Refresh to retry.") }
+    private static func status(
+        _ connection: ListConnection, kind: ResourceKind, valid: Bool, total: Int, visible: Int
+    ) -> (State, String) {
+        let many = kind.noun.many
+        let counted = noun(total, kind)
+        guard valid else {
+            return (.failed, "\(kind.title) cells do not match the server column definitions. Refresh to retry.")
+        }
         switch connection {
-        case .idle: return (.idle, "Choose a context and namespace, then load pods.")
+        case .idle: return (.idle, "Choose a context and namespace, then load \(many).")
         case .connecting:
             return (.connecting, total == 0
-                ? "Connecting — waiting for a complete pod list and watch."
-                : "Reconnecting — \(total) last-known pods; updates are not live.")
+                ? "Connecting — waiting for a complete \(kind.noun.one) list and watch."
+                : "Reconnecting — \(total) last-known \(counted); updates are not live.")
         case .listed:
-            let counted = total == 0 ? "no pods in this namespace" : "\(visible) of \(total) pods"
-            return (.listed, "Listed — \(counted). Waiting for live updates to start.")
+            let shown = total == 0 ? "no \(many) in this namespace" : "\(visible) of \(total) \(counted)"
+            return (.listed, "Listed — \(shown). Waiting for live updates to start.")
         case .failed(let error):
-            let prefix = error.httpCode == 403 ? "Forbidden: pods. Check access to this namespace. " : ""
-            let stale = total == 0 ? "" : " Showing \(total) last-known pods; updates are not live."
+            let prefix = error.httpCode == 403 ? "Forbidden: \(many). Check access to this namespace. " : ""
+            let stale = total == 0 ? "" : " Showing \(total) last-known \(counted); updates are not live."
             return (.failed, prefix + error.description + stale)
         case .live:
-            if total == 0 { return (.empty, "Live — no pods in this namespace.") }
-            if visible == 0 { return (.filteredEmpty, "Live — no matches in \(total) pods. Clear the filter to see them.") }
-            return (.live, "Live — \(visible) of \(total) pods.")
+            if total == 0 { return (.empty, "Live — no \(many) in this namespace.") }
+            if visible == 0 {
+                return (.filteredEmpty, "Live — no matches in \(total) \(counted). Clear the filter to see them.")
+            }
+            return (.live, "Live — \(visible) of \(total) \(counted).")
         }
     }
 }

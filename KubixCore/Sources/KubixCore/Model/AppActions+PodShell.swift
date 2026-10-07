@@ -3,7 +3,7 @@ import Foundation
 public extension AppActions {
     /// Capture the clicked row when its menu opens, not whichever row is selected later.
     func podShellMenuAction(uid: String) -> @MainActor () -> Void {
-        selectPod(uid: uid)
+        selectRow(uid: uid)
         let generation = podSelectionGeneration
         let row = store.rows.first { $0.id == uid }
         return { [weak self] in
@@ -20,17 +20,17 @@ public extension AppActions {
             store.podShellDiagnostic = "Wait for configuration reload before opening a shell."
             return
         }
-        if let uid { selectPod(uid: uid) }
+        if let uid { selectRow(uid: uid) }
         cancelPendingShell()
         guard let details = podDetails, let context = store.selectedContext,
-              let row = store.rows.first(where: { $0.id == store.selectedPodUID }),
-              store.podTable.selectedUID == row.id, let name = row.metadata.name,
+              let row = store.rows.first(where: { $0.id == store.selectedRowUID }),
+              store.listTable.selectedUID == row.id, let name = row.metadata.name,
               row.metadata.namespace == store.selectedNamespace else {
             store.podShellDiagnostic = "Select an available pod row to open a shell."
             return
         }
-        let selection = PodShellSelection(
-            id: UUID(), purpose: .shell, generation: podSelectionGeneration, podGeneration: podGeneration,
+        let selection = RowSelection(
+            id: UUID(), purpose: .shell, generation: podSelectionGeneration, listGeneration: listGeneration,
             configurationRevision: configurationRevision, context: context, namespace: store.selectedNamespace, row: row
         )
         podShellSelection = selection
@@ -70,7 +70,7 @@ public extension AppActions {
 extension AppActions {
     /// A pending request: the scope it was made in, and the generation that says it has not been
     /// superseded by a newer request of its own kind.
-    func isCurrentPodSelection(_ selection: PodShellSelection) -> Bool {
+    func isCurrentPodSelection(_ selection: RowSelection) -> Bool {
         let generation = selection.purpose == .shell ? podSelectionGeneration : podLogSelectionGeneration
         return selection.generation == generation && isCurrentPodScope(selection)
     }
@@ -78,10 +78,10 @@ extension AppActions {
     /// A session that has been created but is still connecting: it depends on the scope it was
     /// validated against, not on whether another session has since been asked for. Opening a second
     /// shell or log tail is not a reason to discard the first.
-    func isCurrentPodScope(_ selection: PodShellSelection) -> Bool {
-        !stopped && !store.isLoadingConfiguration && selection.podGeneration == podGeneration
+    func isCurrentPodScope(_ selection: RowSelection) -> Bool {
+        !stopped && !store.isLoadingConfiguration && selection.listGeneration == listGeneration
             && selection.configurationRevision == configurationRevision && store.selectedContext == selection.context
-            && store.selectedNamespace == selection.namespace && store.podTable.selectedUID == selection.row.id
+            && store.selectedNamespace == selection.namespace && store.listTable.selectedUID == selection.row.id
             && store.rows.first(where: { $0.id == selection.row.id }) == selection.row
     }
 
@@ -120,7 +120,7 @@ extension AppActions {
     }
 
     private func presentContainers(
-        _ choices: ContainerSelection, selection: PodShellSelection, preferred: String? = nil
+        _ choices: ContainerSelection, selection: RowSelection, preferred: String? = nil
     ) {
         store.isLoadingPodDetails = false
         store.pendingContainerPurpose = nil
@@ -139,7 +139,7 @@ extension AppActions {
         }
     }
 
-    private func dispatchPodShell(_ selection: PodShellSelection, container: String) {
+    private func dispatchPodShell(_ selection: RowSelection, container: String) {
         guard isCurrentPodSelection(selection), let name = selection.row.metadata.name else { return }
         do {
             let target = try ExecTarget(context: selection.context, namespace: selection.namespace, pod: name, container: container)

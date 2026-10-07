@@ -22,7 +22,7 @@ import Testing
         )
         try actions.selectNamespace("team")
         let table = try JSONDecoder().decode(KubernetesTable.self, from: podPage())
-        actions.applyPodUpdate(.init(rows: try table.rows.map { try PodRow(row: $0) }, columns: table.columnDefinitions, connection: .live))
+        actions.applyListUpdate(.init(kind: .pods, rows: try table.rows.map { try ResourceRow(row: $0) }, columns: table.columnDefinitions, connection: .live))
         actions.openPodShell(uid: "uid-0")
         try await watchEventually { await credentials.gate.isWaiting }
         #expect(store.execSessions.first?.state == .connecting)
@@ -30,7 +30,7 @@ import Testing
         #expect(await http.requests.first?.value(forHTTPHeaderField: "Accept") == "application/json")
         #expect(await http.socketRequests.isEmpty)
         #expect(await bridges.prepared.isEmpty)
-        actions.selectPod(uid: nil)
+        actions.selectRow(uid: nil)
         await credentials.gate.open()
         await actions.shutdownAndWait()
         #expect(await credentials.calls == 2)
