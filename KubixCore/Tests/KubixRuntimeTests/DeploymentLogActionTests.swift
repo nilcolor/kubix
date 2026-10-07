@@ -25,11 +25,15 @@ actor ScriptedDeployment: DeploymentDetailsProviding {
 actor ScriptedDeploymentPods: DeploymentPodListing {
     private var result: Result<[DeploymentPod], any Error>
     private(set) var selectors: [String] = []
+    private(set) var owners: [String] = []
 
     init(_ result: Result<[DeploymentPod], any Error>) { self.result = result }
 
-    func pods(context: ResolvedContext, namespace: String, selector: LabelSelector) async throws -> [DeploymentPod] {
+    func pods(
+        context: ResolvedContext, namespace: String, owner: String, selector: LabelSelector
+    ) async throws -> [DeploymentPod] {
         selectors.append(selector.query)
+        owners.append(owner)
         return try result.get()
     }
 
@@ -88,6 +92,8 @@ func deploymentDetails(
         #expect(session.sources.map(\.target.pod) == ["gamma", "beta", "alpha"])
         #expect(session.resolved == nil)
         #expect(await pods.selectors == ["app=web"])
+        // Ownership is what identifies them; the selector only narrows the request.
+        #expect(await pods.owners == ["uid-0"])
         #expect(await deployment.requests == ["pod-0"])
         #expect(owner.store.selectedSession == .logs(session.id))
         await owner.actions.shutdownAndWait()

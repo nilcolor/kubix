@@ -22,14 +22,19 @@ extension PodFixtureTransport {
         DeploymentFixtureRow(name: "notifications", ready: "0/1", age: -600, printed: "12d"),
     ]
 
-    /// The pods of every fixture deployment, which the selector's list returns and whose logs
-    /// stream. Three, so an aggregated tab has more than one source to interleave and label.
+    /// The pods the `ledger` deployment owns, and the ones a neighbouring deployment owns while
+    /// carrying the same `app` label — the shape that made a selector-only lookup tail three
+    /// workloads and call it one.
     static let deploymentPodNames = ["ledger-7d9f-a", "ledger-7d9f-b", "ledger-6c2e-c"]
+    static let neighbourPodNames = ["ledger-dj-slow-1a2b-a", "ledger-dj-slow-1a2b-b"]
+    static let ledgerReplicaSet = "rs-ledger-7d9f"
+    static let neighbourReplicaSet = "rs-ledger-dj-slow-1a2b"
 
     func deployments(_ request: APIRequest) throws -> Data {
         if request.path.count == 7, request.accept == "application/json" {
             return try Self.deployment(named: request.path[6], namespace: request.path[4])
         }
+        if request.path.count == 6, request.path[5] == "replicasets" { return Self.replicaSets(namespace: request.path[4]) }
         guard request.path.count == 6, request.path[3] == "namespaces", request.path[5] == "deployments",
               request.accept == APIRequest.tableAccept else { throw APIError.invalidRequest }
         let namespace = request.path[4]
@@ -65,19 +70,55 @@ extension PodFixtureTransport {
         ])
     }
 
-    /// The selector's pods, as a metadata Table. Dated oldest-first on purpose, so the order the tab
-    /// tails in is one it sorted into rather than the one it was handed.
+    /// Two ReplicaSets matching the shared label, owned by two different deployments. Only one is
+    /// the one whose logs were asked for.
+    static func replicaSets(namespace: String) -> Data {
+        let rows = [(ledgerReplicaSet, "deploy-ledger"), (neighbourReplicaSet, "deploy-ledger-dj-slow")]
+            .map { set, owner in
+                let meta = [
+                    #""uid":"\#(set)""#, #""name":"\#(set)""#, #""namespace":"\#(namespace)""#,
+                    owned(by: owner, kind: "Deployment", name: set),
+                ].joined(separator: ",")
+                return #"{"cells":["\#(set)","1","1","1","9d"],"object":{"metadata":{\#(meta)}}}"#
+            }.joined(separator: ",")
+        return Data(#"""
+        {"apiVersion":"meta.k8s.io/v1","kind":"Table","metadata":{"resourceVersion":"rs","continue":""},
+         "columnDefinitions":[{"name":"Name","type":"string"},{"name":"Desired","type":"string"},
+          {"name":"Current","type":"string"},{"name":"Ready","type":"string"},{"name":"Age","type":"string"}],
+         "rows":[\#(rows)]}
+        """#.utf8)
+    }
+
+    /// Everything the shared label selects: the deployment's own pods, a neighbouring deployment's,
+    /// and a bare pod owned by nothing. Dated oldest-first on purpose, so the order the tab tails in
+    /// is one it sorted into rather than the one it was handed.
     static func selectedPods(namespace: String, base: Date) -> Data {
-        let rows = deploymentPodNames.enumerated().map { index, name in
+        let owned = deploymentPodNames.enumerated().map { index, name in
             let created = timestamp(base.addingTimeInterval(-600 + Double(index) * 60))
-            return #"{"cells":["\#(name)","Running","1/1","0","10m"],"object":{"metadata":{"uid":"pod-\#(name)","name":"\#(name)","namespace":"\#(namespace)","creationTimestamp":"\#(created)"}}}"#
-        }.joined(separator: ",")
+            return pod(name, namespace: namespace, created: created, replicaSet: ledgerReplicaSet)
+        }
+        let neighbours = neighbourPodNames.map { name in
+            pod(name, namespace: namespace, created: nil, replicaSet: neighbourReplicaSet)
+        }
+        let bare = [pod("ledger-bare", namespace: namespace, created: nil, replicaSet: nil)]
+        let rows = (owned + neighbours + bare).joined(separator: ",")
         return Data(#"""
         {"apiVersion":"meta.k8s.io/v1","kind":"Table","metadata":{"resourceVersion":"sel","continue":""},
          "columnDefinitions":[{"name":"Name","type":"string"},{"name":"Status","type":"string"},
           {"name":"Ready","type":"string"},{"name":"Restarts","type":"string"},{"name":"Age","type":"string"}],
          "rows":[\#(rows)]}
         """#.utf8)
+    }
+
+    private static func owned(by uid: String, kind: String, name: String) -> String {
+        #""ownerReferences":[{"uid":"\#(uid)","kind":"\#(kind)","name":"\#(name)","controller":true}]"#
+    }
+
+    private static func pod(_ name: String, namespace: String, created: String?, replicaSet: String?) -> String {
+        var meta = [#""uid":"pod-\#(name)""#, #""name":"\#(name)""#, #""namespace":"\#(namespace)""#]
+        if let created { meta.append(#""creationTimestamp":"\#(created)""#) }
+        if let replicaSet { meta.append(owned(by: replicaSet, kind: "ReplicaSet", name: replicaSet)) }
+        return #"{"cells":["\#(name)","Running","1/1","0","10m"],"object":{"metadata":{\#(meta.joined(separator: ","))}}}"#
     }
 
     private static func row(_ row: DeploymentFixtureRow, namespace: String, base: Date) -> String {

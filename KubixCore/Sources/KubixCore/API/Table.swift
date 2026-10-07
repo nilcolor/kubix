@@ -89,13 +89,39 @@ public struct KubernetesTable: Decodable, Equatable, Sendable {
 
 /// Optional identity fields also allow progress-only metadata; ResourceRow validates actual resource identity.
 public struct KubernetesObjectMetadata: Decodable, Equatable, Sendable {
+    /// Who created this object and manages it. Only the controller reference is kept: a label
+    /// selector says what an object *looks* like, and this says what actually owns it.
+    public struct OwnerReference: Decodable, Equatable, Sendable {
+        public let uid: String
+        public let kind: String
+        public let name: String
+        public let controller: Bool
+
+        enum CodingKeys: String, CodingKey { case uid, kind, name, controller }
+
+        public init(from decoder: any Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            uid = try values.decode(String.self, forKey: .uid)
+            kind = try values.decode(String.self, forKey: .kind)
+            name = try values.decode(String.self, forKey: .name)
+            controller = try values.decodeIfPresent(Bool.self, forKey: .controller) ?? false
+        }
+    }
+
     public let uid: String?
     public let name: String?
     public let namespace: String?
     public let resourceVersion: String?
     public let creationTimestamp: Date?
+    public let ownerReferences: [OwnerReference]
 
-    enum CodingKeys: String, CodingKey { case uid, name, namespace, resourceVersion, creationTimestamp }
+    /// The UID of the controller that owns this object, if it has one. An object may carry several
+    /// owner references but at most one controller.
+    public var controller: OwnerReference? { ownerReferences.first { $0.controller } }
+
+    enum CodingKeys: String, CodingKey {
+        case uid, name, namespace, resourceVersion, creationTimestamp, ownerReferences
+    }
 
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -103,6 +129,7 @@ public struct KubernetesObjectMetadata: Decodable, Equatable, Sendable {
         name = try values.decodeIfPresent(String.self, forKey: .name)
         namespace = try values.decodeIfPresent(String.self, forKey: .namespace)
         resourceVersion = try values.decodeIfPresent(String.self, forKey: .resourceVersion)
+        ownerReferences = try values.decodeIfPresent([OwnerReference].self, forKey: .ownerReferences) ?? []
         if let timestamp = try values.decodeIfPresent(String.self, forKey: .creationTimestamp) {
             guard let date = RFC3339.date(from: timestamp) else {
                 throw DecodingError.dataCorruptedError(forKey: .creationTimestamp, in: values, debugDescription: "Expected an RFC3339 timestamp.")

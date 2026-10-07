@@ -85,6 +85,8 @@ import KubixCore
               picker.items.allSatisfy({ $0.state == nil }) else { throw Failure.assertion }
         fixture.actions.confirmDeploymentLogs(selectionID: picker.id, container: "server")
 
+        // The fixture's namespace also holds a neighbouring deployment's pods and a bare pod, all
+        // carrying the same label. Only the ones this deployment owns may be tailed.
         let expected = PodFixtureTransport.deploymentPodNames.count
         try await PodBrowsingValidation.until { store.logSessions.last?.followingCount == expected }
         guard let session = store.logSessions.last else { throw Failure.assertion }
@@ -117,7 +119,9 @@ import KubixCore
         fixture.actions.closeLog(session.id)
         try await PodBrowsingValidation.until { store.logSessions.allSatisfy { $0.id != session.id } }
         return "aggregated deployment logs: one tab over \(expected) real pod streams found through the "
-            + "deployment's own selector, newest pod first, " + evidence + ", tab titled deploy/ledger "
+            + "deployment's own ReplicaSets, leaving out \(PodFixtureTransport.neighbourPodNames.count) pods of a "
+            + "neighbouring deployment and one bare pod that the shared label also selected, newest pod "
+            + "first, " + evidence + ", tab titled deploy/ledger "
             + "with the deck reading \(summary); template containers offered with no state claimed"
     }
 

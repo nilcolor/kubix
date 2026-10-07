@@ -550,11 +550,22 @@ lifecycle, one deck tab and one close path rather than two of each.
   that is not ready yet, which answers 400; a tab that failed whenever any of
   its pods did would be unusable on exactly the workloads it is for. The tab
   reports a failure only when no stream ever opened.
-- **The pod set is resolved once, at open.** `spec.selector.matchLabels` scopes
-  one metadata-Table list of pods; names, UIDs and creation times are all a
-  stream needs, and the container name comes from the template. Nothing reads a
-  printed cell — the pods Table prints STATUS, but that is display text, not a
-  container's state. New pods from a rollout are **not** adopted live; that
+- **The pods are found by ownership, not by the selector.** A Deployment's
+  `spec.selector` is not required to be unique, and charts routinely give
+  `synthetic-container` and `web-dj-slow` the same `app` label — so the
+  first one's selector matches the second one's pods, and a label-based lookup
+  tails three workloads while calling it one. Kubernetes answers this with
+  `ownerReferences`: pods are owned by a ReplicaSet, which is owned by the
+  Deployment. Two selector-scoped metadata Tables, therefore — the deployment's
+  ReplicaSets, then the pods those own — and only the **controller** reference
+  counts, so a pod adopted by nothing is nobody's to tail. The selector is still
+  sent because it keeps both lists cheap on a large namespace; it is a filter
+  for the server, not the answer. This needs `list replicasets` as well as
+  `list pods`.
+- **The pod set is resolved once, at open.** Names, UIDs and creation times are
+  all a stream needs, and the container name comes from the template. Nothing
+  reads a printed cell — the pods Table prints STATUS, but that is display text,
+  not a container's state. New pods from a rollout are **not** adopted live; that
   needs a second, label-scoped pod watch. Resume re-reads the deployment,
   refuses one recreated under the same name, and re-resolves. The status line
   says the set is fixed, so a quiet tab during a rollout is explained.

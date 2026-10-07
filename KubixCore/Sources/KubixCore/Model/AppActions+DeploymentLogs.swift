@@ -45,7 +45,7 @@ extension AppActions {
                     throw DeploymentDetailsError.identityMismatch
                 }
                 let found = try await pods.pods(
-                    context: scope.context, namespace: scope.namespace,
+                    context: scope.context, namespace: scope.namespace, owner: deployment.uid,
                     selector: try LabelSelector(deployment.selector)
                 )
                 try Task.checkCancellation()

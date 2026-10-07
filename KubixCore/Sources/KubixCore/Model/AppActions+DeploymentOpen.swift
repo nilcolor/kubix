@@ -119,7 +119,8 @@ extension AppActions {
             do {
                 let selector = try LabelSelector(deployment.selector)
                 let pods = try await listing.pods(
-                    context: scope.context, namespace: scope.namespace, selector: selector
+                    context: scope.context, namespace: scope.namespace,
+                    owner: deployment.uid, selector: selector
                 )
                 try Task.checkCancellation()
                 guard let self, self.deploymentLogAttempts[session.id] == attempt, !session.isClosed,

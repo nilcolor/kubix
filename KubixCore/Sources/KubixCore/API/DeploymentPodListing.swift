@@ -33,9 +33,16 @@ public extension DeploymentPod {
     }
 }
 
-/// The pods matching a deployment's selector, newest first.
+/// The pods a deployment actually owns, newest first.
+///
+/// `owner` is the Deployment's UID, and it is the answer rather than the selector: a Deployment's
+/// `spec.selector` is not required to be unique, so one chart's `synthetic-container` selector can match
+/// `web-dj-slow`'s pods as well. Ownership runs pods → ReplicaSet → Deployment and is
+/// exact; the selector only narrows what has to be fetched.
 public protocol DeploymentPodListing: Sendable {
-    func pods(context: ResolvedContext, namespace: String, selector: LabelSelector) async throws -> [DeploymentPod]
+    func pods(
+        context: ResolvedContext, namespace: String, owner: String, selector: LabelSelector
+    ) async throws -> [DeploymentPod]
 }
 
 public enum DeploymentPodFailure: String, Error, Equatable, Sendable {

@@ -238,7 +238,7 @@ Grant only the permissions appropriate to the intended namespace and actions:
 | Deployment table and live updates | `deployments` (`apps/v1`) | `list`, `watch` |
 | Fresh identity/container validation | `pods` | `get` |
 | Deployment selector and template containers | `deployments` (`apps/v1`) | `get` |
-| Finding a deployment's pods | `pods` | `list` (label-selector scoped) |
+| Finding a deployment's pods | `replicasets` (`apps/v1`), `pods` | `list` (label-selector scoped) |
 | Interactive shell | `pods/exec` | `get` (GET WebSocket upgrade) |
 | Container logs | `pods/log` | `get` |
 
@@ -247,10 +247,13 @@ back to typed entry and local history. Shell access is powerful even though
 the HTTP upgrade uses GET. A 403 is a permissions failure, not a reason to
 repeat browser login.
 
-A deployment's logs need the pods permissions too, not just `deployments`: they
-are one `pods/log` stream per pod of the deployment's selector, because
-Kubernetes has no aggregated log endpoint. Kubix tails the whole set up to fifty
-pods and says so when a deployment has more.
+A deployment's logs need more than `deployments`: they are one `pods/log` stream
+per pod, because Kubernetes has no aggregated log endpoint. The pods are found
+through the deployment's ReplicaSets rather than by its labels — a Deployment's
+selector is not required to be unique, so matching on labels alone can tail a
+neighbouring deployment's pods as well — which is why `list replicasets` is
+needed too. Kubix tails the whole set up to fifty pods and says so when a
+deployment has more.
 
 **Connected is not authorized.** The Connect probe proves only that credentials
 were accepted and the apiserver answered. Access is per namespace and per
