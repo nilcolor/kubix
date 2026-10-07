@@ -323,7 +323,8 @@ forced RBAC/expiry/transport faults, and actual quiet following longer than
 60 seconds were controlled checks, not claims about a live cluster. No live
 resource mutations were used to manufacture events. Certificate auth is excluded.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for ownership and lifecycle contracts,
+See [CHANGELOG.md](CHANGELOG.md) for what each version added,
+[ARCHITECTURE.md](ARCHITECTURE.md) for ownership and lifecycle contracts,
 [CLAUDE.md](CLAUDE.md) for durable contributor conventions, and
 [the acceptance notes](docs/terminal-integration.md#read-only-v01-acceptance-task20)
 for detailed evidence boundaries.

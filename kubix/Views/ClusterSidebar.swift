@@ -138,13 +138,17 @@ private struct SidebarFooter: View {
     let store: AppStore
     let actions: AppActions
 
+    /// From the bundle, so `project.yml` is the only place a version is written down. The previous
+    /// hardcoded string outlived two releases of the thing it named.
+    static let version = "Kubix " + (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(Array(store.configurationDiagnostics.enumerated()), id: \.offset) { _, diagnostic in
                 Text(diagnostic).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
             }
             HStack {
-                Text("Kubix 0.1").font(.caption).foregroundStyle(.secondary)
+                Text(Self.version).font(.caption).foregroundStyle(.secondary)
                 Spacer(minLength: 8)
                 Button { Task { await actions.loadConfiguration() } } label: {
                     Image(systemName: "arrow.triangle.2.circlepath")
