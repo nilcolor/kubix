@@ -100,6 +100,23 @@ import Testing
         await actions.shutdownAndWait()
     }
 
+    /// Connect proves credentials were accepted, not that any resource is authorized, so a
+    /// deployments 403 belongs in the pane and must leave the cluster where it was.
+    @Test func aDeploymentsForbiddenLeavesTheClusterConnected() async throws {
+        let lists = PodActionProbe()
+        let (store, actions) = try await connected(lists)
+        defer { actions.shutdown() }
+        actions.selectSidebar(.list("first", .deployments))
+        try await appEventually { await lists.callbacks.count == 1 }
+        let forbidden = APIError.http(code: 403, resource: "deployments")
+        await lists.emit(.init(kind: .deployments, rows: [], columns: nil, connection: .failed(forbidden)))
+        #expect(store.clusters[0].state == .connected)
+        #expect(store.sidebarSelection == .list("first", .deployments))
+        #expect(store.listTable.state == .failed)
+        #expect(store.listTable.message.hasPrefix("Forbidden: deployments."))
+        await actions.shutdownAndWait()
+    }
+
     /// A namespace commit lists whichever kind is selected, not pods.
     @Test func committingANamespaceRelistsTheSelectedKind() async throws {
         let lists = PodActionProbe()
