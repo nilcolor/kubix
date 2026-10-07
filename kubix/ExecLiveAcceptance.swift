@@ -10,7 +10,7 @@ import KubixCore
         var child: pid_t?
         var socket: String?
         ExecLiveValidation.record("appPID", String(ProcessInfo.processInfo.processIdentifier))
-        ExecLiveValidation.record("scope", "LIVE readonly approved context/namespace/prefix; full production Table/watch; regular synthetic-container only")
+        ExecLiveValidation.record("scope", "LIVE readonly approved context/namespace/prefix; full production Table/watch; the configured regular container only")
         do {
             var settings = original
             settings.searchDirectories = [root.appendingPathComponent(".build/v-tools").path]

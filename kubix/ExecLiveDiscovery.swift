@@ -2,11 +2,51 @@
 import Foundation
 import KubixCore
 
+/// Which live pod the exec driver is allowed to touch, read from the environment rather than
+/// written down here. A driver that names somebody's cluster in its source is useless to everyone
+/// else and publishes their infrastructure to anyone who reads the repository; the root path beside
+/// these has always come from the environment, and so should the target.
+///
+/// All four are required. The driver refuses to run when any is missing, which is the same way
+/// `KUBIX_EXEC_VALIDATION_CONFIRM` already gates it — there is no default, because a default would
+/// be a guess at somebody's cluster.
 enum ExecLiveDiscovery {
-    static let context = "synthetic-context"
-    static let namespace = "synthetic-namespace"
-    static let prefix = "synthetic-pod-"
-    static let container = "synthetic-container"
+    static let context = value(Variable.context)
+    static let namespace = value(Variable.namespace)
+    static let prefix = value(Variable.prefix)
+    static let container = value(Variable.container)
+
+    private enum Variable {
+        static let context = "KUBIX_EXEC_VALIDATION_CONTEXT"
+        static let namespace = "KUBIX_EXEC_VALIDATION_NAMESPACE"
+        static let prefix = "KUBIX_EXEC_VALIDATION_POD_PREFIX"
+        static let container = "KUBIX_EXEC_VALIDATION_CONTAINER"
+        static let all = [context, namespace, prefix, container]
+    }
+
+    /// Whether a real target was supplied. Asked of the environment rather than of the values above,
+    /// because those fall back to synthetic names — so a missing variable would otherwise look like
+    /// a configured one. Every variable must be set, or none counts: a half-configured driver would
+    /// filter on a partly-synthetic target, which matches nothing it was pointed at.
+    static var isConfigured: Bool {
+        let environment = ProcessInfo.processInfo.environment
+        return Variable.all.allSatisfy { (environment[$0] ?? "").isEmpty == false }
+    }
+
+    /// Synthetic unless the environment names a real target. `ExecLiveScopedTransport` enforces this
+    /// triple on every request and is itself exercised by the synthetic native check, which needs a
+    /// coherent target to exercise it with; the live driver is gated on `isConfigured` instead, so a
+    /// fallback can never become something this actually talks to.
+    private static func value(_ name: String) -> String {
+        let configured = ProcessInfo.processInfo.environment[name] ?? ""
+        guard configured.isEmpty else { return configured }
+        switch name {
+        case Variable.context: return "synthetic-context"
+        case Variable.namespace: return "synthetic-namespace"
+        case Variable.prefix: return "synthetic-pod-"
+        default: return "synthetic-container"
+        }
+    }
 
     struct Metadata: Decodable {
         let name: String

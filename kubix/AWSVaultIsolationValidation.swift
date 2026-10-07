@@ -12,9 +12,16 @@ enum AWSVaultIsolationValidation {
     static var root: URL? {
         let environment = ProcessInfo.processInfo.environment
         guard environment["KUBIX_AWS_VAULT_ISOLATION_CONFIRM"] == "isolated-device-auth-only",
+              !context.isEmpty, !profile.isEmpty,
               let path = environment["KUBIX_AWS_VAULT_ISOLATION_ROOT"], path.hasPrefix("/") else { return nil }
         return URL(fileURLWithPath: path)
     }
+
+    /// The context to sign into and the `aws-vault` profile to isolate, from the environment rather
+    /// than written down here: naming somebody's cluster in source makes the driver theirs alone and
+    /// publishes their infrastructure to anyone who reads the repository.
+    static var context: String { ProcessInfo.processInfo.environment["KUBIX_AWS_VAULT_ISOLATION_CONTEXT"] ?? "" }
+    static var profile: String { ProcessInfo.processInfo.environment["KUBIX_AWS_VAULT_ISOLATION_PROFILE"] ?? "" }
 
     static func run(composition: AppComposition) async {
         guard root != nil, let vault = composition.isolatedVault, !didRun else { return }
@@ -24,8 +31,8 @@ enum AWSVaultIsolationValidation {
         let originalMetadata = originalCacheMetadata()
         do {
             guard composition.store.execSessions.isEmpty,
-                  composition.store.contexts.filter({ $0.name == "synthetic-context" }).count == 1 else { throw Failure.configuration }
-            try composition.actions.selectContext(named: "synthetic-context")
+                  composition.store.contexts.filter({ $0.name == Self.context }).count == 1 else { throw Failure.configuration }
+            try composition.actions.selectContext(named: Self.context)
             let initial = try await vault.prepare()
             guard initial.entries == 0, initial.securePermissions else { throw Failure.storage }
             record("initialSession", "missing: newly created empty isolated encrypted backend")
@@ -68,7 +75,7 @@ enum AWSVaultIsolationValidation {
         defer { work.cancel() }
         do {
             let session = try await waitForPrompt(composition.store, isComplete: { complete })
-            record("invocation", "one original configured aws-vault exec command; same synthetic-profile to exp chain")
+            record("invocation", "one original configured aws-vault exec command; same configured profile chain")
             record("deviceMode", "native StartDeviceAuthorization / device_code grant, not direct-AWS --use-device-code")
             record("stage", "opening actual HTTPS fallback; waiting for human browser approval")
             record("operationID", session.id.uuidString)

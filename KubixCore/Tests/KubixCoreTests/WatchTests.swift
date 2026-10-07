@@ -5,7 +5,7 @@ import Testing
 // One live metadata-only GET/watch, 2026-09-10, EKS v1.35.6-eks-bca9cf6 (Task12 server version).
 // Exact approved pod selector, Table Accept, includeObject=Metadata, sendInitialEvents=true,
 // resourceVersionMatch=NotOlderThan, resourceVersion="", allowWatchBookmarks=true, 300s lease.
-// Production URLSessionTransport + original cached aws-vault synthetic-profile -> exp chain; no browser.
+// Production URLSessionTransport + the original cached aws-vault profile chain; no browser.
 // ADDED then BOOKMARK arrived within a 45s bound. Only allowlisted/sanitized fields persisted:
 // names/UIDs/RVs/time/column names/types/cells replaced, descriptions/format/other metadata removed.
 // Bookmark's actual Table envelope, null columns, printed cells and sparse metadata retained.

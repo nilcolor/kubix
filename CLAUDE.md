@@ -1,8 +1,7 @@
 # Kubix contributor conventions
 
 Read [README.md](README.md) for setup/scope and [ARCHITECTURE.md](ARCHITECTURE.md)
-for ownership, authentication, and streaming contracts. Native validation and
-evidence boundaries are in [docs/terminal-integration.md](docs/terminal-integration.md).
+for ownership, authentication, and streaming contracts.
 
 ## Structure and tools
 

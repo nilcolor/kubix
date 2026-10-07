@@ -16,7 +16,9 @@ enum ExecLiveValidation {
         ProcessInfo.processInfo.environment["KUBIX_EXEC_VALIDATION_CONFIRM"] == "authorized-readonly-task20" && root != nil
     }
     static var isEnabled: Bool {
-        (ProcessInfo.processInfo.environment["KUBIX_EXEC_VALIDATION_CONFIRM"] == "authorized-readonly-task12" && root != nil) || isAcceptance
+        guard ExecLiveDiscovery.isConfigured else { return false }
+        return (ProcessInfo.processInfo.environment["KUBIX_EXEC_VALIDATION_CONFIRM"] == "authorized-readonly-task12" && root != nil)
+            || isAcceptance
     }
     private static var root: URL? {
         guard let path = ProcessInfo.processInfo.environment["KUBIX_EXEC_VALIDATION_ROOT"], path.hasPrefix("/") else { return nil }
@@ -40,7 +42,7 @@ enum ExecLiveValidation {
             return
         }
         record("appPID", String(ProcessInfo.processInfo.processIdentifier))
-        record("scope", "read-only synthetic-namespace / authorized dj-slow prefix / regular synthetic-container")
+        record("scope", "read-only: the configured namespace, authorized pod prefix and regular container")
         record("initialSSOState", "unknown; shared caches untouched; prior browser success user-confirmed")
         let original = composition.store.authSettings
         var terminal: ExecLiveTerminalChecks?

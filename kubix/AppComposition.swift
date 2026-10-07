@@ -39,7 +39,7 @@ final class AppComposition {
         let resolver = PluginResolver(environment: environment, store: settings)
         #if DEBUG
         isolatedVault = AWSVaultIsolationValidation.root.map {
-            IsolatedAWSVaultRunner(parent: $0.appendingPathComponent(".build"), profile: "synthetic-profile")
+            IsolatedAWSVaultRunner(parent: $0.appendingPathComponent(".build"), profile: AWSVaultIsolationValidation.profile)
         }
         let fallback: any ProcessRunning = ExecLiveValidation.isEnabled ? validationProcess : ProcessRunner()
         let process: any ProcessRunning = isolatedVault ?? fallback

@@ -125,7 +125,7 @@ logs. Pause retains the bounded buffer. **Resume** rechecks the original Pod UID
 and starts a visibly marked new tail segment: lines can be missing or duplicated.
 A replacement Pod is not adopted. Context/namespace changes or kubeconfig reload
 pause logs; return to their original scope to Resume. Closing a log tab releases
-its retained text. See [terminal integration](docs/terminal-integration.md#pod-logs)
+its retained text.
 for limits and viewport behavior.
 
 ## Authentication and executable discovery
@@ -325,6 +325,4 @@ resource mutations were used to manufacture events. Certificate auth is excluded
 
 See [CHANGELOG.md](CHANGELOG.md) for what each version added,
 [ARCHITECTURE.md](ARCHITECTURE.md) for ownership and lifecycle contracts,
-[CLAUDE.md](CLAUDE.md) for durable contributor conventions, and
-[the acceptance notes](docs/terminal-integration.md#read-only-v01-acceptance-task20)
-for detailed evidence boundaries.
+and [CLAUDE.md](CLAUDE.md) for durable contributor conventions.

@@ -4,9 +4,8 @@ import KubixCore
 /// A deployment's pods, found by **ownership** rather than by its selector alone.
 ///
 /// A Deployment's `spec.selector` is not required to be unique, and in practice often is not: a
-/// chart that gives `synthetic-container` and `web-dj-slow` the same `app` label leaves the first
-/// one's selector matching the second one's pods. Selecting by labels then tails three workloads and
-/// calls it one. Kubernetes answers this with `ownerReferences`: pods are owned by a ReplicaSet, and
+/// chart that gives `web` and `web-dj-slow` the same `app` label leaves the first one's selector
+/// matching the second one's pods. Selecting by labels then tails both workloads and calls it one. Kubernetes answers this with `ownerReferences`: pods are owned by a ReplicaSet, and
 /// that ReplicaSet is owned by the Deployment, so ownership is exact where labels are a guess.
 ///
 /// The selector is still sent, because it narrows the request to roughly the right pods and keeps

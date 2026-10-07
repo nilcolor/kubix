@@ -1,10 +1,9 @@
 # Architecture
 
-Kubix v0.1 composes a native pod browser, remote shell sessions, and bounded log
-viewers. It is bearer-authenticated and pod-focused. The
-[README](README.md) describes setup and supported/excluded features;
-[terminal integration](docs/terminal-integration.md) contains native integration
-and acceptance details.
+Kubix composes native pod and deployment browsers, remote shell sessions, and
+bounded log viewers. It is bearer-authenticated and read-only: nothing in it
+writes to a cluster. [README.md](README.md) describes setup and supported
+features, and [CHANGELOG.md](CHANGELOG.md) what each version added.
 
 ## Modules and mutation ownership
 
@@ -552,9 +551,9 @@ lifecycle, one deck tab and one close path rather than two of each.
   reports a failure only when no stream ever opened.
 - **The pods are found by ownership, not by the selector.** A Deployment's
   `spec.selector` is not required to be unique, and charts routinely give
-  `synthetic-container` and `web-dj-slow` the same `app` label — so the
-  first one's selector matches the second one's pods, and a label-based lookup
-  tails three workloads while calling it one. Kubernetes answers this with
+  `web` and `web-dj-slow` the same `app` label — so the first one's selector
+  matches the second one's pods, and a label-based lookup tails both workloads
+  while calling it one. Kubernetes answers this with
   `ownerReferences`: pods are owned by a ReplicaSet, which is owned by the
   Deployment. Two selector-scoped metadata Tables, therefore — the deployment's
   ReplicaSets, then the pods those own — and only the **controller** reference
@@ -717,4 +716,4 @@ It does not claim live 1,000+ pods, forced add/delete/RBAC/expiry/fault scenario
 or a live quiet-minute run. Client certificates remain unimplemented/unvalidated.
 Live work requires explicit authorized scope and harmless commands; never
 manufacture live events, expiry, or credential-store changes merely to test.
-See [acceptance details](docs/terminal-integration.md#read-only-v01-acceptance-task20).
+Live acceptance evidence is kept outside the repository.

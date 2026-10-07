@@ -90,7 +90,7 @@ private func replicaSetPage(
         let service = DeploymentPodService { _ in transport }
         let pods = try await service.pods(
             context: try runtimeContext(), namespace: "team", owner: "deploy-core",
-            selector: try LabelSelector(["app": "synthetic-container"])
+            selector: try LabelSelector(["app": "core"])
         )
         #expect(pods.map(\.name) == ["core-a", "core-b"])
 
@@ -115,7 +115,7 @@ private func replicaSetPage(
         })
         let narrowed = try await DeploymentPodService { _ in mixed }.pods(
             context: try runtimeContext(), namespace: "team", owner: "deploy-core",
-            selector: try LabelSelector(["app": "synthetic-container"])
+            selector: try LabelSelector(["app": "core"])
         )
         // The other deployment's pod and the bare pod both match the labels and neither is ours.
         #expect(narrowed.map(\.name) == ["core-a"])
