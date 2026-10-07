@@ -33,18 +33,16 @@ final class AppComposition {
         podValidation = nil
         #endif
         let home = FileManager.default.homeDirectoryForCurrentUser
-        let directory = home.appendingPathComponent("Library/Application Support/Kubix", isDirectory: true)
-        let settings = AppAuthSettingsStore(directory: directory)
+        let support = home.appendingPathComponent("Library/Application Support/Kubix", isDirectory: true)
+        let settings = AppAuthSettingsStore(directory: support)
         let environment = ProcessInfo.processInfo.environment
         let resolver = PluginResolver(environment: environment, store: settings)
         #if DEBUG
         isolatedVault = AWSVaultIsolationValidation.root.map {
             IsolatedAWSVaultRunner(parent: $0.appendingPathComponent(".build"), profile: "synthetic-profile")
         }
-        let process: any ProcessRunning
-        if let isolatedVault { process = isolatedVault } else {
-            process = ExecLiveValidation.isEnabled ? validationProcess : ProcessRunner()
-        }
+        let fallback: any ProcessRunning = ExecLiveValidation.isEnabled ? validationProcess : ProcessRunner()
+        let process: any ProcessRunning = isolatedVault ?? fallback
         let provider = CredentialProvider(resolver: resolver, runner: CredentialRunner(process: process))
         #else
         let provider = CredentialProvider(resolver: resolver)
@@ -52,8 +50,7 @@ final class AppComposition {
         // The interactive login shell can take seconds to load version managers; start reading PATH
         // now so that cost is spent while the window draws, not inside the user's first Connect.
         Task { await resolver.warmBaseline() }
-        let login = AWSLoginService()
-        let authentication = AuthenticationService(provider: provider, login: login)
+        let authentication = AuthenticationService(provider: provider, login: AWSLoginService())
         // The immutable context warning is also rendered beside every session and the context picker.
         #if DEBUG
         registry = Self.transportRegistry(authentication: authentication, factory: validationTransportFactory)
@@ -61,7 +58,6 @@ final class AppComposition {
         registry = ContextTransportRegistry(credentials: authentication, warning: { _ in })
         #endif
         let transports = Self.transports(registry)
-        let exec = Self.execService(transports: transports)
         let lists: (any ResourceWatching)?
         #if DEBUG
         validationPods = ExecLiveValidation.isEnabled ? ExecLivePodWatcher(transports: transports, integrated: ExecLiveValidation.isAcceptance) : nil
@@ -72,10 +68,14 @@ final class AppComposition {
         let factory = ExecSurfaceFactory()
         store = AppStore()
         actions = AppActions(
-            store: store, exec: exec, authentication: authentication, surfaces: factory, browser: BrowserLauncher(),
+            store: store, exec: Self.execService(transports: transports), authentication: authentication,
+            surfaces: factory, browser: BrowserLauncher(),
             configurations: AppConfigurationLoader(
                 loader: KubeconfigLoader(environment: environment, homeDirectory: home), settings: settings
-            ), lists: lists, podDetails: PodDetailsService(transports: transports), logs: LogService(transports: transports),
+            ), lists: lists, podDetails: PodDetailsService(transports: transports),
+            deploymentDetails: DeploymentDetailsService(transports: transports),
+            deploymentPods: DeploymentPodService(transports: transports),
+            logs: LogService(transports: transports),
             probe: Self.clusterProbe(transports: transports),
             namespaces: Self.namespaceListing(transports: transports),
             metrics: Self.metricsListing(transports: transports)

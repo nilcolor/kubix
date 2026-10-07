@@ -104,7 +104,12 @@ private struct ListActions: View {
                     symbol: "doc.text", help: logsHelp,
                     disabled: store.listTable.selectedUID == nil, busy: isChoosing(.logs)
                 ) {
-                    if let uid = store.listTable.selectedUID { actions.openPodLogs(uid: uid) }
+                    guard let uid = store.listTable.selectedUID else { return }
+                    if kind == .deployments {
+                        actions.openDeploymentLogs(uid: uid)
+                    } else {
+                        actions.openPodLogs(uid: uid)
+                    }
                 }
                 .popover(isPresented: menu(for: .logs), arrowEdge: .bottom) {
                     ContainerMenu(store: store, actions: actions)

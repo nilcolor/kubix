@@ -64,6 +64,25 @@ import Testing
         #expect(LogLineDecoder(maximumBytes: .max).maximumBytes == 16_384)
     }
 
+    /// A tab is created before its pods are known, so the ring is widened when they arrive. The log
+    /// viewport anchors on a retained line's id, so a rebuild that renumbered them would scroll the
+    /// user somewhere else.
+    @Test func growingTheRingKeepsEveryRetainedLineAndItsID() {
+        var buffer = LogBuffer(sources: 1)
+        for index in 0..<5 { buffer.append(DecodedLogLine(text: "line \(index)")) }
+        let before = buffer.lines
+        buffer.grow(for: 4)
+        #expect(buffer.maximumLines == 3_500 && buffer.maximumBytes == LogBuffer.maximumAggregateBytes)
+        #expect(buffer.lines == before)
+        // Appending still works against the widened ring, continuing the same id sequence.
+        buffer.append(DecodedLogLine(text: "line 5"))
+        #expect(buffer.lines.last?.id == (before.last?.id ?? 0) + 1)
+        #expect(buffer.count == 6)
+        // Grow-only: a narrower request cannot evict lines that are on screen.
+        buffer.grow(for: 1)
+        #expect(buffer.maximumLines == 3_500 && buffer.count == 6)
+    }
+
     /// A tab shares one ring across every stream it holds, so the bounds scale with the fan-out — a
     /// 2,000-line ring split between forty pods is fifty lines each, which is not a tail. One pod
     /// keeps exactly the bounds it always had.

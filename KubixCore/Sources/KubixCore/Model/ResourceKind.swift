@@ -50,8 +50,7 @@ public enum ResourceKind: String, Hashable, Sendable, CaseIterable {
     /// means walking pods → ReplicaSets → Deployment ownerReferences, which this does not do.
     public var supportsUsageColumns: Bool { self == .pods }
 
-    /// Whether a row of this kind can open logs. A deployment's logs are every one of its pods' at
-    /// once, which is a different request from a pod's own; until that exists, offering the action
-    /// would promise something no code path can serve.
-    public var supportsLogs: Bool { self == .pods }
+    /// Both kinds can open logs, by different routes: a pod's own stream, or one per pod of a
+    /// deployment interleaved into a single tab.
+    public var supportsLogs: Bool { true }
 }

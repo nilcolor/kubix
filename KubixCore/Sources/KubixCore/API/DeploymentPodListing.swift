@@ -16,6 +16,23 @@ public struct DeploymentPod: Identifiable, Equatable, Sendable {
     }
 }
 
+public extension DeploymentPod {
+    /// Newest first, because during a rollout the new replicas are the ones worth reading, and that
+    /// is also the order a capped set keeps. Pods the server dated identically, or not at all, fall
+    /// back to their names so the order is stable between calls.
+    ///
+    /// Applied both by the listing and again where the ceiling is applied: keeping the newest must
+    /// not depend on what order a provider happened to return.
+    static func newestFirst(_ pods: [DeploymentPod]) -> [DeploymentPod] {
+        pods.sorted { lhs, rhs in
+            let left = lhs.created?.timeIntervalSince1970 ?? -.greatestFiniteMagnitude
+            let right = rhs.created?.timeIntervalSince1970 ?? -.greatestFiniteMagnitude
+            if left != right { return left > right }
+            return lhs.name < rhs.name
+        }
+    }
+}
+
 /// The pods matching a deployment's selector, newest first.
 public protocol DeploymentPodListing: Sendable {
     func pods(context: ResolvedContext, namespace: String, selector: LabelSelector) async throws -> [DeploymentPod]

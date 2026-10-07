@@ -34,10 +34,17 @@ struct ContainerMenu: View {
         }
     }
 
+    /// Logs reach two different confirmations: a pod's own stream, or every pod of a deployment.
+    /// The list slot says which, because it is what the selected row came from.
     private func choose(_ picker: ContainerPickerPresentation, container: String) {
         switch picker.purpose {
         case .shell: actions.confirmPodShell(selectionID: picker.id, container: container)
-        case .logs: actions.confirmPodLogs(selectionID: picker.id, container: container)
+        case .logs:
+            if store.listKind == .deployments {
+                actions.confirmDeploymentLogs(selectionID: picker.id, container: container)
+            } else {
+                actions.confirmPodLogs(selectionID: picker.id, container: container)
+            }
         }
     }
 }
@@ -61,9 +68,12 @@ private struct Choice: View {
                     Text(item.role).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 8)
-                Text(item.state)
-                    .font(.caption)
-                    .foregroundStyle(item.state == "Running" ? Color.green : .secondary)
+                // A pod template's containers have no state to report, so nothing is drawn for them.
+                if let state = item.state {
+                    Text(state)
+                        .font(.caption)
+                        .foregroundStyle(state == "Running" ? Color.green : .secondary)
+                }
             }
             .padding(.horizontal, 12).padding(.vertical, 6)
             .contentShape(Rectangle())

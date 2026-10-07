@@ -58,8 +58,8 @@ public struct LogLine: Identifiable, Equatable, Sendable {
 
 /// Fixed-slot ring; both line count and UTF-8 bytes are capped. No array prefix retains old storage.
 public struct LogBuffer: Sendable {
-    public let maximumLines: Int
-    public let maximumBytes: Int
+    public private(set) var maximumLines: Int
+    public private(set) var maximumBytes: Int
     private var slots: [LogLine?]
     private var head = 0
     public private(set) var count = 0
@@ -109,6 +109,21 @@ public struct LogBuffer: Sendable {
         nextID &+= 1
         count += 1
         byteCount += bytes
+    }
+
+    /// Raises the bounds for a tab that has gained streams, keeping every retained line and its id
+    /// — the log viewport anchors on a retained id, so a rebuild that renumbered them would scroll
+    /// the user somewhere else. Grow-only: shrinking would have to evict lines that are on screen.
+    public mutating func grow(for sources: Int) {
+        let wider = LogBuffer(sources: sources)
+        guard wider.maximumLines > maximumLines || wider.maximumBytes > maximumBytes else { return }
+        let retained = lines
+        maximumLines = max(maximumLines, wider.maximumLines)
+        maximumBytes = max(maximumBytes, wider.maximumBytes)
+        slots = Array(repeating: nil, count: maximumLines)
+        head = 0
+        count = retained.count
+        for (index, line) in retained.enumerated() { slots[index] = line }
     }
 
     private mutating func removeFirst() {

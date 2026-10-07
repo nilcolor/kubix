@@ -69,6 +69,8 @@ public final class AppActions {
     /// is the tab's rather than any one source's.
     var deploymentLogAttempts: [UUID: UUID] = [:]
     var podLogGuards: [UUID: RowSelection] = [:]
+    /// The validated deployment behind an open logs menu, so confirming one needs no second request.
+    var deploymentChoices: [UUID: DeploymentDetails] = [:]
     /// The validated details behind an open logs menu, so confirming one needs no second request.
     var logChoices: [UUID: PodDetails] = [:]
     var shellChoices: [UUID: [PodDetails.Container]] = [:]

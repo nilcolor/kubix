@@ -204,7 +204,10 @@ struct NativeResourceTable: NSViewRepresentable {
         func logsAction(row: Int) -> (@MainActor () -> Void)? {
             guard actions.store.listKind.supportsLogs, let presentation,
                   presentation.rows.indices.contains(row) else { return nil }
-            return actions.podLogsMenuAction(uid: presentation.rows[row].id)
+            let uid = presentation.rows[row].id
+            return actions.store.listKind == .deployments
+                ? actions.deploymentLogsMenuAction(uid: uid)
+                : actions.podLogsMenuAction(uid: uid)
         }
 
         func update(_ table: NSTableView, presentation next: ResourceTablePresentation, now: Date) {

@@ -17,7 +17,7 @@ public extension AppActions {
         guard !stopped else { return }
         // A deployment's logs are every one of its pods', which is a different request; this one
         // would address the pods endpoint with a deployment's name.
-        guard store.listKind.supportsLogs else { return }
+        guard store.listKind == .pods else { return }
         if let uid { selectRow(uid: uid) }
         cancelPendingLogs()
         guard !store.isLoadingConfiguration, logs != nil, let details = podDetails,
@@ -103,6 +103,7 @@ extension AppActions {
         if let pending = podLogSelection { podDetailTasks.removeValue(forKey: pending.id)?.cancel() }
         podLogSelection = nil
         logChoices = [:]
+        deploymentChoices = [:]
         if store.containerPicker?.purpose == .logs { store.containerPicker = nil }
         if store.pendingContainerPurpose == .logs {
             store.isLoadingPodDetails = false

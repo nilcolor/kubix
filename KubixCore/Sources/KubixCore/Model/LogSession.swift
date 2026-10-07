@@ -65,6 +65,14 @@ public final class LogSession: Identifiable {
         buffer.append(DecodedLogLine(text: "— Tail segment \(segment) — " + Self.replayNotice), boundary: true)
     }
 
+    /// Installs a resolved set of streams. The ring is widened to match, because a tab created
+    /// before its pods were known was sized for none of them.
+    func install(sources: [LogSource], resolved: Int?) {
+        self.sources = sources
+        self.resolved = resolved
+        buffer.grow(for: sources.count)
+    }
+
     func update(_ id: UUID, state: LogSource.State) {
         guard let index = sources.firstIndex(where: { $0.id == id }) else { return }
         sources[index].state = state

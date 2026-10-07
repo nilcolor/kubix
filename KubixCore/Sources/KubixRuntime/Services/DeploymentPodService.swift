@@ -40,24 +40,12 @@ public struct DeploymentPodService: DeploymentPodListing {
                 pods.append(DeploymentPod(name: name, uid: uid, created: metadata.creationTimestamp))
             }
             let next = table.metadata?.continuation ?? ""
-            guard !next.isEmpty else { return Self.newestFirst(pods) }
+            guard !next.isEmpty else { return DeploymentPod.newestFirst(pods) }
             guard next != cursor else { throw DeploymentPodFailure.malformed }
             cursor = next
             if page == Self.pageLimit - 1 { throw DeploymentPodFailure.tooManyPages }
         }
         throw DeploymentPodFailure.tooManyPages
-    }
-
-    /// Newest first, because during a rollout the new replicas are the ones worth reading, and that
-    /// is also the order the source ceiling keeps. Pods the server dated identically, or not at all,
-    /// fall back to their names so the order is stable between calls.
-    static func newestFirst(_ pods: [DeploymentPod]) -> [DeploymentPod] {
-        pods.sorted { lhs, rhs in
-            let left = lhs.created?.timeIntervalSince1970 ?? -.greatestFiniteMagnitude
-            let right = rhs.created?.timeIntervalSince1970 ?? -.greatestFiniteMagnitude
-            if left != right { return left > right }
-            return lhs.name < rhs.name
-        }
     }
 
     private static func request(namespace: String, selector: LabelSelector, cursor: String) -> APIRequest {

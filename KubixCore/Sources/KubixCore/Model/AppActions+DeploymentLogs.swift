@@ -6,7 +6,7 @@ extension AppActions {
     func deploymentSources(
         _ pods: [DeploymentPod], context: ResolvedContext, namespace: String, container: PodDetails.Container
     ) -> (sources: [LogSource], resolved: Int?) {
-        let kept = pods.prefix(LogSession.maximumSources)
+        let kept = DeploymentPod.newestFirst(pods).prefix(LogSession.maximumSources)
         let sources = kept.compactMap { pod -> LogSource? in
             guard let target = try? LogTarget(
                 context: context, namespace: namespace, pod: pod.name, uid: pod.uid, container: container
@@ -37,6 +37,9 @@ extension AppActions {
                 try Task.checkCancellation()
                 guard let self, self.deploymentLogAttempts[session.id] == attempt, !session.isClosed,
                       revision == self.configurationRevision else { return }
+                try Self.validate(
+                    deployment, name: scope.subject.name, namespace: scope.namespace, uid: scope.subject.uid
+                )
                 let name = container ?? scope.container.name
                 guard let chosen = deployment.containers.first(where: { $0.name == name }) else {
                     throw DeploymentDetailsError.identityMismatch
@@ -80,8 +83,7 @@ extension AppActions {
         }
         session.containers = deployment.containers
         for source in session.sources { invalidateSource(source.id) }
-        session.sources = built.sources
-        session.resolved = built.resolved
+        session.install(sources: built.sources, resolved: built.resolved)
         // An empty set is the tab's `noPods` state, which its derived state already reports.
         guard !built.sources.isEmpty else { return }
         startLog(session)

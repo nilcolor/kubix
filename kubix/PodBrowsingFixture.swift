@@ -17,6 +17,8 @@ import KubixRuntime
             store: store, exec: PodFixtureExec(), authentication: authentication, surfaces: surfaces,
             configurations: PodFixtureConfiguration(), lists: WatchService(transports: { [transport] _ in transport }),
             podDetails: PodDetailsService(transports: { [transport] _ in transport }),
+            deploymentDetails: DeploymentDetailsService(transports: { [transport] _ in transport }),
+            deploymentPods: DeploymentPodService(transports: { [transport] _ in transport }),
             logs: LogService(transports: { [transport] _ in transport }),
             probe: ClusterProbeService(transports: { [transport] _ in transport }),
             namespaces: NamespaceListService(transports: { [transport] _ in transport }),
@@ -98,6 +100,12 @@ actor PodFixtureTransport: Transport {
     }
 
     private func podTable(_ request: APIRequest) async throws -> Data {
+        // A selector-scoped list is a deployment's pods, not the namespace's.
+        if request.query.contains(where: { $0.name == "labelSelector" }), request.path.count == 5 {
+            let base = deploymentBase ?? Date()
+            deploymentBase = base
+            return Self.selectedPods(namespace: request.path[3], base: base)
+        }
         if request.path == ["api", "v1", "namespaces", "scale", "pods"] { return try await scalePage(request) }
         if request.path == ["api", "v1", "namespaces", "timed", "pods"] {
             let base = timedBase ?? Date()
@@ -117,9 +125,10 @@ actor PodFixtureTransport: Transport {
     func stream(for request: APIRequest, purpose: TransportPurpose) throws -> any HTTPByteStream {
         if purpose == .logs {
             guard request.path.count == 7, request.path[3] == "team", request.path[4] == "pods",
-                  ["alpha", "zulu"].contains(request.path[5]), request.path.last == "log",
+                  ["alpha", "zulu"].contains(request.path[5]) || Self.deploymentPodNames.contains(request.path[5]),
+                  request.path.last == "log",
                   request.accept == "application/json",
-                  request.query.contains(where: { $0.name == "tailLines" && $0.value == "200" }) else { throw APIError.invalidRequest }
+                  request.query.contains(where: { $0.name == "tailLines" }) else { throw APIError.invalidRequest }
             let stream = PodFixtureStream()
             logStreams.append(stream)
             logRequests.append(request)

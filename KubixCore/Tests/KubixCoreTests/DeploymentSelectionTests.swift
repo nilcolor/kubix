@@ -119,9 +119,11 @@ import Testing
 /// What a deployments list refuses. The pane hides the pod-only actions, but hiding a button is not
 /// a guarantee: the actions themselves read the list slot, so they are what must refuse.
 @Suite @MainActor struct DeploymentActionTests {
+    /// Both kinds have logs, by different routes. Only a pod has a container to exec into.
     @Test func theKindDecidesWhichActionsThePaneOffers() {
-        #expect(ResourceKind.pods.supportsShell && ResourceKind.pods.supportsLogs)
-        #expect(!ResourceKind.deployments.supportsShell && !ResourceKind.deployments.supportsLogs)
+        #expect(ResourceKind.allCases.allSatisfy { $0.supportsLogs })
+        #expect(ResourceKind.pods.supportsShell)
+        #expect(!ResourceKind.deployments.supportsShell)
     }
 
     /// A deployment UID sent to the pods endpoint would read as a pod name, so neither action may
@@ -141,6 +143,8 @@ import Testing
         actions.selectRow(uid: "uid-0")
         #expect(store.listTable.selectedUID == "uid-0")
 
+        // Both pod actions read the list slot, where a deployment UID would be sent to the pods
+        // endpoint as if it named a pod. The deployment's own log action is a different request.
         actions.openPodShell(uid: "uid-0")
         actions.openPodLogs(uid: "uid-0")
         #expect(await details.requests.isEmpty)

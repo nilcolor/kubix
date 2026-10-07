@@ -36,13 +36,15 @@ public struct ContainerPickerPresentation: Identifiable, Equatable, Sendable {
     public struct Item: Identifiable, Equatable, Sendable {
         public let name: String
         public let role: String
-        public let state: String
+        /// nil for a container a pod template declares: a deployment has no single state across its
+        /// replicas, and "Declared" would read as a state the cluster had reported.
+        public let state: String?
         public var id: String { name }
 
         public init(_ container: PodDetails.Container, annotated: Bool) {
             name = container.name
             role = Self.role(container, isDefault: annotated)
-            state = container.state.rawValue.capitalized
+            state = container.state == .declared ? nil : container.state.rawValue.capitalized
         }
 
         private static func role(_ container: PodDetails.Container, isDefault: Bool) -> String {
