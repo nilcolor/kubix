@@ -4,13 +4,16 @@ import SwiftUI
 /// One leading edge for the whole pane, shared with the native check so it asserts the value rather
 /// than restating it. 16 is what `NSTableView.style = .inset` puts between the table's edge and its
 /// first cell's text, so the content rows and the first column start at the same x.
-enum PodsPaneMetrics {
+enum ListPaneMetrics {
     static let inset: CGFloat = 16
 }
 
-struct PodsPane: View {
-    static let inset = PodsPaneMetrics.inset
+struct ResourceListPane: View {
+    static let inset = ListPaneMetrics.inset
 
+    /// From the sidebar selection rather than the store's slot, so the title can never lag a
+    /// selection the user has already made.
+    let kind: ResourceKind
     let store: AppStore
     let actions: AppActions
 
@@ -32,11 +35,11 @@ struct PodsPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            PodsActions(store: store, actions: actions)
+            ListActions(kind: kind, store: store, actions: actions)
                 .padding(.horizontal, Self.inset)
             // Everything that explains an action floats over the table's foot rather than taking a
             // row: a message that appears for the length of a request moved every row under it.
-            PodTableView(store: store, actions: actions)
+            ResourceTableView(kind: kind, store: store, actions: actions)
                 .overlay(alignment: .bottom) {
                     VStack(spacing: 8) {
                         AuthSessionBanner(store: store, actions: actions)
@@ -49,11 +52,11 @@ struct PodsPane: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         // The system's title, not a large one drawn in the content: this is where macOS puts what a
         // window is showing and how much of it, and it is the toolbar's own leading region.
-        .navigationTitle("Pods")
+        .navigationTitle(kind.title)
         .navigationSubtitle(subtitle)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Button { actions.refreshList() } label: {
+                Button { actions.refreshList(kind) } label: {
                     // A watch that is still settling with rows already on screen has nowhere else to
                     // say so: the table keeps its rows and the toolbar keeps the same geometry.
                     if settling {
@@ -77,33 +80,44 @@ struct PodsPane: View {
 
 /// The page's controls, in reading order: what this list is scoped to, then the two actions that act
 /// on the selected row. Left-aligned under the title, matched in height so the row reads as one group.
-private struct PodsActions: View {
+private struct ListActions: View {
+    let kind: ResourceKind
     let store: AppStore
     let actions: AppActions
 
     var body: some View {
         HStack(spacing: 8) {
             NamespaceControl(store: store, actions: actions)
-            RoundAction(
-                symbol: "apple.terminal", help: "Open a shell in one of the selected pod's containers",
-                disabled: store.listTable.selectedUID == nil, busy: isChoosing(.shell)
-            ) {
-                if let uid = store.listTable.selectedUID { actions.openPodShell(uid: uid) }
+            if kind.supportsShell {
+                RoundAction(
+                    symbol: "apple.terminal", help: "Open a shell in one of the selected pod's containers",
+                    disabled: store.listTable.selectedUID == nil, busy: isChoosing(.shell)
+                ) {
+                    if let uid = store.listTable.selectedUID { actions.openPodShell(uid: uid) }
+                }
+                .popover(isPresented: menu(for: .shell), arrowEdge: .bottom) {
+                    ContainerMenu(store: store, actions: actions)
+                }
             }
-            .popover(isPresented: menu(for: .shell), arrowEdge: .bottom) {
-                ContainerMenu(store: store, actions: actions)
-            }
-            RoundAction(
-                symbol: "doc.text", help: "Follow one of the selected pod's container logs",
-                disabled: store.listTable.selectedUID == nil, busy: isChoosing(.logs)
-            ) {
-                if let uid = store.listTable.selectedUID { actions.openPodLogs(uid: uid) }
-            }
-            .popover(isPresented: menu(for: .logs), arrowEdge: .bottom) {
-                ContainerMenu(store: store, actions: actions)
+            if kind.supportsLogs {
+                RoundAction(
+                    symbol: "doc.text", help: logsHelp,
+                    disabled: store.listTable.selectedUID == nil, busy: isChoosing(.logs)
+                ) {
+                    if let uid = store.listTable.selectedUID { actions.openPodLogs(uid: uid) }
+                }
+                .popover(isPresented: menu(for: .logs), arrowEdge: .bottom) {
+                    ContainerMenu(store: store, actions: actions)
+                }
             }
             Spacer(minLength: 0)
         }
+    }
+
+    private var logsHelp: String {
+        kind.supportsShell
+            ? "Follow one of the selected pod's container logs"
+            : "Follow the logs of every pod of the selected deployment"
     }
 
     /// The menu belongs to the button that asked for it, and dismissing it is the same as cancelling

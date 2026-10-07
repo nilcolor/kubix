@@ -74,7 +74,7 @@ import KubixCore
     }
 
     private static func openMenu(table: NSTableView, window: NSWindow) throws {
-        guard let native = table as? PodNativeTable else { throw Failure.assertion }
+        guard let native = table as? ResourceNSTableView else { throw Failure.assertion }
         let point = table.convert(NSPoint(x: 20, y: table.rect(ofRow: 0).midY), to: nil)
         guard let event = NSEvent.mouseEvent(
             with: .rightMouseDown, location: point, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,

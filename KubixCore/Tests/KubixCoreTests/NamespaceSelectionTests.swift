@@ -70,14 +70,14 @@ struct NamespaceSelectionTests {
 actor PodActionProbe: ResourceWatching {
     let gate = AppTestGate()
     private(set) var callbacks: [@MainActor @Sendable (ResourceListUpdate) -> Void] = []
-    private(set) var targets: [(context: ResolvedContext, namespace: String)] = []
+    private(set) var targets: [(context: ResolvedContext, namespace: String, kind: ResourceKind)] = []
     private(set) var ended = 0
     func run(
         kind: ResourceKind, context: ResolvedContext, namespace: String,
         update: @escaping @MainActor @Sendable (ResourceListUpdate) -> Void
     ) async {
         callbacks.append(update)
-        targets.append((context, namespace))
+        targets.append((context, namespace, kind))
         do { try await gate.wait() } catch is CancellationError {
             // Deliberately retain callbacks to exercise the mutation seam's generation guard.
         } catch { Issue.record("Unexpected gate error.") }

@@ -1,7 +1,8 @@
 import KubixCore
 import SwiftUI
 
-struct PodTableView: View {
+struct ResourceTableView: View {
+    let kind: ResourceKind
     let store: AppStore
     let actions: AppActions
 
@@ -13,15 +14,15 @@ struct PodTableView: View {
         // Age is drawn from each pod's creation time at the moment it is shown, so the table ticks
         // once a second on its own; the presentation, and with it the sort, never needs a clock.
         TimelineView(.periodic(from: .now, by: 1)) { timeline in
-            NativePodTable(presentation: presentation, now: timeline.date, actions: actions)
+            NativeResourceTable(kind: kind, presentation: presentation, now: timeline.date, actions: actions)
         }
-        .overlay { TableState(presentation: presentation, actions: actions) }
+        .overlay { TableState(kind: kind, presentation: presentation, actions: actions) }
 
     }
 
     /// Everything except the table carries the pane's inset; the table bleeds to the edge and insets
     /// its own cells, so one leading edge runs down the whole pane.
-    private var textInset: CGFloat { PodsPane.inset }
+    private var textInset: CGFloat { ResourceListPane.inset }
 }
 
 /// Messages about an action the user just took — a namespace that would not commit, a shell or log
@@ -69,6 +70,7 @@ extension View {
 /// a sentence, and a table with rows already has them to read — so a settling watch says nothing here
 /// and leaves the toolbar's spinner and subtitle to report it.
 private struct TableState: View {
+    let kind: ResourceKind
     let presentation: ResourceTablePresentation
     let actions: AppActions
 
@@ -85,7 +87,7 @@ private struct TableState: View {
                     .textSelection(.enabled)
                     .frame(maxWidth: 420)
                 if presentation.state == .failed {
-                    Button("Retry pods") { actions.refreshList() }
+                    Button("Retry \(kind.noun.many)") { actions.refreshList(kind) }
                 }
             }
             .padding(24)
@@ -130,7 +132,8 @@ final class PodCellView: NSTableCellView {
 }
 
 /// NSTableView supports runtime-defined columns on macOS 14, including repeated server labels.
-struct NativePodTable: NSViewRepresentable {
+struct NativeResourceTable: NSViewRepresentable {
+    let kind: ResourceKind
     let presentation: ResourceTablePresentation
     let now: Date
     let actions: AppActions
@@ -138,7 +141,7 @@ struct NativePodTable: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(actions: actions) }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let table = PodNativeTable()
+        let table = ResourceNSTableView()
         table.openShell = { [weak coordinator = context.coordinator] row, menu in
             coordinator?.shellAction(row: row, menu: menu)
         }
@@ -187,15 +190,20 @@ struct NativePodTable: NSViewRepresentable {
 
         init(actions: AppActions) { self.actions = actions }
 
+        /// Asked at the moment of the click, not when the table was made: one table serves both
+        /// kinds — the pane keeps a single identity on purpose, so `makeNSView` runs once — and a
+        /// capability captured at creation would offer a pod's actions on a deployment row.
         func shellAction(row: Int, menu: Bool) -> (@MainActor () -> Void)? {
-            guard let presentation, presentation.rows.indices.contains(row) else { return nil }
+            guard actions.store.listKind.supportsShell, let presentation,
+                  presentation.rows.indices.contains(row) else { return nil }
             let uid = presentation.rows[row].id
             if menu { return actions.podShellMenuAction(uid: uid) }
             return { [actions] in actions.openPodShell(uid: uid) }
         }
 
         func logsAction(row: Int) -> (@MainActor () -> Void)? {
-            guard let presentation, presentation.rows.indices.contains(row) else { return nil }
+            guard actions.store.listKind.supportsLogs, let presentation,
+                  presentation.rows.indices.contains(row) else { return nil }
             return actions.podLogsMenuAction(uid: presentation.rows[row].id)
         }
 

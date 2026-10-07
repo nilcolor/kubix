@@ -53,9 +53,11 @@ private struct ClusterSection: View {
         ClusterRow(cluster: cluster, expanded: $expanded, actions: actions)
             .tag(SidebarSelection.cluster(cluster.id))
         if cluster.state == .connected, expanded {
-            Label("Pods", systemImage: "shippingbox")
-                .padding(.leading, Self.indent)
-                .tag(SidebarSelection.list(cluster.id, .pods))
+            ForEach(ResourceKind.allCases, id: \.self) { kind in
+                Label(kind.title, systemImage: kind.symbol)
+                    .padding(.leading, Self.indent)
+                    .tag(SidebarSelection.list(cluster.id, kind))
+            }
         }
     }
 

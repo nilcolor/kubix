@@ -115,6 +115,8 @@ import KubixCore
         evidence["scale"] = try await PodScaleNativeValidation.check(fixture, table: table)
         stage = "usage columns and computed age"
         evidence["usage"] = try await PodMetricsValidation.check(fixture, table: table)
+        stage = "deployments list in the same pane"
+        evidence["deployments"] = try await DeploymentListValidation.check(fixture, window: window, table: table)
     }
 
     private static func checkTable(_ fixture: PodBrowsingFixture, window: NSWindow, table: NSTableView) async throws {
@@ -301,7 +303,7 @@ import KubixCore
 }
 
 @MainActor extension PodBrowsingValidation {
-    private static func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+    static func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
     /// SwiftUI's List is itself an NSTableView, so the sidebar is the one that is not the pod table.
     private static func sidebar(in window: NSWindow) -> NSTableView? {
         window.contentView.flatMap {

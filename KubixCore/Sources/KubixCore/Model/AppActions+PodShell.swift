@@ -16,6 +16,9 @@ public extension AppActions {
     /// Both Return and the native menu use this seam; a menu passes its clicked row explicitly.
     func openPodShell(uid: String? = nil, container: String? = nil) {
         guard !stopped else { return }
+        // The rows in the slot are whatever kind is listed. A deployment row has no container to
+        // exec into, and its UID would be sent to the pods endpoint as if it named a pod.
+        guard store.listKind.supportsShell else { return }
         guard !store.isLoadingConfiguration else {
             store.podShellDiagnostic = "Wait for configuration reload before opening a shell."
             return

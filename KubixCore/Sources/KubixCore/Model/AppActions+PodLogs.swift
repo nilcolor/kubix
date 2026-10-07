@@ -15,6 +15,9 @@ public extension AppActions {
 
     func openPodLogs(uid: String? = nil, container: String? = nil) {
         guard !stopped else { return }
+        // A deployment's logs are every one of its pods', which is a different request; this one
+        // would address the pods endpoint with a deployment's name.
+        guard store.listKind.supportsLogs else { return }
         if let uid { selectRow(uid: uid) }
         cancelPendingLogs()
         guard !store.isLoadingConfiguration, logs != nil, let details = podDetails,

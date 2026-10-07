@@ -46,7 +46,7 @@ import KubixCore
               let content = window.contentView else { throw Failure.misaligned }
         let tableX = table.convert(table.bounds, to: content).minX
         let cellX = cell.convert(cell.bounds, to: content).minX
-        guard abs((cellX - tableX) - PodsPaneMetrics.inset) <= 1 else {
+        guard abs((cellX - tableX) - ListPaneMetrics.inset) <= 1 else {
             throw Failure.measured(String(format: "cell %.1f is %.1f from the table edge", cellX, cellX - tableX))
         }
 

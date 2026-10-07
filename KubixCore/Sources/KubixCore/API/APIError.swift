@@ -132,7 +132,7 @@ public enum APIError: Error, Equatable, Sendable, LocalizedError, CustomStringCo
         case .transport(let failure): "Transport failure: \(failure.rawValue)"
         case .unsupportedProtocol: "Exec requires negotiated v5.channel.k8s.io. Check server and intermediary support."
         case .invalidRequest: "Invalid Kubernetes server URL, resource path, or request options."
-        case .snapshot(let failure): "Invalid pod list snapshot: \(failure.rawValue). Refresh to retry."
+        case .snapshot(let failure): "Invalid list snapshot: \(failure.rawValue). Refresh to retry."
         case .podAuthentication: "Pod authentication failed. Check authentication settings and explicitly retry."
         case .watch(let failure): "Pod watch stopped: \(failure). Refresh to retry."
         case .credentialRejected(let error, _, _, _): error.description

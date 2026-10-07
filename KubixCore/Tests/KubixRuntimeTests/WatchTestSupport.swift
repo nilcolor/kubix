@@ -31,6 +31,58 @@ func podEvent(_ type: String = "MODIFIED", id: Int = 0, version: String = "opaqu
     return data
 }
 
+/// A deployments Table as the apiserver prints one: the kubectl printer's columns, with AGE marked
+/// the way a server marks it so the presentation's synthetic Age has something to recognise.
+func deploymentColumns(wide: Bool = false) -> [[String: Any]] {
+    var columns: [[String: Any]] = [
+        ["name": "Name", "type": "string", "format": "name"],
+        ["name": "Ready", "type": "string"],
+        ["name": "Up-to-date", "type": "string"],
+        ["name": "Available", "type": "string"],
+        ["name": "Age", "type": "string"],
+    ]
+    if wide {
+        columns += [
+            ["name": "Containers", "type": "string", "priority": 1],
+            ["name": "Images", "type": "string", "priority": 1],
+            ["name": "Selector", "type": "string", "priority": 1],
+        ]
+    }
+    return columns
+}
+
+func deploymentPage(
+    ids: [Int] = [0], version: String? = "opaque-list", cursor: String? = "",
+    columns: [[String: Any]]? = deploymentColumns(), namespace: String = "team",
+    created: String? = "2026-10-01T00:00:00Z"
+) throws -> Data {
+    var metadata: [String: String] = [:]
+    metadata["resourceVersion"] = version
+    metadata["continue"] = cursor
+    var table: [String: Any] = [
+        "apiVersion": "meta.k8s.io/v1", "kind": "Table", "metadata": metadata,
+        "rows": ids.map { id in
+            var object: [String: Any] = [
+                "uid": "deploy-uid-\(id)", "name": "deploy-\(id)", "namespace": namespace,
+                "resourceVersion": "row-\(id)",
+            ]
+            if let created { object["creationTimestamp"] = created }
+            return ["cells": ["deploy-\(id)", "3/3", "3", "3", "6d"], "object": ["metadata": object]] as [String: Any]
+        },
+    ]
+    table["columnDefinitions"] = columns ?? NSNull()
+    return try JSONSerialization.data(withJSONObject: table, options: [.sortedKeys])
+}
+
+func deploymentEvent(_ type: String = "MODIFIED", id: Int = 0, version: String = "opaque-next", columns: Bool = false) throws -> Data {
+    let table = try JSONSerialization.jsonObject(with: deploymentPage(
+        ids: [id], version: version, columns: columns ? deploymentColumns() : nil
+    ))
+    var data = try JSONSerialization.data(withJSONObject: ["type": type, "object": table], options: [.sortedKeys])
+    data.append(10)
+    return data
+}
+
 func podStatus(_ code: Int) -> Data {
     Data("""
     {"type":"ERROR","object":{"apiVersion":"v1","kind":"Status","status":"Failure","code":\(code)}}
@@ -121,7 +173,7 @@ struct RecordingPodWatcher: ResourceWatching {
         )
     }
 
-    func start() { actions.refreshList() }
+    func start(_ kind: ResourceKind = .pods) { actions.refreshList(kind) }
     func stop() async { await actions.shutdownAndWait() }
 }
 
