@@ -145,8 +145,9 @@ import KubixCore
         guard let log = composition.store.logSessions.first else { throw ExecLiveValidation.Failure.targetChanged }
         let began = ContinuousClock.now
         try await Task.sleep(for: .seconds(3))
-        guard log.state == .following, log.target.uid == uid, log.target.container.name == ExecLiveDiscovery.container,
-              log.target.container.kind == .regular else { throw ExecLiveValidation.Failure.targetChanged }
+        guard log.state == .following, log.scope.subject.uid == uid,
+              log.scope.container.name == ExecLiveDiscovery.container,
+              log.scope.container.kind == .regular else { throw ExecLiveValidation.Failure.targetChanged }
         ExecLiveValidation.record("logFollowSeconds", String(describing: began.duration(to: .now)))
         ExecLiveValidation.record("logLinesIncludingBoundary", String(log.buffer.count))
         composition.actions.pauseLog(log.id)

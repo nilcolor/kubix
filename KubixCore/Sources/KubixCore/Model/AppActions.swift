@@ -13,18 +13,18 @@ struct NamespaceFetch {
 @MainActor
 public final class AppActions {
     public let store: AppStore
-    private let exec: any ExecSessionControlling
+    let exec: any ExecSessionControlling
     let authentication: any AuthenticationControlling
-    private let surfaces: any TerminalSurfaceCreating
+    let surfaces: any TerminalSurfaceCreating
     let browser: (any BrowserOpening)?
     let configurations: (any AppConfigurationLoading)?
     var presentationRevision = 0
     var configurationRevision = 0
     var presentationTask: Task<Void, Never>?
-    private var tasks: [UUID: Task<Void, Never>] = [:]
+    var tasks: [UUID: Task<Void, Never>] = [:]
     private var closingTasks: [UUID: Task<Void, Never>] = [:]
-    private var attempts: [UUID: UUID] = [:]
-    private var lifetimes: [UUID: TerminalSurfaceLifetime] = [:]
+    var attempts: [UUID: UUID] = [:]
+    var lifetimes: [UUID: TerminalSurfaceLifetime] = [:]
     private var progressTask: Task<Void, Never>?
     private var settingsTask: Task<Void, any Error>?
     private var settingsTasks: [UUID: Task<Void, any Error>] = [:]
@@ -54,6 +54,8 @@ public final class AppActions {
     var listGeneration = UUID()
     var namespaceSelection = NamespaceSelection()
     let podDetails: (any PodDetailsProviding)?
+    let deploymentDetails: (any DeploymentDetailsProviding)?
+    let deploymentPods: (any DeploymentPodListing)?
     var podSelectionGeneration = UUID()
     var podLogSelectionGeneration = UUID()
     var podShellSelection: RowSelection?
@@ -63,6 +65,9 @@ public final class AppActions {
     var logTasks: [UUID: Task<Void, Never>] = [:]
     var logAttempts: [UUID: UUID] = [:]
     var podLogSelection: RowSelection?
+    /// A deployment tab's current attempt, keyed by session: its own work is the resolution, which
+    /// is the tab's rather than any one source's.
+    var deploymentLogAttempts: [UUID: UUID] = [:]
     var podLogGuards: [UUID: RowSelection] = [:]
     /// The validated details behind an open logs menu, so confirming one needs no second request.
     var logChoices: [UUID: PodDetails] = [:]
@@ -73,6 +78,8 @@ public final class AppActions {
         authentication: any AuthenticationControlling, surfaces: any TerminalSurfaceCreating,
         browser: (any BrowserOpening)? = nil, configurations: (any AppConfigurationLoading)? = nil,
         lists: (any ResourceWatching)? = nil, podDetails: (any PodDetailsProviding)? = nil,
+        deploymentDetails: (any DeploymentDetailsProviding)? = nil,
+        deploymentPods: (any DeploymentPodListing)? = nil,
         logs: (any LogStreaming)? = nil, probe: (any ClusterProbing)? = nil,
         namespaces: (any NamespaceListing)? = nil,
         metrics: (any PodMetricsListing)? = nil,
@@ -96,6 +103,8 @@ public final class AppActions {
         self.metricsInterval = metricsInterval
         self.monotonicNow = monotonicNow
         self.podDetails = podDetails
+        self.deploymentDetails = deploymentDetails
+        self.deploymentPods = deploymentPods
         self.logs = logs
         progressTask = Task { [weak self, authentication] in
             let stream = await authentication.sessions()
@@ -172,84 +181,6 @@ public final class AppActions {
             store.authenticationSessions[operationID] = session
         }
         await authentication.cancel(operationID: operationID)
-    }
-
-    private func start(_ session: ExecSession) {
-        let attempt = UUID()
-        attempts[session.id] = attempt
-        tasks[session.id] = Task { [weak self, authentication, exec] in
-            let result: ExecSessionResult
-            do {
-                _ = try await authentication.acquire(for: session.target.context)
-                try Task.checkCancellation()
-                guard self?.isCurrent(session.id, attempt: attempt) == true else { return }
-                try self?.validatePodShell(session.id)
-                self?.update(session.id, state: .connecting)
-                result = await exec.run(
-                    sessionID: session.id, target: session.target,
-                    ready: { [weak self] endpoint in
-                        guard let self, self.isCurrent(session.id, attempt: attempt), !Task.isCancelled else {
-                            throw CancellationError()
-                        }
-                        try self.validatePodShell(session.id)
-                        try self.createSurface(session, endpoint: endpoint)
-                    },
-                    update: { [weak self] state in
-                        guard self?.isCurrent(session.id, attempt: attempt) == true else { return }
-                        self?.update(session.id, state: state)
-                    }
-                )
-            } catch {
-                result = error is CancellationError ? .cancelled : .failed(.authentication(Self.authDiagnostic(error)))
-            }
-            guard self?.isCurrent(session.id, attempt: attempt) == true else { return }
-            self?.finish(session.id, result: result)
-            self?.tasks.removeValue(forKey: session.id)
-            self?.attempts.removeValue(forKey: session.id)
-        }
-    }
-
-    private func createSurface(_ session: ExecSession, endpoint: ExecBridgeEndpoint) throws {
-        let surface: any TerminalSurface
-        do {
-            surface = try surfaces.makeSurface(
-                sessionID: session.id, target: session.target, endpoint: endpoint,
-                onChildExit: { [weak self] in Task { await self?.childTerminated(session.id) } }
-            )
-        } catch { throw ExecFailure.surface }
-        guard let index = index(session.id), !store.execSessions[index].isClosed else {
-            surface.teardown()
-            throw CancellationError()
-        }
-        lifetimes[session.id] = TerminalSurfaceLifetime(surface: surface)
-        store.surfaceRevision += 1
-    }
-
-    private func index(_ id: UUID) -> Int? { store.execSessions.firstIndex { $0.id == id } }
-
-    private func isCurrent(_ id: UUID, attempt: UUID) -> Bool {
-        !stopped && attempts[id] == attempt && index(id).map { !store.execSessions[$0].isClosed } == true
-    }
-
-    private func update(_ id: UUID, state: ExecSession.State) {
-        guard let index = index(id), !store.execSessions[index].state.isTerminal else { return }
-        if state == .running { podShellGuards.removeValue(forKey: id) }
-        store.execSessions[index].state = state
-    }
-
-    private func finish(_ id: UUID, result: ExecSessionResult) {
-        update(id, state: .finished(result))
-        guard case .exited(let code) = result, index(id).map({ !store.execSessions[$0].isClosed }) == true else {
-            return
-        }
-        // A finished shell's pane holds nothing usable and cannot be reconnected, so it closes itself.
-        // Only a *remote* exit qualifies: a failure keeps its pane, which carries the reason and Retry.
-        // A nonzero code leaves a note, so a container without a shell does not exit within a second
-        // and take its only explanation with it.
-        if code != 0, let target = index(id).map({ store.execSessions[$0].target }) {
-            store.podShellDiagnostic = "Shell in \(target.pod)/\(target.container) exited with code \(code)."
-        }
-        closeShell(id)
     }
 
     private func receive(_ session: AuthSession) {

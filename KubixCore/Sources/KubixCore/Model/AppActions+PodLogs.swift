@@ -112,7 +112,18 @@ extension AppActions {
     }
 
     func makeLogSession(context: ResolvedContext, pod: PodDetails, container: PodDetails.Container) -> LogSession {
-        let session = LogSession(target: LogTarget(context: context, details: pod, container: container), containers: ContainerSelection(details: pod).logs)
+        let target = LogTarget(context: context, details: pod, container: container)
+        return install(LogSession(
+            scope: LogScope(
+                context: context, namespace: pod.namespace,
+                subject: .pod(name: pod.name, uid: pod.uid), container: container
+            ),
+            containers: ContainerSelection(details: pod).logs,
+            sources: [LogSource(target: target)]
+        ))
+    }
+
+    func install(_ session: LogSession) -> LogSession {
         store.logSessions.append(session)
         store.sessionOrder.append(.logs(session.id))
         store.selectedSession = .logs(session.id)

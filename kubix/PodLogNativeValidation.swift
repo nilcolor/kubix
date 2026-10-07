@@ -33,8 +33,8 @@ import KubixCore
         try await PodBrowsingValidation.until { await fixture.transport.logStreams.allSatisfy(\.cancelled) }
         actions.switchLogContainer(session.id, name: "setup")
         try await PodBrowsingValidation.until { fixture.store.logSessions.count == 2 && fixture.store.logSessions.last?.state == .following }
-        guard let switched = fixture.store.logSessions.last, switched.target.container.kind == .initContainer,
-              switched.id != session.id, session.target.container.kind == .regular,
+        guard let switched = fixture.store.logSessions.last, switched.scope.container.kind == .initContainer,
+              switched.id != session.id, session.scope.container.kind == .regular,
               views.allSatisfy({ $0.freeCount == 0 }), fixture.store.execSessions.map(\.target) == shells.map(\.target) else { throw Failure.assertion }
         for (index, shell) in shells.enumerated() {
             guard actions.surface(for: shell.id) === views[index] else { throw Failure.assertion }
@@ -56,7 +56,7 @@ import KubixCore
     }
 
     private static func deletion(_ fixture: PodBrowsingFixture, session: LogSession) async throws {
-        try await fixture.transport.deletePod(named: session.target.pod)
+        try await fixture.transport.deletePod(named: session.scope.subject.name)
         try await PodBrowsingValidation.until { session.state == .failed(.deleted) }
         guard session.buffer.count > 0, session.segment == 1 else { throw Failure.assertion }
     }

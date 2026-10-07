@@ -59,7 +59,21 @@ import Testing
 
     @Test func oversizedConfigurationCannotDisableBounds() {
         let buffer = LogBuffer(maximumLines: .max, maximumBytes: .max)
-        #expect(buffer.maximumLines == 2_000 && buffer.maximumBytes == 2_097_152)
+        #expect(buffer.maximumLines == LogBuffer.maximumAggregateLines)
+        #expect(buffer.maximumBytes == LogBuffer.maximumAggregateBytes)
         #expect(LogLineDecoder(maximumBytes: .max).maximumBytes == 16_384)
+    }
+
+    /// A tab shares one ring across every stream it holds, so the bounds scale with the fan-out — a
+    /// 2,000-line ring split between forty pods is fifty lines each, which is not a tail. One pod
+    /// keeps exactly the bounds it always had.
+    @Test func theRingScalesWithTheNumberOfStreamsSharingIt() {
+        let one = LogBuffer(sources: 1)
+        #expect(one.maximumLines == 2_000 && one.maximumBytes == 2_097_152)
+        #expect(LogBuffer(sources: 0).maximumLines == 2_000)
+        #expect(LogBuffer(sources: 5).maximumLines == 4_000)
+        #expect(LogBuffer(sources: 5).maximumBytes == LogBuffer.maximumAggregateBytes)
+        // And it stops growing: the ceiling is a bound, not a suggestion.
+        #expect(LogBuffer(sources: LogSession.maximumSources).maximumLines == LogBuffer.maximumAggregateLines)
     }
 }

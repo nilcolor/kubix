@@ -70,7 +70,7 @@ private struct SessionTabs: View {
             ForEach(store.openSessions) { selection in
                 SessionTab(
                     actions: actions, selection: selection,
-                    title: actions.sessionTarget(selection)?.pod ?? "",
+                    title: actions.sessionTarget(selection)?.display ?? "",
                     detail: detail(selection), selected: store.selectedSession == selection
                 )
             }
@@ -80,10 +80,10 @@ private struct SessionTabs: View {
         .background(Capsule().fill(Color.primary.opacity(0.06)))
     }
 
-    /// Two sessions on one pod differ only by container, which the tab has no room for.
+    /// Two sessions on one subject differ only by container, which the tab has no room for.
     private func detail(_ selection: SessionSelection) -> String {
         guard let target = actions.sessionTarget(selection) else { return "" }
-        return "\(selection.isLogs ? "Logs" : "Shell") · \(target.pod) · \(target.container)"
+        return "\(selection.isLogs ? "Logs" : "Shell") · \(target.display) · \(target.container)"
     }
 }
 
@@ -158,7 +158,7 @@ private struct SessionMeta: View {
     var body: some View {
         HStack(spacing: 8) {
             if let target = actions.sessionTarget(selection) {
-                Text("\(target.context.name) / \(target.namespace) / \(target.pod)")
+                Text("\(target.context.name) / \(target.namespace) / \(target.display)")
                     .font(.caption).foregroundStyle(.secondary)
                     .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
                 Spacer(minLength: 8)

@@ -13,7 +13,8 @@ import Testing
 
     init(
         transport: any Transport, auth: PodShellAuth = PodShellAuth(), exec: PodShellExec = PodShellExec(),
-        watch: (any ResourceWatching)? = nil, logs: (any LogStreaming)? = nil
+        watch: (any ResourceWatching)? = nil, logs: (any LogStreaming)? = nil,
+        deployments: (any DeploymentDetailsProviding)? = nil, deploymentPods: (any DeploymentPodListing)? = nil
     ) throws {
         self.auth = auth
         self.exec = exec
@@ -27,7 +28,8 @@ import Testing
         configuration = PodShellConfiguration(contexts: contexts)
         actions = AppActions(
             store: store, exec: exec, authentication: auth, surfaces: surfaces, configurations: configuration,
-            lists: watch, podDetails: PodDetailsService { _ in transport }, logs: logs
+            lists: watch, podDetails: PodDetailsService { _ in transport },
+            deploymentDetails: deployments, deploymentPods: deploymentPods, logs: logs
         )
         try install()
     }

@@ -15,7 +15,7 @@ import Testing
         owner.actions.openPodLogs(uid: "uid-0", container: "web")
         try await watchEventually { owner.store.logSessions.first?.buffer.count == 2 }
         let log = try #require(owner.store.logSessions.first)
-        #expect(log.target.uid == "uid-0" && log.target.container.name == "web")
+        #expect(log.scope.subject.uid == "uid-0" && log.scope.container.name == "web")
         #expect(log.containers.map(\.kind) == [.regular, .regular, .initContainer, .ephemeral])
         #expect(owner.store.selectedSession == .logs(log.id))
         owner.actions.selectShell(shell.id)
@@ -41,14 +41,14 @@ import Testing
         owner.actions.openPodLogs(uid: "uid-0", container: "web")
         try await watchEventually { first.isWaiting }
         let session = try #require(owner.store.logSessions.first)
-        let target = session.target
+        let scope = session.scope
         owner.actions.pauseLog(session.id)
         try await watchEventually { owner.actions.logTasks.isEmpty }
         #expect(session.state == .paused && first.cancelled)
         #expect(session.buffer.lines.last?.text == "partial")
         owner.actions.resumeLog(session.id)
         try await watchEventually { session.state == .completed }
-        #expect(owner.store.logSessions.count == 1 && session.target == target && session.segment == 2)
+        #expect(owner.store.logSessions.count == 1 && session.scope == scope && session.segment == 2)
         #expect(session.buffer.lines.filter(\.isBoundary).count == 2)
         #expect(session.buffer.lines.contains { $0.text == "first" } && session.buffer.lines.last?.text == "second")
         #expect(await transport.requests.count == 2)
@@ -70,7 +70,7 @@ import Testing
         let session = try #require(owner.store.logSessions.first)
         if switching { owner.actions.switchLogContainer(session.id, name: "setup") } else { owner.actions.resumeLog(session.id) }
         try await watchEventually { session.state == .failed(.replaced) }
-        #expect(session.target.uid == "uid-0" && session.segment == 1 && owner.store.logSessions.count == 1)
+        #expect(session.scope.subject.uid == "uid-0" && session.segment == 1 && owner.store.logSessions.count == 1)
         #expect(session.buffer.lines.last?.text == "kept")
         #expect(await transport.streams.count == 1)
         await owner.actions.shutdownAndWait()
@@ -88,7 +88,7 @@ import Testing
         owner.actions.switchLogContainer(old.id, name: name)
         try await watchEventually { next.isWaiting }
         let new = try #require(owner.store.logSessions.last)
-        #expect(old.id != new.id && old.target.container.name == "web" && new.target.container.name == name)
+        #expect(old.id != new.id && old.scope.container.name == "web" && new.scope.container.name == name)
         #expect(old.state == .paused && first.cancelled && old.buffer.lines.last?.text == "old")
         #expect(new.segment == 1 && new.buffer.lines.last?.text == "new" && new.buffer.lines.filter(\.isBoundary).count == 1)
         #expect(await transport.requests.count == 2)
@@ -135,7 +135,7 @@ import Testing
         #expect(session.state == .following && !bytes.cancelled)
         try owner.actions.selectContext(named: "second")
         try await watchEventually { bytes.cancelled && owner.actions.logTasks.isEmpty }
-        #expect(session.state == .paused && session.target.context.name == "first")
+        #expect(session.state == .paused && session.scope.context.name == "first")
         owner.actions.resumeLog(session.id)
         #expect(session.state == .failed(.unavailable))
         #expect(await transport.requests.count == 1)
@@ -174,7 +174,7 @@ import Testing
         #expect(!session.status.contains("404"))
         try await watchEventually { owner.actions.logTasks.isEmpty }
         #expect(logBytes.cancelled && session.segment == 1 && session.buffer.lines.last?.text == "retained")
-        #expect(session.target.uid == "uid-0")
+        #expect(session.scope.subject.uid == "uid-0")
         #expect(await transport.streams.filter { $0.path.last == "log" }.count == 1)
         await owner.actions.shutdownAndWait()
         #expect(watchBytes.cancelled)

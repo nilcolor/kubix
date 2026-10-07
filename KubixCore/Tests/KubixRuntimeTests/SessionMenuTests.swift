@@ -23,7 +23,7 @@ import Testing
         owner.actions.confirmPodLogs(selectionID: picker.id, container: "setup")
         try await watchEventually { owner.store.logSessions.first?.buffer.count == 2 }
         let log = try #require(owner.store.logSessions.first)
-        #expect(log.target.container.name == "setup" && log.target.uid == "uid-0")
+        #expect(log.scope.container.name == "setup" && log.scope.subject.uid == "uid-0")
         #expect(owner.store.containerPicker == nil)
         #expect(owner.store.selectedSession == .logs(log.id))
         #expect(owner.store.openSessions == [.logs(log.id)])
@@ -53,8 +53,8 @@ import Testing
         try await watchEventually { owner.store.logSessions.count == 1 }
         owner.actions.openPodLogs(uid: "uid-0", container: "setup")
         try await watchEventually { owner.store.logSessions.count == 2 }
-        let first = try #require(owner.store.logSessions.first { $0.target.container.name == "web" })
-        let second = try #require(owner.store.logSessions.first { $0.target.container.name == "setup" })
+        let first = try #require(owner.store.logSessions.first { $0.scope.container.name == "web" })
+        let second = try #require(owner.store.logSessions.first { $0.scope.container.name == "setup" })
         #expect(owner.store.openSessions == [.logs(first.id), .logs(second.id)])
         #expect(owner.store.selectedSession == .logs(second.id))
 

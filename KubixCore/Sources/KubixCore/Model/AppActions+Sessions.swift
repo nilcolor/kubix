@@ -19,13 +19,13 @@ public extension AppActions {
 
     func setDeckCollapsed(_ collapsed: Bool) { store.deckCollapsed = collapsed }
 
-    /// Focus the pod's session for `container` if one is open, and otherwise open it. Either way the
-    /// new session is validated the way a first one is: a log tail revalidates through its own
-    /// target, and a shell reruns the selected row's details, so neither can reach a pod that is no
-    /// longer the one the user is looking at.
+    /// Focus the subject's session for `container` if one is open, and otherwise open it. Either way
+    /// the new session is validated the way a first one is: a log tail revalidates through its own
+    /// scope, and a shell reruns the selected row's details, so neither can reach an object that is
+    /// no longer the one the user is looking at.
     func openSessionForContainer(_ selection: SessionSelection, container: String) {
         guard let target = sessionTarget(selection), target.container != container else { return }
-        if let existing = openSession(kind: selection, pod: target.pod, container: container) {
+        if let existing = openSession(kind: selection, target: target, container: container) {
             selectSession(existing)
             return
         }
@@ -35,22 +35,29 @@ public extension AppActions {
         }
     }
 
-    /// Whether `container` already has a session of this kind on this pod, which the switch menu
+    /// Whether `container` already has a session of this kind on this subject, which the switch menu
     /// says out loud rather than silently opening a second one.
     func hasOpenSession(_ selection: SessionSelection, container: String) -> Bool {
         guard let target = sessionTarget(selection) else { return false }
-        return openSession(kind: selection, pod: target.pod, container: container) != nil
+        return openSession(kind: selection, target: target, container: container) != nil
     }
 }
 
 public extension AppActions {
     /// Where a session points, asked once for either kind — the deck's strip and meta row need the
-    /// same four facts whether the session is a shell or a log tail.
+    /// same facts whether the session is a shell or a log tail. `name` and `kind` say what the tab
+    /// follows: a pod for a shell and for a pod's logs, a deployment for an aggregated tail. No UID
+    /// here, deliberately — a shell's `ExecTarget` has none, and this is what the deck displays and
+    /// what tells two tabs apart, not what a session is bound to.
     struct SessionTarget: Equatable, Sendable {
         public let context: ResolvedContext
         public let namespace: String
-        public let pod: String
+        public let name: String
+        public let kind: ResourceKind
         public let container: String
+
+        /// What the deck's tab and breadcrumb read: a pod's name, or `deploy/<name>`.
+        public var display: String { kind == .pods ? name : "deploy/" + name }
     }
 
     func sessionTarget(_ selection: SessionSelection) -> SessionTarget? {
@@ -59,24 +66,24 @@ public extension AppActions {
             guard let session = store.execSessions.first(where: { $0.id == id }) else { return nil }
             return SessionTarget(
                 context: session.target.context, namespace: session.target.namespace,
-                pod: session.target.pod, container: session.target.container
+                name: session.target.pod, kind: .pods, container: session.target.container
             )
         case .logs(let id):
             guard let session = logSession(id) else { return nil }
+            let subject = session.scope.subject
             return SessionTarget(
-                context: session.target.context, namespace: session.target.namespace,
-                pod: session.target.pod, container: session.target.container.name
+                context: session.scope.context, namespace: session.scope.namespace,
+                name: subject.name, kind: subject.kind, container: session.scope.container.name
             )
         }
     }
-
 }
 
 extension AppActions {
-    private func openSession(kind: SessionSelection, pod: String, container: String) -> SessionSelection? {
+    private func openSession(kind: SessionSelection, target: SessionTarget, container: String) -> SessionSelection? {
         store.openSessions.first { candidate in
-            guard candidate.isLogs == kind.isLogs, let target = sessionTarget(candidate) else { return false }
-            return target.pod == pod && target.container == container
+            guard candidate.isLogs == kind.isLogs, let other = sessionTarget(candidate) else { return false }
+            return other.name == target.name && other.kind == target.kind && other.container == container
         }
     }
 }

@@ -47,6 +47,10 @@ public struct LogLineDecoder: Sendable {
 public struct LogLine: Identifiable, Equatable, Sendable {
     public let id: UInt64
     public let text: String
+    /// Which stream delivered this line, when the tab has more than one to tell apart. It is kept
+    /// beside the text rather than prepended to it, so the filter matches what the pod logged and
+    /// the viewer can draw the label differently from the line.
+    public let source: String?
     public let isBoundary: Bool
     public let truncated: Bool
     public let repairedUTF8: Bool
@@ -63,11 +67,25 @@ public struct LogBuffer: Sendable {
     public private(set) var evicted = 0
     private var nextID: UInt64 = 0
 
-    public init(maximumLines: Int = 2_000, maximumBytes: Int = 2_097_152) {
-        self.maximumLines = max(1, min(maximumLines, 2_000))
-        self.maximumBytes = max(1, min(maximumBytes, 2_097_152))
+    /// A tab shares one ring across every stream it holds, so the bounds scale with the fan-out: a
+    /// 2,000-line ring split between forty pods is fifty lines each, which is not a tail.
+    public init(sources: Int) {
+        self.init(
+            maximumLines: min(Self.baseLines + 500 * max(0, sources - 1), Self.maximumAggregateLines),
+            maximumBytes: sources > 1 ? Self.maximumAggregateBytes : Self.baseBytes
+        )
+    }
+
+    public init(maximumLines: Int = LogBuffer.baseLines, maximumBytes: Int = LogBuffer.baseBytes) {
+        self.maximumLines = max(1, min(maximumLines, Self.maximumAggregateLines))
+        self.maximumBytes = max(1, min(maximumBytes, Self.maximumAggregateBytes))
         slots = Array(repeating: nil, count: self.maximumLines)
     }
+
+    public static let baseLines = 2_000
+    public static let baseBytes = 2_097_152
+    public static let maximumAggregateLines = 20_000
+    public static let maximumAggregateBytes = 8 * 1_024 * 1_024
 
     public var lines: [LogLine] { (0..<count).compactMap { slots[(head + $0) % maximumLines] } }
 
@@ -76,7 +94,7 @@ public struct LogBuffer: Sendable {
         return lines.filter { $0.isBoundary || query.isEmpty || $0.text.localizedCaseInsensitiveContains(query) }
     }
 
-    public mutating func append(_ line: DecodedLogLine, boundary: Bool = false) {
+    public mutating func append(_ line: DecodedLogLine, source: String? = nil, boundary: Bool = false) {
         // Also bound callers other than the decoder. Repair expansion is included in the byte cap.
         let limit = min(maximumBytes, 49_152)
         let prefix = Array(line.text.utf8.prefix(limit))
@@ -85,7 +103,7 @@ public struct LogBuffer: Sendable {
         let bytes = text.utf8.count
         while count > 0 && (count == maximumLines || byteCount + bytes > maximumBytes) { removeFirst() }
         slots[(head + count) % maximumLines] = LogLine(
-            id: nextID, text: text, isBoundary: boundary,
+            id: nextID, text: text, source: source, isBoundary: boundary,
             truncated: line.truncated || line.text.utf8.count > limit, repairedUTF8: line.repairedUTF8
         )
         nextID &+= 1

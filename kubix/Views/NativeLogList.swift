@@ -106,7 +106,11 @@ struct NativeLogList: NSViewRepresentable {
             field.identifier = identifier
             field.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
             let line = lines[row]
-            field.stringValue = line.text + (line.truncated ? " [truncated]" : "") + (line.repairedUTF8 ? " [UTF-8 repaired]" : "")
+            // The pod's name is drawn in front of its line, as `kubectl` prefixes an aggregated
+            // tail, and only when the tab holds more than one stream to tell apart.
+            let prefix = line.source.map { "[\($0)] " } ?? ""
+            field.stringValue = prefix + line.text
+                + (line.truncated ? " [truncated]" : "") + (line.repairedUTF8 ? " [UTF-8 repaired]" : "")
             field.textColor = line.isBoundary ? .secondaryLabelColor : .labelColor
             field.isSelectable = true
             field.lineBreakMode = .byTruncatingTail
