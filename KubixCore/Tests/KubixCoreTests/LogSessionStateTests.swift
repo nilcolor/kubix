@@ -75,6 +75,15 @@ import Testing
         #expect(single.status == "Following — 24h idle / 7d resource limit.")
     }
 
+    /// What the deck draws beside the breadcrumb. One stream has nothing to count; a capped set says
+    /// how many were found so the gap is visible rather than implied.
+    @Test func theDeckSummaryCountsStreamsAndReportsAShortfall() throws {
+        #expect(try session([.following]).followingSummary == nil)
+        #expect(try session([.following, .connecting]).followingSummary == "1/2 pods")
+        #expect(try session([.following, .following], resolved: 180).followingSummary == "2/2 of 180 pods")
+        #expect(try session([.failed(.notReady), .failed(.notReady)]).followingSummary == "0/2 pods")
+    }
+
     /// A label on every line of a single-pod tab would be noise: there is nothing to tell apart.
     @Test func linesAreLabelledOnlyWhenThereIsMoreThanOneStream() throws {
         #expect(try !session([.following]).labelsLines)

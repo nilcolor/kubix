@@ -102,6 +102,13 @@ import KubixCore
               session.scope.subject == .deployment(name: "ledger", uid: "deploy-ledger"),
               fixture.actions.sessionTarget(.logs(session.id))?.display == "deploy/ledger"
         else { throw Failure.assertion }
+        // The deck's count comes from the session, which is what is assertable here: SwiftUI's
+        // static text is drawn rather than backed by an NSTextField, so the label itself is not in
+        // the view hierarchy to find. What it renders is covered by `LogSessionStateTests`.
+        guard let summary = session.followingSummary, summary == "\(expected)/\(expected) pods" else {
+            throw Failure.assertion
+        }
+
         // Read before Close, which drops the buffer: a figure captured after it would describe the
         // ring a closed tab was reset to.
         let evidence = "\(session.buffer.count) lines each labelled with the pod that logged it, "
@@ -110,8 +117,8 @@ import KubixCore
         fixture.actions.closeLog(session.id)
         try await PodBrowsingValidation.until { store.logSessions.allSatisfy { $0.id != session.id } }
         return "aggregated deployment logs: one tab over \(expected) real pod streams found through the "
-            + "deployment's own selector, newest pod first, " + evidence + ", tab titled deploy/ledger; "
-            + "template containers offered with no state claimed"
+            + "deployment's own selector, newest pod first, " + evidence + ", tab titled deploy/ledger "
+            + "with the deck reading \(summary); template containers offered with no state claimed"
     }
 
     private static func rowMenu(name: String, window: NSWindow, table: NSTableView) throws -> [String] {

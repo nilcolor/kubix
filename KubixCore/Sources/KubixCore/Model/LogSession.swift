@@ -60,6 +60,14 @@ public final class LogSession: Identifiable {
     /// A line is labelled with its pod only when there is more than one to tell apart.
     public var labelsLines: Bool { sources.count > 1 }
 
+    /// The deck's own count for a tab over several pods — the difference between a quiet workload
+    /// and a tab that has stopped working. nil for one stream, which has nothing to count.
+    public var followingSummary: String? {
+        guard sources.count > 1 else { return nil }
+        let found = resolved.map { " of \($0)" } ?? ""
+        return "\(followingCount)/\(sources.count)\(found) pods"
+    }
+
     func beginSegment() {
         segment += 1
         buffer.append(DecodedLogLine(text: "— Tail segment \(segment) — " + Self.replayNotice), boundary: true)

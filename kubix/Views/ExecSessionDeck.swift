@@ -147,7 +147,7 @@ private struct SessionTab: View {
 }
 
 /// Where the session is, and the only other thing to ask about it: a different container of the same
-/// pod. Choosing one focuses its session if it is already open, so the strip cannot collect
+/// subject. Choosing one focuses its session if it is already open, so the strip cannot collect
 /// duplicates of the same target.
 private struct SessionMeta: View {
     let store: AppStore
@@ -155,12 +155,27 @@ private struct SessionMeta: View {
     let selection: SessionSelection
     @State private var switching = false
 
+    /// nil unless this is a tab over more than one pod — one stream has nothing to count.
+    private var pods: String? {
+        guard case .logs(let id) = selection else { return nil }
+        return store.logSessions.first { $0.id == id && !$0.isClosed }?.followingSummary
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             if let target = actions.sessionTarget(selection) {
                 Text("\(target.context.name) / \(target.namespace) / \(target.display)")
                     .font(.caption).foregroundStyle(.secondary)
                     .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                // A tab over several pods says how many of them are delivering: the count is the
+                // difference between a quiet workload and a tab that stopped working.
+                if let pods {
+                    Text(pods)
+                        .font(.caption).foregroundStyle(.secondary)
+                        .padding(.horizontal, 6).padding(.vertical, 1)
+                        .background(Capsule().fill(Color.primary.opacity(0.06)))
+                        .accessibilityIdentifier("deck-pod-count")
+                }
                 Spacer(minLength: 8)
                 if siblings.count > 1 {
                     Button { switching = true } label: {
