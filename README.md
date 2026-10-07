@@ -68,17 +68,20 @@ exec paths resolve against the kubeconfig file that supplied the entry.
    Return on the selected row. Connect acquires credentials, which may start
    browser sign-in, and then makes one unnamespaced `GET /version` request.
    It does not list pods. Selecting a cluster row only shows its pane.
-3. Choose **Pods** under a connected cluster's **Workload** group to list and
-   watch its namespace. Exactly one watch runs at a time: choosing **Pods**
-   under another connected cluster moves it.
+3. Choose **Pods** or **Deployments** under a connected cluster's **Workload**
+   group to list and watch its namespace. Exactly one watch runs at a time, so
+   moving between the two kinds — or to another connected cluster — retires the
+   previous watch and re-lists. Deployments show the server's columns plus the
+   computed Age; CPU and Memory are pods-only, because the metrics API reports
+   per pod.
 4. Pick a namespace from the selector, or type one and press Return. Where the
    cluster permits `list namespaces`, the selector holds the cluster's own
    namespaces, refreshed when you open it (at most once every 30 seconds).
    Where it does not, the selector falls back to the context's namespace plus
    namespaces you have entered before, with no error: **namespace-list
    permission is not required**, and typing a known name works either way.
-   Typing alone is a draft — committing re-lists only while **Pods** is
-   selected on a connected cluster.
+   Typing alone is a draft — committing re-lists only while a list is selected
+   on a connected cluster, and re-lists whichever kind that is.
 5. Use **Shell** and **Logs** above the table, or a row's context menu, or Return
    on a row. When a pod has several eligible containers each button opens a menu
    of them, with the role the pod gives each one; choosing one opens the session.
@@ -232,7 +235,10 @@ Grant only the permissions appropriate to the intended namespace and actions:
 | Connect (reachability probe) | `/version` | `get` (unnamespaced, no RBAC beyond the default public-info role) |
 | Namespace selector contents (optional) | `namespaces` | `list` (unnamespaced; denial costs only the dropdown contents) |
 | Pod table and live updates | `pods` | `list`, `watch` |
+| Deployment table and live updates | `deployments` (`apps/v1`) | `list`, `watch` |
 | Fresh identity/container validation | `pods` | `get` |
+| Deployment selector and template containers | `deployments` (`apps/v1`) | `get` |
+| Finding a deployment's pods | `pods` | `list` (label-selector scoped) |
 | Interactive shell | `pods/exec` | `get` (GET WebSocket upgrade) |
 | Container logs | `pods/log` | `get` |
 
@@ -241,9 +247,14 @@ back to typed entry and local history. Shell access is powerful even though
 the HTTP upgrade uses GET. A 403 is a permissions failure, not a reason to
 repeat browser login.
 
+A deployment's logs need the pods permissions too, not just `deployments`: they
+are one `pods/log` stream per pod of the deployment's selector, because
+Kubernetes has no aggregated log endpoint. Kubix tails the whole set up to fifty
+pods and says so when a deployment has more.
+
 **Connected is not authorized.** The Connect probe proves only that credentials
-were accepted and the apiserver answered. Pod access is per namespace, so a 403
-on pods is reported in the pods pane of a cluster that stays connected. On a
+were accepted and the apiserver answered. Access is per namespace and per
+resource, so a 403 is reported in the pane of a cluster that stays connected. On a
 cluster that allows anonymous access to `/version`, Connect can also succeed
 where nothing else is permitted.
 

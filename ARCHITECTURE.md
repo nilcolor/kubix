@@ -282,10 +282,20 @@ Source anchors: `API/TransportPolicy.swift`, Runtime `API/URLSessionTransport.sw
 `ClusterTrustDelegate.swift`, `URLSessionWebSocketConnection.swift`,
 `HeartbeatWebSocket.swift`, and `WebSocketReceiveBuffer.swift`.
 
-## Complete pod snapshots and watches
+## Complete resource snapshots and watches
+
+**One watch, parameterized by kind.** `ResourceKind` is the whole difference
+between the lists the app can show: the API group (pods are `api/v1`,
+deployments `apis/apps/v1`), the resource segment, the noun its counts read
+with, and two capabilities. `supportsShell` is pods-only because a deployment
+has no single container to exec into; `supportsUsageColumns` is pods-only
+because `metrics.k8s.io` reports per pod and has no deployment resource. The
+pagination, resource-version, budget and retry machinery below is the same code
+for every kind, and the row type carries a UID, metadata and printed cells
+without caring which kind produced them.
 
 `WatchService` requests namespaced metadata Tables in 500-row pages and follows
-every continuation token. `PodSnapshot` validates consistent opaque resource
+every continuation token. `ResourceSnapshot` validates consistent opaque resource
 version and schema, namespace/identity/cell shape, duplicate UIDs, cursor cycles,
 and budgets (1,000 pages, 100,000 rows, 128 MiB cumulative encoded input,
 16 KiB cursor). These are application snapshot bounds, not a quota for all
@@ -322,6 +332,20 @@ The login-shell PATH probe is started at composition rather than on first use, b
 shell loading version managers takes seconds and that cost otherwise lands inside the user's first
 Connect.
 
+**The store keeps one list slot and the kind it holds.** Exactly one watch runs,
+so `rows`, `columns` and `connection` belong to `listKind` and to no other, and
+an update carries the kind it describes: a publication that arrives after the
+selection moved to another kind cannot be rendered under the wrong columns
+rather than merely being unlikely to. Moving between `Pods` and `Deployments`
+retires the previous watch the way moving `Pods` between clusters does, and
+re-lists; the filter carries over, the sort self-heals when the schema changes,
+and a selection cannot survive because the UIDs differ.
+
+While `Deployments` is selected nothing watches pods, so an open pod log tab
+stops receiving deletion evidence. That is absence of evidence, not false
+evidence — the tail itself still fails when the pod goes — and the logs are not
+paused, because the context and namespace have not changed.
+
 The native Table view handles server columns, Wide/search/sort/selection
 presentation. Initial configuration load is idle. Namespace drafts are committed
 explicitly. Suggestions are local in-memory history until a cluster's own list
@@ -331,7 +355,7 @@ Generation checks reject late publications.
 
 ### Columns the app computes
 
-The pod Table was once displayed exactly as printed. Two things a pod list needs are not in it, so the
+A Table was once displayed exactly as printed. Two things a list needs are not in it, so the
 presentation adds them on top of the server's columns, which keep their cell positions as ids.
 
 - **Age.** The server prints an age once, when it builds the row, so a quiet pod's Age froze at its
@@ -340,11 +364,15 @@ presentation adds them on top of the server's columns, which keep their cell pos
   which never changes, so the presentation needs no clock; only the native table ticks, once a
   second, redrawing the Age cells that are on screen. A row without a creation time keeps the text
   the server printed.
-- **CPU and Memory.** From `metrics.k8s.io/v1beta1`, which has no watch: it is polled every fifteen
+- **CPU and Memory**, for pods only. From `metrics.k8s.io/v1beta1`, which has no watch: it is polled every fifteen
   seconds for as long as the pod watch runs, under the watch's generation, and retires with it. Values
   read as `kubectl top` prints them — CPU rounded up to a millicore, memory down to a mebibyte — and
   sort by the exact value. A pod with no sample shows `—` and sorts last either way: Pending,
   completed and just-started pods have none, which was a third of a live namespace.
+
+A deployment has no usage columns at all, and no poll runs while one is selected. The metrics API
+reports per pod; a deployment's number would mean walking pods → ReplicaSets → Deployment
+ownerReferences and summing, which is a feature of its own rather than a column.
 
 Availability is per cluster, so the columns do not vanish and return with each namespace change. A
 404 means no metrics API and is not asked again until reconnect; a 403 stops that namespace's poll
@@ -370,21 +398,23 @@ through the same per-context `Transport` a watch would use, so credentials are
 acquired transport-side and a plugin can still request browser approval; the
 transport never opens a browser itself. Success therefore means credentials were
 accepted and the apiserver answered — never that any namespaced resource is
-authorized. A pods 403 is reported in the pods pane of a still-connected
+authorized. A list 403 is reported in the pane of a still-connected
 cluster. Connect attempts are generation-keyed per cluster, so a superseded
 probe cannot write its outcome, and probe tasks are cancelled and joined by
 shutdown like every other owned task.
 
 **Many clusters may be connected; exactly one watch runs.** `SidebarSelection`
-is `.cluster(name)` or `.pods(name)`; grouping rows such as `Workload` are not
-selection cases, so they cannot reach a watch. `.pods` on a connected cluster is
-the only route into discovery, and moving it between clusters cancels and joins
-the previous watch before starting one. Selecting a cluster row is focus alone:
+is `.cluster(name)` or `.list(name, kind)`; grouping rows such as `Workload` are
+not selection cases, so they cannot reach a watch. A `.list` on a connected
+cluster is the only route into discovery, and moving it between clusters — or
+between kinds on one cluster — cancels and joins the previous watch before
+starting one. Selecting a cluster row is focus alone:
 `selectedContext` means "the cluster in focus", which is also the cluster whose
 pane is on screen, so the auth actions keyed to it always act on what the user
-is looking at. Committing a namespace re-lists only while `.pods` is selected on
-a connected cluster; otherwise it commits and starts nothing, because visible
-rows must never describe a namespace other than the committed one.
+is looking at. Committing a namespace re-lists only while a `.list` is selected on
+a connected cluster, and re-lists whichever kind that is; otherwise it commits
+and starts nothing, because visible rows must never describe a namespace other
+than the committed one.
 
 ### Namespace discovery
 
@@ -491,6 +521,74 @@ An authoritative complete **live** watch snapshot removing the UID cancels
 following/connecting logs and reports deleted/replaced. A connecting or partial
 relist is not deletion evidence. Resume rejects replacement independently.
 Close drops the log buffer rather than retaining it as history.
+
+### Aggregated logs: one tab, many streams
+
+**Kubernetes has no aggregated log endpoint.** `apps/v1` Deployments expose only
+`status` and `scale`; `pods/{name}/log` is the only log endpoint in the API. So
+every client that shows a workload's logs — `kubectl` included, through
+`--all-pods` — opens one stream per pod and interleaves them itself, and the
+number of streams is the client's choice rather than a protocol limit.
+`kubectl`'s `--max-log-requests` (default 5) is a client-side concurrency guard
+applied only when following, and above it `kubectl` **refuses**. Kubix keeps the
+guard and drops the refusal: a GUI tails the whole set up to
+`TransportPolicy.maximumConcurrentLogStreams` (50) and says so when the set does
+not fit, instead of making the user pass a flag and try again.
+
+A `LogSession` therefore holds a `LogScope` — what the tab follows — and a
+`LogSource` per stream, each with its own task and attempt token, all delivering
+into the tab's one buffer. A pod's tab is the one-source case, so there is one
+lifecycle, one deck tab and one close path rather than two of each.
+
+- **The tab's state is derived, never assigned.** One following stream makes the
+  tab following; otherwise one connecting makes it connecting; otherwise
+  interruption outranks failure outranks a clean end, so a pod that died
+  mid-stream is never hidden behind another's EOF. Pause is a recorded flag,
+  because a cancelled stream is indistinguishable from several other endings
+  from outside. A deployment that resolves to no pods reads `noPods`.
+- **One pod going wrong is that pod's problem.** A rollout always has a replica
+  that is not ready yet, which answers 400; a tab that failed whenever any of
+  its pods did would be unusable on exactly the workloads it is for. The tab
+  reports a failure only when no stream ever opened.
+- **The pod set is resolved once, at open.** `spec.selector.matchLabels` scopes
+  one metadata-Table list of pods; names, UIDs and creation times are all a
+  stream needs, and the container name comes from the template. Nothing reads a
+  printed cell — the pods Table prints STATUS, but that is display text, not a
+  container's state. New pods from a rollout are **not** adopted live; that
+  needs a second, label-scoped pod watch. Resume re-reads the deployment,
+  refuses one recreated under the same name, and re-resolves. The status line
+  says the set is fixed, so a quiet tab during a rollout is explained.
+- **A set-based selector is refused, not approximated.** Serializing
+  `In`/`NotIn`/`Exists` into the label-selector grammar has a dozen encoding
+  edges, and a mistake does not fail — it tails another workload's pods and
+  looks like it worked. `LabelSelector` validates every key and value against
+  the label grammar before they reach a URL, because `,` and `=` are the
+  grammar's own separators: a key carrying one is a *different* selector rather
+  than an invalid one, whatever the percent-encoding.
+- **Newest pod first**, applied both by the listing and again where the ceiling
+  is applied, so keeping the newest does not depend on a provider's politeness.
+- **Lines interleave in arrival order**, not by timestamp: a merge needs a
+  reorder window and would stall output to hold it. `timestamps=true` is already
+  on, so real times are on screen. Each line carries the pod that logged it
+  beside the text rather than prefixed into it, so the filter still matches what
+  the pod wrote; the label is drawn only when the tab has more than one stream.
+- **The bounds scale with the fan-out.** A 2,000-line ring split between forty
+  pods is fifty lines each, which is not a tail, and a 200-line initial tail per
+  pod would evict the whole ring before any of it was read. The ring grows by
+  500 lines per extra stream to a 20,000-line / 8 MiB ceiling, and the
+  per-stream tail is `max(20, 1000 / sources)`. A tab is created before its pods
+  are known, so the ring is widened when they arrive — losslessly, preserving
+  each retained line's id, because the log viewport anchors on one.
+- **The `.logs` URLSession raises `httpMaximumConnectionsPerHost`** to the same
+  ceiling. The default is 6, so over HTTP/1.1 the seventh pod's stream would
+  queue behind the first six and the tab would claim to follow pods that were
+  idle. HTTP/2 multiplexes and the limit should not bite; this no longer depends
+  on which is served.
+
+A deployment's log endpoints are name-addressed and take no UID precondition, so
+the identity that answered is what proves the object is still the one clicked.
+Both the service and the action check it: the action's check is what makes the
+guarantee the app's rather than one provider's.
 
 ## Remote exec and the local PTY relay
 

@@ -32,7 +32,9 @@ evidence boundaries are in [docs/terminal-integration.md](docs/terminal-integrat
 - Capture immutable context/target identities and stable session UUIDs.
   Use cancellation plus generation/attempt checks to reject stale callbacks.
   Fresh Pod details must match the original row UID; only running regular
-  containers are shell candidates. Logs may target all declared container kinds.
+  containers are shell candidates; a deployment has none and offers no shell.
+  Logs may target all declared container kinds, and a deployment's logs are one
+  stream per pod of its selector, interleaved into one bounded tab.
 - Keep credential acquisition/cache/login shared and generation-aware. Preserve
   source-relative kubeconfig paths, exact plugin argv/profile chains, and
   effective settings/environment identity. Never replace a configured wrapper
@@ -73,4 +75,6 @@ evidence boundaries are in [docs/terminal-integration.md](docs/terminal-integrat
   Use sanitized state/count/timing metadata and synthetic fixtures.
 - No kubectl dependency, separate helper app, or general control API until
   explicitly scoped. UUIDs/AppActions reserve a future seam; Debug drivers are
-  not a general automation interface. Do not broaden pod-only v0.1 incidentally.
+  not a general automation interface. v0.1 lists pods and deployments, both
+  read-only plus logs; writes (scale, rollout restart, delete, edit) and further
+  kinds stay out. Do not broaden that incidentally.
