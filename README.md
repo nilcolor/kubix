@@ -46,6 +46,11 @@ and reuses matching prepared artifacts. `make build` also runs setup and XcodeGe
 then builds the Debug app at the path above. `make run` builds and opens it.
 `make release` builds the shipping configuration and reports its signature and
 entitlements; it is not notarized, which it says rather than treating as an error.
+`make share` runs it and zips the app to `~/Downloads/Kubix-<version>.zip`, where
+the version is `git describe --tags --dirty` (`v0.3.0`, `v0.3.0-2-gabc1234`, or
+with `-dirty` when the tree has uncommitted changes). The recipient needs an
+Apple Silicon Mac on macOS 15 or later, and has to approve the unnotarized app
+once under System Settings → Privacy & Security → **Open Anyway**.
 
 The project builds for the **host's native architecture**, not a universal
 binary. The local app is ad-hoc signed with hardened runtime; signing for
