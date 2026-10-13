@@ -33,7 +33,7 @@ struct PodDiagnostics: View {
     let actions: AppActions
 
     var body: some View {
-        let messages = [store.namespaceDiagnostic, store.podShellDiagnostic, store.podLogDiagnostic]
+        let messages = [store.namespaceDiagnostic, store.podShellDiagnostic, store.podLogDiagnostic, store.podDeleteDiagnostic]
             .compactMap { $0 }
         if !messages.isEmpty {
             HStack(alignment: .top, spacing: 8) {
@@ -146,6 +146,7 @@ struct NativeResourceTable: NSViewRepresentable {
             coordinator?.shellAction(row: row, menu: menu)
         }
         table.openLogs = { [weak coordinator = context.coordinator] row in coordinator?.logsAction(row: row) }
+        table.deletePod = { [weak coordinator = context.coordinator] row in coordinator?.deleteAction(row: row) }
         table.identifier = NSUserInterfaceItemIdentifier("pod-table")
         table.delegate = context.coordinator
         table.dataSource = context.coordinator
@@ -208,6 +209,11 @@ struct NativeResourceTable: NSViewRepresentable {
             return actions.store.listKind == .deployments
                 ? actions.deploymentLogsMenuAction(uid: uid)
                 : actions.podLogsMenuAction(uid: uid)
+        }
+
+        func deleteAction(row: Int) -> (@MainActor () -> Void)? {
+            guard let presentation, presentation.rows.indices.contains(row) else { return nil }
+            return actions.podDeleteMenuAction(uid: presentation.rows[row].id)
         }
 
         func update(_ table: NSTableView, presentation next: ResourceTablePresentation, now: Date) {

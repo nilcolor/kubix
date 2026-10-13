@@ -3,8 +3,10 @@ import Foundation
 /// No credentials belong here. Only the transport adds Authorization, after URL construction.
 public struct APIRequest: Sendable, CustomStringConvertible {
     public static let tableAccept = "application/json;as=Table;g=meta.k8s.io;v=v1"
+    public let method: String
     public let path: [String]
     public let query: [URLQueryItem]
+    public let body: Data?
     public let accept: String
     public let resourceContext: String
     public let managesCredentialRefresh: Bool
@@ -13,8 +15,11 @@ public struct APIRequest: Sendable, CustomStringConvertible {
     public init(
         resource: String, namespace: String? = nil, name: String? = nil,
         subresource: String? = nil, apiPath: [String] = ["api", "v1"],
-        query: [URLQueryItem] = [], table: Bool = false, managesCredentialRefresh: Bool = false
+        query: [URLQueryItem] = [], table: Bool = false, managesCredentialRefresh: Bool = false,
+        method: String = "GET", body: Data? = nil
     ) {
+        self.method = method
+        self.body = body
         path = apiPath + (namespace.map { ["namespaces", $0] } ?? [])
             + [resource] + (name.map { [$0] } ?? []) + (subresource.map { [$0] } ?? [])
         self.query = query
@@ -46,6 +51,11 @@ public struct APIRequest: Sendable, CustomStringConvertible {
         if purpose == .webSocket { components.scheme = components.scheme?.lowercased() == "https" ? "wss" : "ws" }
         guard let url = components.url else { throw APIError.invalidRequest }
         var request = URLRequest(url: url)
+        request.httpMethod = method
+        if let body {
+            request.httpBody = body
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
         request.timeoutInterval = TransportPolicy.policy(for: purpose).idleTimeout
         request.setValue(accept, forHTTPHeaderField: "Accept")
         return request

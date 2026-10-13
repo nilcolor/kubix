@@ -11,10 +11,10 @@ watches, HTTP logs, and `v5.channel.k8s.io` WebSocket exec.
 - **No separate helper app.** The same executable runs as `kubix --pty-bridge`
   to relay terminal bytes and sizes. That branch does not acquire credentials or
   make Kubernetes requests; authentication stays in the parent app.
-- **No resource-mutation UI.** Browsing is read-only, but an interactive shell
-  is not a read-only sandbox: commands can modify the container or access other
-  systems according to its permissions and credentials. Open shells only where
-  you are authorized.
+- **One write: deleting a pod.** Everything else is read-only, but an interactive
+  shell is not a read-only sandbox: commands can modify the container or access
+  other systems according to its permissions and credentials. Open shells only
+  where you are authorized.
 
 ## Build from source
 
@@ -106,6 +106,12 @@ exec paths resolve against the kubeconfig file that supplied the entry.
    Multiple eligible containers get a picker, preferring an eligible
    `kubectl.kubernetes.io/default-container` annotation. This annotation does
    not require the `kubectl` executable.
+9. **Delete Pod…** on a pod row's context menu asks first, naming the pod,
+   namespace and cluster. The request carries the row's UID as a precondition,
+   so a pod recreated under the same name since it was listed is refused rather
+   than deleted. It uses the pod's normal grace period; the table shows it
+   terminating and then gone. A pod owned by a controller is replaced — this is
+   how you restart one replica. Deployments offer no delete.
 
 A shell's pane closes itself when the remote command exits, since a finished
 session cannot be reconnected and its pane holds nothing usable; a nonzero exit
@@ -241,6 +247,7 @@ Grant only the permissions appropriate to the intended namespace and actions:
 | Finding a deployment's pods | `replicasets` (`apps/v1`), `pods` | `list` (label-selector scoped) |
 | Interactive shell | `pods/exec` | `get` (GET WebSocket upgrade) |
 | Container logs | `pods/log` | `get` |
+| Delete a pod | `pods` | `delete` |
 
 No namespace-list permission is needed; without it the selector simply falls
 back to typed entry and local history. Shell access is powerful even though
@@ -287,7 +294,8 @@ API, protocol, heartbeat, and local bridge failures are shown as failures.
   network requests; it never silently bypasses an explicit proxy.
 - Terminal-input-only/`interactiveMode: Always` credential plugins.
 - Init/ephemeral-container exec (their logs remain available).
-- Resource mutation UI, other resource browsers, YAML/apply, Helm, port-forward,
+- Writes other than deleting a pod (scale, rollout restart, edit, force delete),
+  other resource browsers, YAML/apply, Helm, port-forward,
   a general control API/CLI or agent skill, and independent multi-cluster windows.
 
 TLS verifies server CA/hostname, including configured CA data/files and

@@ -16,6 +16,19 @@ import Testing
     }
 }
 
+@Test func requestsAreBodilessGETsUnlessGivenAMethodAndBody() throws {
+    let base = try #require(URL(string: "https://synthetic.invalid"))
+    let get = try APIRequest(resource: "pods", namespace: "team", name: "pod").urlRequest(baseURL: base)
+    #expect(get.httpMethod == "GET" && get.httpBody == nil)
+    #expect(get.value(forHTTPHeaderField: "Content-Type") == nil)
+    let body = Data(#"{"kind":"DeleteOptions"}"#.utf8)
+    let delete = try APIRequest(resource: "pods", namespace: "team", name: "pod", method: "DELETE", body: body)
+        .urlRequest(baseURL: base)
+    #expect(delete.httpMethod == "DELETE" && delete.httpBody == body)
+    #expect(delete.value(forHTTPHeaderField: "Content-Type") == "application/json")
+    #expect(delete.url?.path == "/api/v1/namespaces/team/pods/pod")
+}
+
 @Test func clusterScopedAndGroupedResourcePaths() throws {
     let base = try #require(URL(string: "https://synthetic.invalid"))
     #expect(try APIRequest(resource: "namespaces").urlRequest(baseURL: base).url?.path == "/api/v1/namespaces")

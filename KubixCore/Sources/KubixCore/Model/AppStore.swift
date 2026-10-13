@@ -42,6 +42,8 @@ public final class AppStore {
     public internal(set) var pendingContainerPurpose: ContainerPickerPresentation.Purpose?
     public internal(set) var podShellDiagnostic: String?
     public internal(set) var containerPicker: ContainerPickerPresentation?
+    public internal(set) var podDeletion: PodDeletionPresentation?
+    public internal(set) var podDeleteDiagnostic: String?
     /// Open order across both kinds, which is the order the deck's one strip shows them in.
     public internal(set) var sessionOrder: [SessionSelection] = []
     /// The one session the deck shows. A shell and a log tail share one strip, so a pair of

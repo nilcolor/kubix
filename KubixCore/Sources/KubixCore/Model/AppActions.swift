@@ -74,6 +74,9 @@ public final class AppActions {
     /// The validated details behind an open logs menu, so confirming one needs no second request.
     var logChoices: [UUID: PodDetails] = [:]
     var shellChoices: [UUID: [PodDetails.Container]] = [:]
+    let podDeleter: (any PodDeleting)?
+    var podDeletionRequest: PodDeletionRequest?
+    var podDeleteTasks: [UUID: Task<Void, Never>] = [:]
 
     public init(
         store: AppStore, exec: any ExecSessionControlling,
@@ -82,6 +85,7 @@ public final class AppActions {
         lists: (any ResourceWatching)? = nil, podDetails: (any PodDetailsProviding)? = nil,
         deploymentDetails: (any DeploymentDetailsProviding)? = nil,
         deploymentPods: (any DeploymentPodListing)? = nil,
+        podDeleter: (any PodDeleting)? = nil,
         logs: (any LogStreaming)? = nil, probe: (any ClusterProbing)? = nil,
         namespaces: (any NamespaceListing)? = nil,
         metrics: (any PodMetricsListing)? = nil,
@@ -107,6 +111,7 @@ public final class AppActions {
         self.podDetails = podDetails
         self.deploymentDetails = deploymentDetails
         self.deploymentPods = deploymentPods
+        self.podDeleter = podDeleter
         self.logs = logs
         progressTask = Task { [weak self, authentication] in
             let stream = await authentication.sessions()
@@ -212,6 +217,7 @@ public final class AppActions {
         for task in retiringNamespaceTasks.values { task.cancel() }
         for task in podDetailTasks.values { task.cancel() }
         for task in logTasks.values { task.cancel() }
+        for task in podDeleteTasks.values { task.cancel() }
     }
 }
 
@@ -270,6 +276,9 @@ extension AppActions {
         if store.connection != .idle { store.connection = .idle }
         for session in store.execSessions { closeShell(session.id) }
         for session in store.logSessions { closeLog(session.id) }
+        cancelPendingDeletion()
+        // A delete already sent cannot be taken back; cancelling only stops waiting for its answer.
+        for task in podDeleteTasks.values { task.cancel() }
         progressTask?.cancel()
         progressTask = nil
         settingsTask?.cancel()
@@ -316,6 +325,7 @@ extension AppActions {
             + namespaceFetches.values.compactMap(\.task) + Array(retiringNamespaceTasks.values)
         let detailWork = Array(podDetailTasks.values)
         let logWork = Array(logTasks.values)
+        let deleteWork = Array(podDeleteTasks.values)
         shutdown()
         async let authenticationDrain: Void = authentication.shutdown()
         for task in pending { await task.value }
@@ -327,6 +337,7 @@ extension AppActions {
         for task in podWork { await task.value }
         for task in detailWork { await task.value }
         for task in logWork { await task.value }
+        for task in deleteWork { await task.value }
         await authenticationDrain
     }
 }

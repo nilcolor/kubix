@@ -124,6 +124,7 @@ extension AppActions {
 
     func cancelList() {
         cancelPodShellSelection()
+        cancelPendingDeletion()
         listGeneration = UUID()
         if store.podMetrics != nil { store.podMetrics = nil }
         // The metrics poll belongs to the same scope as the watch and retires with it.

@@ -50,6 +50,7 @@ public extension AppActions {
     func dismissPodDiagnostics() {
         store.podShellDiagnostic = nil
         store.podLogDiagnostic = nil
+        store.podDeleteDiagnostic = nil
         store.namespaceDiagnostic = nil
     }
     func setSettingsDraft(_ value: AuthSettingsDraft) { settingsDraftRevision += 1; store.settingsDraft = value }

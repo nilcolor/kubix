@@ -29,7 +29,8 @@ import Testing
         actions = AppActions(
             store: store, exec: exec, authentication: auth, surfaces: surfaces, configurations: configuration,
             lists: watch, podDetails: PodDetailsService { _ in transport },
-            deploymentDetails: deployments, deploymentPods: deploymentPods, logs: logs
+            deploymentDetails: deployments, deploymentPods: deploymentPods,
+            podDeleter: PodDeleteService { _ in transport }, logs: logs
         )
         try install()
     }

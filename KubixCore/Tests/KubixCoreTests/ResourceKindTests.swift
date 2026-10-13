@@ -32,6 +32,11 @@ import Testing
         #expect(!ResourceKind.deployments.supportsUsageColumns)
     }
 
+    @Test func onlyPodsCanBeDeleted() {
+        #expect(ResourceKind.pods.supportsDelete)
+        #expect(!ResourceKind.deployments.supportsDelete)
+    }
+
     @Test func countsReadAsSentencesInBothKinds() {
         #expect(ResourceKind.pods.noun == ("pod", "pods"))
         #expect(ResourceKind.deployments.noun == ("deployment", "deployments"))

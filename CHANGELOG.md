@@ -1,7 +1,16 @@
 # Changelog
 
 Kubix is a native macOS Kubernetes client. Versions are read-only plus logs and
-shells: nothing in it writes to a cluster.
+shells, except where an entry says otherwise.
+
+## v0.3 — 2026-10-13
+
+- **Delete a pod**, the first write. **Delete Pod…** on a pod row's context menu
+  asks first, naming the pod, namespace and cluster, and the request carries the
+  listed row's UID as a server-side precondition: a pod recreated under the same
+  name since it was listed is refused, not deleted. Normal grace period, no force
+  delete. Under a controller this restarts one replica. Needs `delete pods`.
+- Deployments offer no delete: it would take every replica with it.
 
 ## v0.2 — 2026-10-07
 

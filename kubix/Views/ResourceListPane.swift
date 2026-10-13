@@ -75,6 +75,22 @@ struct ResourceListPane: View {
             text: Binding(get: { store.listFilter }, set: { actions.setListFilter($0) }),
             placement: .toolbar, prompt: "Search"
         )
+        .confirmationDialog(
+            store.podDeletion.map { "Delete pod \($0.pod)?" } ?? "",
+            isPresented: Binding(
+                get: { store.podDeletion != nil },
+                set: { if !$0 { actions.podDeletionDialogClosed() } }
+            ),
+            titleVisibility: .visible, presenting: store.podDeletion
+        ) { deletion in
+            Button("Delete", role: .destructive) { actions.confirmPodDeletion(id: deletion.id) }
+            Button("Cancel", role: .cancel) { actions.cancelPodDeletion(id: deletion.id) }
+        } message: { deletion in
+            Text("""
+            Namespace \(deletion.namespace) on \(deletion.context). The pod stops within its grace period. \
+            If a controller owns it, a replacement is scheduled; if not, it is gone.
+            """)
+        }
     }
 }
 

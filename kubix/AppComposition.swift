@@ -75,7 +75,7 @@ final class AppComposition {
             ), lists: lists, podDetails: PodDetailsService(transports: transports),
             deploymentDetails: DeploymentDetailsService(transports: transports),
             deploymentPods: DeploymentPodService(transports: transports),
-            logs: LogService(transports: transports),
+            podDeleter: PodDeleteService(transports: transports), logs: LogService(transports: transports),
             probe: Self.clusterProbe(transports: transports),
             namespaces: Self.namespaceListing(transports: transports),
             metrics: Self.metricsListing(transports: transports)

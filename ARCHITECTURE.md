@@ -1,8 +1,8 @@
 # Architecture
 
 Kubix composes native pod and deployment browsers, remote shell sessions, and
-bounded log viewers. It is bearer-authenticated and read-only: nothing in it
-writes to a cluster. [README.md](README.md) describes setup and supported
+bounded log viewers. It is bearer-authenticated and read-only except for one
+write: deleting a pod, behind a confirmation. [README.md](README.md) describes setup and supported
 features, and [CHANGELOG.md](CHANGELOG.md) what each version added.
 
 ## Modules and mutation ownership
@@ -471,6 +471,30 @@ relinquishes its selection guard and keeps its immutable `ExecTarget`/UUID.
 Kubernetes exec/log endpoints are name-addressed. Fresh UID checks detect observed
 replacement, but cannot make details GET and exec/log GET atomic; there is no
 server-side UID precondition. Do not describe this as race-free Pod binding.
+
+### Deleting a pod
+
+Delete is the one write, offered on a pod row's context menu only. Requesting it
+captures the context, committed namespace, name, row UID and configuration
+revision, and shows a confirmation naming all three of pod, namespace and
+cluster; nothing is sent until it is confirmed. Confirm re-checks that context,
+namespace and revision, then sends one `DELETE` carrying `DeleteOptions` with
+`preconditions.uid` set to the row's UID.
+
+Unlike exec and logs, this binding is server-enforced: a pod recreated under the
+same name is refused with 409, not deleted. So there is no fresh details GET
+first — it would only narrow a race the precondition closes. The default grace
+period applies; there is no force delete.
+
+The dialog is dismissed by a real scope change (`cancelList`: context, namespace,
+kind, reload), not by the selected row's revision changing, which for a
+crash-looping pod is every few seconds. Success says nothing: the watch shows the
+pod terminating and then gone. A refusal or transport failure floats a diagnostic
+naming the pod; a transport failure says the delete may or may not have happened,
+because it may have reached the server. Only a 401 is retried, through the
+transport's usual single refresh, since the server did not act on it. Shutdown
+cancels and joins an in-flight delete, which stops waiting for an answer, not the
+delete.
 
 ### One deck for both kinds of session
 

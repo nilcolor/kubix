@@ -46,6 +46,10 @@ public enum ResourceKind: String, Hashable, Sendable, CaseIterable {
     /// which is a different action than the one the button offers.
     public var supportsShell: Bool { self == .pods }
 
+    /// Deleting a pod is the one write the app makes. Under a controller it restarts one replica;
+    /// deleting a deployment would take every replica with it, and is not offered.
+    public var supportsDelete: Bool { self == .pods }
+
     /// `metrics.k8s.io` reports per pod and has no deployment resource. Summing a deployment's pods
     /// means walking pods → ReplicaSets → Deployment ownerReferences, which this does not do.
     public var supportsUsageColumns: Bool { self == .pods }
