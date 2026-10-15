@@ -62,13 +62,27 @@ struct PodTablePresentationTests {
     @Test func selectionSurvivesReorderButNotFilteringDeletionOrSameNameReplacement() throws {
         let table = try presentationTable(cells: [#"["same"]"#, #"["another"]"#])
         let source = try table.rows.map(ResourceRow.init)
-        let selected = ResourceTablePresentation(rows: source.reversed(), columns: table.columnDefinitions, connection: .live, selectedUID: "uid-0")
+        let selected = ResourceTablePresentation(rows: source.reversed(), columns: table.columnDefinitions, connection: .live, selectedUIDs: ["uid-0"])
         #expect(selected.selectedUID == "uid-0")
         #expect(try present(table, filter: "another", selected: "uid-0").selectedUID == nil)
-        let deleted = ResourceTablePresentation(rows: Array(source.dropFirst()), columns: table.columnDefinitions, connection: .live, selectedUID: "uid-0")
+        let deleted = ResourceTablePresentation(rows: Array(source.dropFirst()), columns: table.columnDefinitions, connection: .live, selectedUIDs: ["uid-0"])
         #expect(deleted.selectedUID == nil)
         let replaced = try presentationTable(cells: [#"["same"]"#], uidPrefix: "replacement")
         #expect(try present(replaced, selected: "uid-0").selectedUID == nil)
+    }
+
+    @Test func aMultipleSelectionIsInDisplayOrderAndHasNoSingleRow() throws {
+        let table = try presentationTable(cells: [#"["b"]"#, #"["a"]"#, #"["c"]"#])
+        let rows = try table.rows.map(ResourceRow.init)
+        let sorted = ResourceTablePresentation(
+            rows: rows, columns: table.columnDefinitions, connection: .live,
+            sort: .init(column: 0, ascending: true), selectedUIDs: ["uid-0", "uid-1", "absent"]
+        )
+        #expect(sorted.selectedUIDs == ["uid-1", "uid-0"] && sorted.selectedUID == nil)
+        let filtered = ResourceTablePresentation(
+            rows: rows, columns: table.columnDefinitions, connection: .live, filter: "a", selectedUIDs: ["uid-0", "uid-1"]
+        )
+        #expect(filtered.selectedUIDs == ["uid-1"] && filtered.selectedUID == "uid-1")
     }
 
     @Test func emptyIdleConnectingFailedAndLiveAreDistinctAndStaleRowsAreExplicit() throws {
@@ -99,7 +113,7 @@ struct PodTablePresentationTests {
         #expect(value.columns.map(\.definition.name) == ["Arbitrary"])
         #expect(value.rows.first?.cells == ["updated"])
         for schema in [nil, [], try presentationTable(columns: "[]", cells: []).columnDefinitions] {
-            let malformed = ResourceTablePresentation(rows: try table.rows.map(ResourceRow.init), columns: schema, connection: .live, selectedUID: "uid-0")
+            let malformed = ResourceTablePresentation(rows: try table.rows.map(ResourceRow.init), columns: schema, connection: .live, selectedUIDs: ["uid-0"])
             #expect(malformed.state == .failed && malformed.rows.isEmpty && malformed.selectedUID == nil)
         }
     }
@@ -124,7 +138,7 @@ private func present(
 ) throws -> ResourceTablePresentation {
     ResourceTablePresentation(
         rows: try table.rows.map(ResourceRow.init), columns: table.columnDefinitions, connection: .live,
-        filter: filter, wide: wide, sort: sort, selectedUID: selected
+        filter: filter, wide: wide, sort: sort, selectedUIDs: Set(selected.map { [$0] } ?? [])
     )
 }
 

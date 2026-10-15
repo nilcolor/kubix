@@ -111,10 +111,12 @@ exec paths resolve against the kubeconfig file that supplied the entry.
    Multiple eligible containers get a picker, preferring an eligible
    `kubectl.kubernetes.io/default-container` annotation. This annotation does
    not require the `kubectl` executable.
-9. **Delete Pod…** on a pod row's context menu asks first, naming the pod,
-   namespace and cluster. The request carries the row's UID as a precondition,
+9. **Delete Pod…** in the pane's toolbar or on a pod row's context menu asks
+   first, naming the pod, namespace and cluster. Select several rows (⌘- or
+   ⇧-click) to delete them together; the menu on a selected row acts for the
+   whole selection. Each request carries its row's UID as a precondition,
    so a pod recreated under the same name since it was listed is refused rather
-   than deleted. It uses the pod's normal grace period; the table shows it
+   than deleted, and one refusal does not stop the rest. It uses the pod's normal grace period; the table shows it
    terminating and then gone. A pod owned by a controller is replaced — this is
    how you restart one replica. Deployments offer no delete.
 

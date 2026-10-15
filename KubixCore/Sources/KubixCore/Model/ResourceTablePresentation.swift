@@ -59,16 +59,21 @@ public struct ResourceTablePresentation: Equatable, Sendable {
     public let columns: [Column]
     public let rows: [Row]
     public let sort: Sort?
-    public let selectedUID: String?
+    /// The selected rows that are still shown, in display order. A row a filter hides drops out
+    /// rather than being acted on unseen.
+    public let selectedUIDs: [String]
     public let state: State
     public let message: String
     public let total: Int
+
+    /// The row a shell or log acts on: there is one only while exactly one row is selected.
+    public var selectedUID: String? { selectedUIDs.count == 1 ? selectedUIDs.first : nil }
 
     public init(
         kind: ResourceKind = .pods,
         rows source: [ResourceRow], columns schema: [KubernetesTable.ColumnDefinition]?,
         connection: ListConnection, filter: String = "", wide: Bool = false,
-        sort: Sort? = nil, selectedUID: String? = nil, metrics: [String: PodUsage]? = nil
+        sort: Sort? = nil, selectedUIDs: Set<String> = [], metrics: [String: PodUsage]? = nil
     ) {
         self.kind = kind
         // Usage is per pod and has no deployment equivalent, so a caller that offers samples for a
@@ -114,7 +119,7 @@ public struct ResourceTablePresentation: Equatable, Sendable {
             )
         }
         self.rows = rows
-        self.selectedUID = selectedUID.flatMap { uid in rows.contains { $0.id == uid } ? uid : nil }
+        self.selectedUIDs = rows.map(\.id).filter(selectedUIDs.contains)
         total = source.count
         (state, message) = Self.status(
             connection, kind: kind, valid: valid, total: source.count, visible: rows.count

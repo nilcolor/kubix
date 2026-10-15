@@ -150,7 +150,7 @@ struct NativeResourceTable: NSViewRepresentable {
         table.identifier = NSUserInterfaceItemIdentifier("pod-table")
         table.delegate = context.coordinator
         table.dataSource = context.coordinator
-        table.allowsMultipleSelection = false
+        table.allowsMultipleSelection = true
         table.allowsEmptySelection = true
         table.allowsColumnReordering = false
         // Hairlines rather than alternating bands: a separator per row reads as a list, and stripes
@@ -211,7 +211,7 @@ struct NativeResourceTable: NSViewRepresentable {
                 : actions.podLogsMenuAction(uid: uid)
         }
 
-        func deleteAction(row: Int) -> (@MainActor () -> Void)? {
+        func deleteAction(row: Int) -> AppActions.PodDeleteMenuAction? {
             guard let presentation, presentation.rows.indices.contains(row) else { return nil }
             return actions.podDeleteMenuAction(uid: presentation.rows[row].id)
         }
@@ -260,8 +260,8 @@ struct NativeResourceTable: NSViewRepresentable {
                 fitColumns(table, to: next)
                 needsFit = false
             }
-            let selected = next.rows.firstIndex { $0.id == next.selectedUID }
-            table.selectRowIndexes(selected.map { IndexSet(integer: $0) } ?? [], byExtendingSelection: false)
+            let selected = Set(next.selectedUIDs)
+            table.selectRowIndexes(IndexSet(next.rows.indices.filter { selected.contains(next.rows[$0].id) }), byExtendingSelection: false)
         }
 
         /// Fitted once per column rebuild — a new namespace, Wide, the usage columns arriving — and
@@ -313,7 +313,8 @@ struct NativeResourceTable: NSViewRepresentable {
 
         func tableViewSelectionDidChange(_ notification: Notification) {
             guard !updating, let table = notification.object as? NSTableView, let presentation else { return }
-            actions.selectRow(uid: presentation.rows.indices.contains(table.selectedRow) ? presentation.rows[table.selectedRow].id : nil)
+            let rows = presentation.rows
+            actions.selectRows(uids: Set(table.selectedRowIndexes.compactMap { rows.indices.contains($0) ? rows[$0].id : nil }))
         }
 
         func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {

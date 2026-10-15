@@ -9,9 +9,10 @@ import Testing
         let owner = try PodShellTestOwner(transport: transport)
         owner.actions.selectRow(uid: "uid-0")
         let menu = try #require(owner.actions.podDeleteMenuAction(uid: "uid-1"))
-        menu()
+        #expect(menu.pods == 1)
+        menu.perform()
         let dialog = try #require(owner.store.podDeletion)
-        #expect(dialog.pod == "pod-1" && dialog.namespace == "team" && dialog.context == "first")
+        #expect(dialog.pods == ["pod-1"] && dialog.namespace == "team" && dialog.context == "first")
         #expect(owner.store.selectedRowUID == "uid-1")
         #expect(await transport.requests.isEmpty)
         owner.actions.confirmPodDeletion(id: dialog.id)
@@ -26,10 +27,46 @@ import Testing
         #expect(owner.store.podDeleteDiagnostic == nil)
     }
 
+    @Test func aSelectedRowsMenuDeletesTheWholeSelectionInOrder() async throws {
+        let transport = WatchTestTransport { _, _ in Data("{}".utf8) }
+        let owner = try PodShellTestOwner(transport: transport)
+        try owner.install(ids: [0, 1, 2])
+        owner.actions.selectRows(uids: ["uid-0", "uid-2"])
+        #expect(owner.store.listTable.selectedUID == nil)
+        #expect(try #require(owner.actions.podDeleteMenuAction(uid: "uid-1")).pods == 1)
+        let menu = try #require(owner.actions.podDeleteMenuAction(uid: "uid-2"))
+        #expect(menu.pods == 2)
+        menu.perform()
+        let dialog = try #require(owner.store.podDeletion)
+        #expect(dialog.pods == ["pod-0", "pod-2"])
+        #expect(owner.store.selectedRowUIDs == ["uid-0", "uid-2"])
+        owner.actions.confirmPodDeletion(id: dialog.id)
+        try await watchEventually { await transport.requests.count == 2 }
+        let requests = await transport.requests
+        #expect(requests.map { $0.path.last } == ["pod-0", "pod-2"])
+        #expect(try requests.map { try deletePreconditionUID($0.body) } == ["uid-0", "uid-2"])
+        await owner.actions.shutdownAndWait()
+        #expect(owner.store.podDeleteDiagnostic == nil)
+    }
+
+    @Test func oneRefusalDoesNotStopTheRestOfTheSelection() async throws {
+        let transport = WatchTestTransport { request, _ in
+            guard request.path.last == "pod-0" else { return Data("{}".utf8) }
+            throw APIError.response(code: 409, body: Data(), resource: request.resourceContext)
+        }
+        let owner = try PodShellTestOwner(transport: transport)
+        owner.actions.requestPodDeletion(uids: ["uid-0", "uid-1"])
+        owner.actions.confirmPodDeletion(id: try #require(owner.store.podDeletion).id)
+        try await watchEventually { await transport.requests.count == 2 }
+        await owner.actions.shutdownAndWait()
+        let message = try #require(owner.store.podDeleteDiagnostic)
+        #expect(message.contains("pod-0") && message.contains("replaced") && !message.contains("pod-1"))
+    }
+
     @Test func cancelAndForeignConfirmationsSendNothing() async throws {
         let transport = WatchTestTransport { _, _ in Data("{}".utf8) }
         let owner = try PodShellTestOwner(transport: transport)
-        owner.actions.requestPodDeletion(uid: "uid-0")
+        owner.actions.requestPodDeletion(uids: ["uid-0"])
         let dialog = try #require(owner.store.podDeletion)
         owner.actions.confirmPodDeletion(id: UUID())
         #expect(owner.store.podDeletion == dialog)
@@ -44,7 +81,7 @@ import Testing
     @Test func dialogClosingBeforeItsButtonStillConfirms() async throws {
         let transport = WatchTestTransport { _, _ in Data("{}".utf8) }
         let owner = try PodShellTestOwner(transport: transport)
-        owner.actions.requestPodDeletion(uid: "uid-0")
+        owner.actions.requestPodDeletion(uids: ["uid-0"])
         let dialog = try #require(owner.store.podDeletion)
         owner.actions.podDeletionDialogClosed()
         owner.actions.confirmPodDeletion(id: dialog.id)
@@ -56,7 +93,7 @@ import Testing
     @Test func theRowChangingUnderTheDialogKeepsIt() async throws {
         let transport = WatchTestTransport { _, _ in Data("{}".utf8) }
         let owner = try PodShellTestOwner(transport: transport)
-        owner.actions.requestPodDeletion(uid: "uid-0")
+        owner.actions.requestPodDeletion(uids: ["uid-0"])
         let dialog = try #require(owner.store.podDeletion)
         try owner.changeRow()
         #expect(owner.store.podDeletion == dialog)
@@ -68,7 +105,7 @@ import Testing
     @Test func aNamespaceChangeDismissesTheDialogAndSendsNothing() async throws {
         let transport = WatchTestTransport { _, _ in Data("{}".utf8) }
         let owner = try PodShellTestOwner(transport: transport)
-        owner.actions.requestPodDeletion(uid: "uid-0")
+        owner.actions.requestPodDeletion(uids: ["uid-0"])
         let dialog = try #require(owner.store.podDeletion)
         owner.actions.setNamespaceInput("other")
         #expect(owner.actions.commitNamespaceInput())
@@ -84,7 +121,7 @@ import Testing
             throw APIError.response(code: code, body: Data(), resource: request.resourceContext)
         }
         let owner = try PodShellTestOwner(transport: transport)
-        owner.actions.requestPodDeletion(uid: "uid-0")
+        owner.actions.requestPodDeletion(uids: ["uid-0"])
         owner.actions.confirmPodDeletion(id: try #require(owner.store.podDeletion).id)
         try await watchEventually { owner.store.podDeleteDiagnostic != nil }
         let message = try #require(owner.store.podDeleteDiagnostic)
@@ -102,7 +139,7 @@ import Testing
             return Data("{}".utf8)
         }
         let owner = try PodShellTestOwner(transport: transport)
-        owner.actions.requestPodDeletion(uid: "uid-0")
+        owner.actions.requestPodDeletion(uids: ["uid-0"])
         owner.actions.confirmPodDeletion(id: try #require(owner.store.podDeletion).id)
         try await watchEventually { await gate.isWaiting }
         let shutdown = Task { await owner.actions.shutdownAndWait() }

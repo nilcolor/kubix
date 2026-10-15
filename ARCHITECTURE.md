@@ -474,12 +474,17 @@ server-side UID precondition. Do not describe this as race-free Pod binding.
 
 ### Deleting a pod
 
-Delete is the one write, offered on a pod row's context menu only. Requesting it
-captures the context, committed namespace, name, row UID and configuration
-revision, and shows a confirmation naming all three of pod, namespace and
-cluster; nothing is sent until it is confirmed. Confirm re-checks that context,
-namespace and revision, then sends one `DELETE` carrying `DeleteOptions` with
-`preconditions.uid` set to the row's UID.
+Delete is the one write, offered by the pods toolbar and a pod row's context
+menu. The table allows a multiple selection; shell and logs act only while exactly
+one row is selected, delete acts on every selected row that is still shown. The
+menu on a row inside a multiple selection acts for the selection, on any other
+row for that row alone. Requesting it captures the context, committed namespace,
+each name and row UID, and configuration revision, and shows a confirmation
+naming the pods (the first few, then a count), namespace and cluster; nothing is
+sent until it is confirmed. Confirm re-checks that context, namespace and
+revision, then sends one `DELETE` per pod, one at a time, each carrying
+`DeleteOptions` with `preconditions.uid` set to that row's UID. A refusal for one
+pod does not stop the rest; shutdown stops the ones not yet sent.
 
 Unlike exec and logs, this binding is server-enforced: a pod recreated under the
 same name is refused with 409, not deleted. So there is no fresh details GET
@@ -490,7 +495,7 @@ The dialog is dismissed by a real scope change (`cancelList`: context, namespace
 kind, reload), not by the selected row's revision changing, which for a
 crash-looping pod is every few seconds. Success says nothing: the watch shows the
 pod terminating and then gone. A refusal or transport failure floats a diagnostic
-naming the pod; a transport failure says the delete may or may not have happened,
+naming the pod, one line per failed pod; a transport failure says the delete may or may not have happened,
 because it may have reached the server. Only a 401 is retried, through the
 transport's usual single refresh, since the server did not act on it. Shutdown
 cancels and joins an in-flight delete, which stops waiting for an answer, not the

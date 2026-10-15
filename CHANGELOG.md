@@ -3,6 +3,17 @@
 Kubix is a native macOS Kubernetes client. Versions are read-only plus logs and
 shells, except where an entry says otherwise.
 
+## Unreleased
+
+- **Delete several pods at once.** The pods table takes a multiple selection
+  (⌘- or ⇧-click), and **Delete Pod…** joins Shell and Logs in the pane's
+  toolbar. The context menu on a selected row acts for the whole selection.
+  Each pod is deleted with its own UID precondition, one after another, and a
+  refusal for one does not stop the rest. Shell and Logs need exactly one row.
+- The confirmation is a sheet naming the pods, namespace and cluster, says a
+  controller may create replacements, and has no default button: Return does
+  not delete.
+
 ## v0.3 — 2026-10-13
 
 - **Delete a pod**, the first write. **Delete Pod…** on a pod row's context menu

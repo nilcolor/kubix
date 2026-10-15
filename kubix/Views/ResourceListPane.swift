@@ -75,27 +75,19 @@ struct ResourceListPane: View {
             text: Binding(get: { store.listFilter }, set: { actions.setListFilter($0) }),
             placement: .toolbar, prompt: "Search"
         )
-        .confirmationDialog(
-            store.podDeletion.map { "Delete pod \($0.pod)?" } ?? "",
-            isPresented: Binding(
-                get: { store.podDeletion != nil },
-                set: { if !$0 { actions.podDeletionDialogClosed() } }
-            ),
-            titleVisibility: .visible, presenting: store.podDeletion
-        ) { deletion in
-            Button("Delete", role: .destructive) { actions.confirmPodDeletion(id: deletion.id) }
-            Button("Cancel", role: .cancel) { actions.cancelPodDeletion(id: deletion.id) }
-        } message: { deletion in
-            Text("""
-            Namespace \(deletion.namespace) on \(deletion.context). The pod stops within its grace period. \
-            If a controller owns it, a replacement is scheduled; if not, it is gone.
-            """)
+        // A sheet rather than a confirmation dialog: it is modal for the whole window, toolbar
+        // included, and its buttons can be the ones the design names.
+        .sheet(item: Binding(
+            get: { store.podDeletion },
+            set: { if $0 == nil { actions.podDeletionDialogClosed() } }
+        )) { deletion in
+            PodDeletionDialog(deletion: deletion, actions: actions)
         }
     }
 }
 
-/// The page's controls, in reading order: what this list is scoped to, then the two actions that act
-/// on the selected row. Left-aligned under the title, matched in height so the row reads as one group.
+/// The page's controls, in reading order: what this list is scoped to, the two actions that act on
+/// the selected row, then the one that writes, set apart. Left-aligned under the title, matched in height so the row reads as one group.
 private struct ListActions: View {
     let kind: ResourceKind
     let store: AppStore
@@ -131,8 +123,25 @@ private struct ListActions: View {
                     ContainerMenu(store: store, actions: actions)
                 }
             }
+            if kind.supportsDelete, actions.offersPodDeletion {
+                Divider().frame(height: 22).padding(.horizontal, 4)
+                deleteButton
+            }
             Spacer(minLength: 0)
         }
+    }
+
+    private var deleteButton: some View {
+        let selected = store.listTable.selectedUIDs
+        return Button { actions.requestPodDeletion(uids: selected) } label: {
+            Label(selected.count > 1 ? "Delete \(selected.count) Pods…" : "Delete Pod…", systemImage: "trash")
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .controlSize(.extraLarge)
+        .foregroundStyle(selected.isEmpty ? Color.secondary : Color.red)
+        .disabled(selected.isEmpty)
+        .help(selected.count > 1 ? "Delete the selected pods" : "Delete the selected pod")
     }
 
     private var logsHelp: String {

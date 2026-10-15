@@ -1,26 +1,40 @@
 import Foundation
 
 public extension AppActions {
+    typealias PodDeleteMenuAction = (pods: Int, perform: @MainActor () -> Void)
+
+    var offersPodDeletion: Bool { podDeleter != nil && store.listKind.supportsDelete }
+
     /// nil when there is nothing to offer, so the menu leaves the item out rather than disabling it.
-    func podDeleteMenuAction(uid: String) -> (@MainActor () -> Void)? {
-        guard podDeleter != nil, store.listKind.supportsDelete else { return nil }
-        return { [weak self] in self?.requestPodDeletion(uid: uid) }
+    /// A row that is part of a multiple selection acts for the whole selection, as Finder does;
+    /// any other row acts alone.
+    func podDeleteMenuAction(uid: String) -> PodDeleteMenuAction? {
+        guard offersPodDeletion else { return nil }
+        let selected = store.listTable.selectedUIDs
+        let uids = selected.count > 1 && selected.contains(uid) ? selected : [uid]
+        return (uids.count, { [weak self] in self?.requestPodDeletion(uids: uids) })
     }
 
     /// Asks for confirmation only; nothing is sent until `confirmPodDeletion`.
-    func requestPodDeletion(uid: String) {
-        guard !stopped, podDeleter != nil, store.listKind.supportsDelete, !store.isLoadingConfiguration,
-              let context = store.selectedContext, let row = store.rows.first(where: { $0.id == uid }),
-              let name = row.metadata.name, row.metadata.namespace == store.selectedNamespace else { return }
-        selectRow(uid: uid)
+    func requestPodDeletion(uids: [String]) {
+        guard !stopped, offersPodDeletion, !store.isLoadingConfiguration,
+              let context = store.selectedContext else { return }
+        let namespace = store.selectedNamespace
+        let targets = uids.compactMap { uid -> PodDeletionRequest.Target? in
+            guard let row = store.rows.first(where: { $0.id == uid }), let name = row.metadata.name,
+                  row.metadata.namespace == namespace else { return nil }
+            return .init(name: name, uid: uid)
+        }
+        guard !targets.isEmpty else { return }
+        selectRows(uids: Set(targets.map(\.uid)))
         let request = PodDeletionRequest(
-            id: UUID(), context: context, namespace: store.selectedNamespace, name: name, uid: uid,
+            id: UUID(), context: context, namespace: namespace, targets: targets,
             configurationRevision: configurationRevision
         )
         podDeletionRequest = request
         store.podDeleteDiagnostic = nil
         store.podDeletion = PodDeletionPresentation(
-            id: request.id, pod: name, namespace: request.namespace, context: context.name
+            id: request.id, pods: targets.map(\.name), namespace: namespace, context: context.name
         )
     }
 
@@ -31,18 +45,28 @@ public extension AppActions {
         guard !store.isLoadingConfiguration, request.configurationRevision == configurationRevision,
               store.selectedContext == request.context, store.selectedNamespace == request.namespace,
               store.listKind.supportsDelete else {
-            store.podDeleteDiagnostic = "Nothing was deleted: the cluster or namespace changed before \(request.name) was confirmed."
+            store.podDeleteDiagnostic = "Nothing was deleted: the cluster or namespace changed before "
+                + "\(Self.subject(request.targets)) was confirmed."
             return
         }
         podDeleteTasks[id] = Task { [weak self] in
             defer { self?.podDeleteTasks.removeValue(forKey: id) }
-            do {
-                try await podDeleter.delete(
-                    context: request.context, namespace: request.namespace, name: request.name, uid: request.uid
-                )
-            } catch {
-                guard let self, !self.stopped, !(error is CancellationError) else { return }
-                self.store.podDeleteDiagnostic = Self.podDeleteDiagnostic(error, pod: request.name)
+            var failures: [String] = []
+            // One at a time: cancelling at quit then stops every delete not yet sent, and a large
+            // selection does not arrive at the apiserver as a burst. Each carries its own UID
+            // precondition, so one refusal does not stop the rest.
+            for target in request.targets {
+                do {
+                    try await podDeleter.delete(
+                        context: request.context, namespace: request.namespace, name: target.name, uid: target.uid
+                    )
+                } catch {
+                    guard let self, !self.stopped, !Task.isCancelled, !(error is CancellationError) else { return }
+                    // An auth failure reads the same for every pod and is worth saying once.
+                    let message = Self.podDeleteDiagnostic(error, pod: target.name)
+                    if !failures.contains(message) { failures.append(message) }
+                    self.store.podDeleteDiagnostic = failures.joined(separator: "\n")
+                }
             }
         }
     }
@@ -64,6 +88,10 @@ extension AppActions {
     func cancelPendingDeletion() {
         podDeletionRequest = nil
         store.podDeletion = nil
+    }
+
+    private static func subject(_ targets: [PodDeletionRequest.Target]) -> String {
+        targets.count == 1 ? targets[0].name : "the deletion of \(targets.count) pods"
     }
 
     private static func podDeleteDiagnostic(_ error: any Error, pod: String) -> String {

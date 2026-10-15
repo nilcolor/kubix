@@ -21,7 +21,8 @@ public final class AppStore {
     public internal(set) var listFilter = ""
     public internal(set) var listWide = false
     public internal(set) var listSort: ResourceTablePresentation.Sort?
-    public internal(set) var selectedRowUID: String?
+    public internal(set) var selectedRowUIDs: Set<String> = []
+    public var selectedRowUID: String? { selectedRowUIDs.count == 1 ? selectedRowUIDs.first : nil }
     public internal(set) var execSessions: [ExecSession] = []
     public internal(set) var logSessions: [LogSession] = []
     public internal(set) var podLogDiagnostic: String?
@@ -83,7 +84,7 @@ public final class AppStore {
             && clusters.first { $0.context == selectedContext }?.metrics == .available
         return ResourceTablePresentation(
             kind: listKind, rows: rows, columns: columns, connection: connection, filter: listFilter,
-            wide: listWide, sort: listSort, selectedUID: selectedRowUID,
+            wide: listWide, sort: listSort, selectedUIDs: selectedRowUIDs,
             metrics: available ? (podMetrics ?? [:]) : nil
         )
     }

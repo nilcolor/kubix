@@ -92,8 +92,12 @@ public extension AppActions {
     }
 
     func selectRow(uid: String?) {
-        if store.selectedRowUID != uid { cancelPodShellSelection() }
-        store.selectedRowUID = uid
+        selectRows(uids: uid.map { [$0] } ?? [])
+    }
+
+    func selectRows(uids: Set<String>) {
+        if store.selectedRowUIDs != uids { cancelPodShellSelection() }
+        store.selectedRowUIDs = uids
         reconcileRowSelection()
     }
 }
@@ -108,8 +112,8 @@ extension AppActions {
     }
 
     private func reconcileRowSelection() {
-        let selected = store.listTable.selectedUID
-        if store.selectedRowUID != selected { store.selectedRowUID = selected }
+        let selected = Set(store.listTable.selectedUIDs)
+        if store.selectedRowUIDs != selected { store.selectedRowUIDs = selected }
         reconcilePodShellSelection()
     }
 

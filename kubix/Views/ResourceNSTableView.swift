@@ -1,4 +1,5 @@
 import AppKit
+import KubixCore
 
 /// Return dispatches only with the table focused. Menus bind to the right-clicked row.
 ///
@@ -7,14 +8,15 @@ import AppKit
 final class ResourceNSTableView: NSTableView {
     var openShell: ((Int, Bool) -> (@MainActor () -> Void)?)?
     var openLogs: ((Int) -> (@MainActor () -> Void)?)?
-    var deletePod: ((Int) -> (@MainActor () -> Void)?)?
+    var deletePod: ((Int) -> AppActions.PodDeleteMenuAction?)?
     private var menuShell: (@MainActor () -> Void)?
     private var menuLogs: (@MainActor () -> Void)?
-    private var menuDelete: (@MainActor () -> Void)?
+    private var menuDelete: AppActions.PodDeleteMenuAction?
 
     override func keyDown(with event: NSEvent) {
         if [36, 76].contains(event.keyCode), event.modifierFlags.isDisjoint(with: [.command, .control, .option, .shift]) {
-            openShell?(selectedRow, false)?()
+            // A shell opens in one pod; with several selected there is no telling which was meant.
+            if numberOfSelectedRows == 1 { openShell?(selectedRow, false)?() }
         } else { super.keyDown(with: event) }
     }
 
@@ -34,9 +36,10 @@ final class ResourceNSTableView: NSTableView {
             item.target = self
             menu.addItem(item)
         }
-        if menuDelete != nil {
+        if let menuDelete {
             if !items.isEmpty { menu.addItem(.separator()) }
-            let item = NSMenuItem(title: "Delete Pod…", action: #selector(deleteFromMenu), keyEquivalent: "")
+            let title = menuDelete.pods > 1 ? "Delete \(menuDelete.pods) Pods…" : "Delete Pod…"
+            let item = NSMenuItem(title: title, action: #selector(deleteFromMenu), keyEquivalent: "")
             item.target = self
             menu.addItem(item)
         }
@@ -46,7 +49,7 @@ final class ResourceNSTableView: NSTableView {
     @objc private func deleteFromMenu() {
         let action = menuDelete
         menuDelete = nil
-        action?()
+        action?.perform()
     }
 
     @objc private func shellFromMenu() {
