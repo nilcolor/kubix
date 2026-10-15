@@ -19,6 +19,7 @@ import KubixRuntime
             podDetails: PodDetailsService(transports: { [transport] _ in transport }),
             deploymentDetails: DeploymentDetailsService(transports: { [transport] _ in transport }),
             deploymentPods: DeploymentPodService(transports: { [transport] _ in transport }),
+            podDeleter: PodDeleteService(transports: { [transport] _ in transport }),
             logs: LogService(transports: { [transport] _ in transport }),
             probe: ClusterProbeService(transports: { [transport] _ in transport }),
             namespaces: NamespaceListService(transports: { [transport] _ in transport }),

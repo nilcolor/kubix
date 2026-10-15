@@ -70,7 +70,7 @@ import KubixCore
         guard let event = NSEvent.mouseEvent(
             with: .rightMouseDown, location: point, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
             context: nil, eventNumber: 0, clickCount: 1, pressure: 1
-        ), let menu = table.menu(for: event), menu.items.map(\.title) == ["Shell", "Logs"] else { throw Failure.assertion }
+        ), let menu = table.menu(for: event), menu.items.map(\.title) == ["Shell", "Logs", "", "Delete Pod…"] else { throw Failure.assertion }
         menu.performActionForItem(at: 0)
     }
 

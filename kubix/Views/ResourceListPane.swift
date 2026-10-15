@@ -135,11 +135,12 @@ private struct ListActions: View {
         let selected = store.listTable.selectedUIDs
         return Button { actions.requestPodDeletion(uids: selected) } label: {
             Label(selected.count > 1 ? "Delete \(selected.count) Pods…" : "Delete Pod…", systemImage: "trash")
+                // On the label, not the button: a bordered button tints its own fill from it.
+                .foregroundStyle(selected.isEmpty ? Color.secondary : Color.red)
         }
         .buttonStyle(.bordered)
         .buttonBorderShape(.capsule)
         .controlSize(.extraLarge)
-        .foregroundStyle(selected.isEmpty ? Color.secondary : Color.red)
         .disabled(selected.isEmpty)
         .help(selected.count > 1 ? "Delete the selected pods" : "Delete the selected pod")
     }
