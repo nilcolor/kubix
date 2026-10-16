@@ -13,6 +13,10 @@ shells, except where an entry says otherwise.
 - The confirmation is a sheet naming the pods, namespace and cluster, says a
   controller may create replacements, and has no default button: Return does
   not delete.
+- **Filter the namespace list.** The namespace control on Pods and Deployments
+  opens a list with a search field: typing narrows it (names that start with
+  the text come first), arrows move, Return picks and Escape clears then
+  closes. A cluster that denies listing namespaces keeps the typeable field.
 
 ## v0.3 — 2026-10-13
 

@@ -34,6 +34,16 @@ public struct NamespaceSelection: Sendable {
         return Set(names.filter(Self.isValid)).sorted()
     }
 
+    /// Case-insensitive substring match, with names that start with the query ranked first so typing
+    /// the head of a name puts it on top even when it also appears inside others.
+    public static func matching(_ names: [String], filter: String) -> [String] {
+        let query = filter.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !query.isEmpty else { return names }
+        let hits = names.filter { $0.lowercased().contains(query) }
+        let leading = hits.filter { $0.lowercased().hasPrefix(query) }
+        return leading + hits.filter { !$0.lowercased().hasPrefix(query) }
+    }
+
     public mutating func remember(_ namespace: String, for context: ResolvedContext) throws {
         guard Self.isValid(namespace) else { throw APIError.invalidRequest }
         if entered[context.name]?.contains(namespace) != true {

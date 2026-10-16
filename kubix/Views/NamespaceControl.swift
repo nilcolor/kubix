@@ -2,10 +2,10 @@ import AppKit
 import KubixCore
 import SwiftUI
 
-/// A pop-up button when the cluster told us its namespaces, a text field when it did not.
+/// A filterable picker when the cluster told us its namespaces, a text field when it did not.
 ///
 /// Namespaces are cluster-scoped, so a cluster that answers `list namespaces` answers with all of
-/// them and the menu is complete — there is nothing for an escape hatch to reach. A cluster that
+/// them and the list is complete — there is nothing for an escape hatch to reach. A cluster that
 /// denies the list is a supported configuration rather than an error, and that is the only case the
 /// typeable field exists for.
 struct NamespaceControl: View {
@@ -14,7 +14,9 @@ struct NamespaceControl: View {
 
     var body: some View {
         if let names = listed {
-            NamespaceMenu(store: store, actions: actions, names: names)
+            // As tall as the round actions beside it; the row sizes itself to them.
+            NamespacePicker(store: store, actions: actions, names: names)
+                .frame(maxHeight: .infinity)
         } else {
             NamespaceField(store: store, actions: actions)
         }
@@ -119,61 +121,97 @@ private struct NamespaceField: NSViewRepresentable {
     }
 }
 
-/// A real `NSPopUpButton` rather than a SwiftUI `Picker`: the picker gives no hook for the menu being
-/// about to open, and that hook is what refreshes the list exactly when it is read.
-private struct NamespaceMenu: NSViewRepresentable {
+/// Looks and opens like a pop-up button, but the list it opens is a popover with a filter field: a
+/// cluster can have hundreds of namespaces, and a menu only offers type-select on the first letters.
+/// AppKit rather than SwiftUI because the opening is the hook that refreshes the list exactly when it
+/// is read, and because the field editor's commands are what make the keyboard reliable.
+private struct NamespacePicker: NSViewRepresentable {
     let store: AppStore
     let actions: AppActions
     let names: [String]
 
     func makeCoordinator() -> Coordinator { Coordinator(actions: actions) }
 
-    func makeNSView(context: Context) -> NSPopUpButton {
-        let button = NSPopUpButton(frame: .zero, pullsDown: false)
-        button.identifier = NSUserInterfaceItemIdentifier("pod-namespace-menu")
-        button.setAccessibilityIdentifier("pod-namespace-menu")
+    func makeNSView(context: Context) -> NSButton {
+        let button = NSButton(title: store.selectedNamespace, target: context.coordinator, action: #selector(Coordinator.toggle(_:)))
+        button.identifier = NSUserInterfaceItemIdentifier("pod-namespace-picker")
+        button.setAccessibilityIdentifier("pod-namespace-picker")
+        button.setAccessibilityRole(.popUpButton)
+        // Not `.push`: that bezel is a fixed 24pt at every control size, half the height of the
+        // round actions it sits beside.
+        button.bezelStyle = .flexiblePush
         button.controlSize = NamespaceMetrics.controlSize
-        button.target = context.coordinator
-        button.action = #selector(Coordinator.choose(_:))
-        context.coordinator.observe(button)
+        button.image = NSImage(systemSymbolName: "chevron.up.chevron.down", accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(scale: .small))
+        button.imagePosition = .imageTrailing
+        // Title at the leading edge and the chevron at the trailing one, as a pop-up button draws them.
+        button.imageHugsTitle = false
+        button.alignment = .left
+        button.lineBreakMode = .byTruncatingTail
+        context.coordinator.button = button
         return button
     }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSPopUpButton, context: Context) -> CGSize? {
-        NamespaceMetrics.size(fitting: nsView.fittingSize)
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSButton, context: Context) -> CGSize? {
+        let fitting = NamespaceMetrics.size(fitting: nsView.fittingSize)
+        guard let height = proposal.height, height.isFinite, height > fitting.height else { return fitting }
+        return CGSize(width: fitting.width, height: height)
     }
 
-    func updateNSView(_ button: NSPopUpButton, context: Context) {
+    func updateNSView(_ button: NSButton, context: Context) {
         context.coordinator.actions = actions
-        var titles = names
-        if !titles.contains(store.selectedNamespace) { titles.insert(store.selectedNamespace, at: 0) }
-        if button.itemTitles != titles {
-            button.removeAllItems()
-            button.addItems(withTitles: titles)
-        }
-        if button.titleOfSelectedItem != store.selectedNamespace {
-            button.selectItem(withTitle: store.selectedNamespace)
-        }
+        if button.title != store.selectedNamespace { button.title = store.selectedNamespace }
+        var items = names
+        if !items.contains(store.selectedNamespace) { items.insert(store.selectedNamespace, at: 0) }
+        context.coordinator.list.items = items
+        context.coordinator.list.selected = [store.selectedNamespace]
     }
 
-    @MainActor final class Coordinator: NSObject {
+    @MainActor final class Coordinator: NSObject, NSPopoverDelegate {
         var actions: AppActions
+        private let popover = NSPopover()
+        weak var button: NSButton?
+        private var reopenSuppressedFor: Int?
+        private(set) lazy var list = FilterListController(
+            placeholder: "Filter namespaces", emptyText: "No matching namespaces", identifier: "namespace-picker-list",
+            choose: { [weak self] name in self?.choose(name) },
+            dismiss: { [weak self] in self?.popover.performClose(nil) }
+        )
 
-        init(actions: AppActions) { self.actions = actions }
-
-        func observe(_ button: NSPopUpButton) {
-            NotificationCenter.default.addObserver(
-                self, selector: #selector(willPopUp(_:)),
-                name: NSPopUpButton.willPopUpNotification, object: button
-            )
+        init(actions: AppActions) {
+            self.actions = actions
+            super.init()
+            popover.behavior = .transient
+            popover.animates = false
+            popover.delegate = self
         }
 
-        /// Read time, not poll time: the list is refreshed as the menu opens, throttled by the store.
-        @objc func willPopUp(_ notification: Notification) { actions.refreshNamespaces() }
+        @objc func toggle(_ button: NSButton) {
+            if let suppressed = reopenSuppressedFor {
+                reopenSuppressedFor = nil
+                if NSApp.currentEvent?.type == .leftMouseUp, NSApp.currentEvent?.eventNumber == suppressed { return }
+            }
+            guard !popover.isShown else { popover.performClose(nil); return }
+            // Read time, not poll time: the list is refreshed as it opens, throttled by the store.
+            actions.refreshNamespaces()
+            popover.contentViewController = list
+            list.prepareForOpening()
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: button.isFlipped ? .maxY : .minY)
+        }
 
-        @objc func choose(_ sender: NSPopUpButton) {
-            guard let title = sender.titleOfSelectedItem else { return }
-            actions.setNamespaceInput(title)
+        /// A transient popover closes on the mouse-down of a click on its own trigger, and that click's
+        /// mouse-up then runs the trigger's action: without this the click meant to close the list
+        /// reopens it.
+        func popoverWillClose(_ notification: Notification) {
+            guard let event = NSApp.currentEvent, event.type == .leftMouseDown, let button,
+                  event.window === button.window,
+                  button.bounds.contains(button.convert(event.locationInWindow, from: nil)) else { return }
+            reopenSuppressedFor = event.eventNumber
+        }
+
+        private func choose(_ name: String) {
+            popover.performClose(nil)
+            actions.setNamespaceInput(name)
             actions.commitNamespaceInput()
         }
     }

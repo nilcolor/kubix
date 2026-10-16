@@ -129,6 +129,8 @@ private struct ListActions: View {
             }
             Spacer(minLength: 0)
         }
+        // The row takes its height from its tallest control, so the picker can stretch to it.
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private var deleteButton: some View {

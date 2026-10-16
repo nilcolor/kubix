@@ -42,6 +42,16 @@ struct NamespaceSelectionTests {
         #expect(!NamespaceSelection.isValid(name))
     }
 
+    @Test func filterRanksPrefixMatchesFirstAndKeepsListOrderOtherwise() {
+        let names = ["empty", "known", "other", "team", "web-team"]
+        #expect(NamespaceSelection.matching(names, filter: "") == names)
+        #expect(NamespaceSelection.matching(names, filter: "  ") == names)
+        #expect(NamespaceSelection.matching(names, filter: "o") == ["other", "known"])
+        #expect(NamespaceSelection.matching(names, filter: "TEAM") == ["team", "web-team"])
+        #expect(NamespaceSelection.matching(names, filter: " kn ") == ["known"])
+        #expect(NamespaceSelection.matching(names, filter: "zzz").isEmpty)
+    }
+
     @Test @MainActor func defaultsAndSuggestionsArePerContextAndDraftsDoNotCommit() throws {
         let first = try appContext()
         let second = try appContext("second")
