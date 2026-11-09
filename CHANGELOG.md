@@ -3,7 +3,7 @@
 Kubix is a native macOS Kubernetes client. Versions are read-only plus logs and
 shells, except where an entry says otherwise.
 
-## Unreleased
+## v0.4 — 2026-11-09
 
 - **The cluster dashboard shows real numbers.** Once connected, the pane counts
   ready nodes, warning events the server still retains, and pods, Deployments,
