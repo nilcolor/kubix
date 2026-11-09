@@ -444,6 +444,33 @@ reload that redefines a cluster under the same name discards a list computed
 against the old snapshot. The picker shows only the focused cluster's namespaces,
 so a background cluster finishing its list cannot replace what is on screen.
 
+### The cluster dashboard
+
+A connected cluster's pane shows cluster-wide counts: ready nodes, warning events, and pods,
+Deployments, DaemonSets, StatefulSets, Jobs and CronJobs by state. Nothing here is watched. A watch
+needs a full list first and per-object state to turn events into counts, so eleven cluster-wide watches
+would stream every pod change in the cluster to keep slow-moving numbers current. The counts are
+polled instead: on landing on the pane, then every 30 seconds, and only while
+`SidebarSelection.cluster` names a connected cluster. `AppActions.syncOverviewPoll` is the one
+decision, called after every selection, connection and reload change; one poll runs at most.
+
+`ClusterOverviewService` follows each list to its last page and reduces it page by page, under a
+64-page / 64 MiB budget per section that throws rather than undercounting. Pods are five objectless
+Tables, one per `status.phase` field selector, because a pod's phase lives in its status and full pod
+objects cluster-wide cost tens of megabytes per poll. Warning events are an objectless Table with
+`type=Warning`. Nodes and the workload kinds have no status field selectors, so they decode plain JSON
+through a narrow type that reads only the fields they are counted from (`WorkloadObject.state`).
+Printed Table cells are never read as state.
+
+Each section stands alone. A 403 marks it not permitted and a budget overrun marks it too large; neither
+is asked again until the next Connect. Transient failures keep the last numbers for 180 seconds, then
+show the section as failed. A failure that needs the user — a 401 after refresh, a credential plugin
+error — stops the poll, so the plugin is not re-run on a timer; selecting the pane again is the retry.
+Results are kept per cluster, so returning shows the last numbers while the first tick refreshes them,
+and are cleared on disconnect. Every write is checked against the poll's generation and captured
+`ResolvedContext`. `WorkloadKind` is separate from `ResourceKind` on purpose: these kinds are
+counted, never listed.
+
 Kubeconfig reload reconciles both through pure functions
 (`ClusterStatus.reconcile`, `SidebarSelection.reconcile`) applied by
 `AppActions`: a context keeps its state only while its whole snapshot is

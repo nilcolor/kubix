@@ -91,6 +91,7 @@ import KubixCore
               table(in: window) == nil else { throw Failure.assertion }
         evidence["connect"] = "Connect issues exactly two unnamespaced requests — /version then the "
             + "namespace list — lists no pods, and leaves every other cluster disconnected and unlisted"
+        try await checkOverview(fixture)
 
         stage = "pods selection lists the committed namespace"
         fixture.actions.selectSidebar(.list("synthetic-first", .pods))
@@ -338,6 +339,21 @@ import KubixCore
               let editor = window.fieldEditor(false, for: field) as? NSTextView else { throw Failure.assertion }
         editor.doCommand(by: NSSelectorFromString("insertNewline:"))
     }
+    private static func checkOverview(_ fixture: PodBrowsingFixture) async throws {
+        stage = "dashboard fills from the overview poll"
+        let store = fixture.store
+        try await until {
+            let overview = store.clusters[0].overview
+            return overview.nodes == .value(NodeCounts(total: 3, ready: 2)) && overview.warningEvents == .value(4)
+                && overview.workload(.pods) == .value(WorkloadCounts(total: 10, running: 6, succeeded: 2, pending: 1, failed: 1))
+                && overview.workload(.daemonSets) == .notPermitted
+        }
+        let ticks = await fixture.overview.requests
+        try await until { await fixture.overview.requests > ticks }
+        evidence["overview"] = "connected dashboard shows synthetic node, warning and per-kind counts on its own "
+            + "transport, a refused kind reads not permitted, and the poll repeats while the pane is selected"
+    }
+
     static func until(_ condition: () async -> Bool) async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(12))
         while !(await condition()) {

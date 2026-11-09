@@ -10,6 +10,7 @@ public extension AppActions {
         let generation = UUID()
         clusterGenerations[name] = generation
         store.clusters[index].state = .connecting
+        syncOverviewPoll()
         clusterTasks[name] = Task { [weak self] in
             do {
                 let version = try await probe.probe(context: context)
@@ -31,6 +32,8 @@ public extension AppActions {
         store.clusters[index].metrics = .unknown
         demoteListSelection(of: name)
         discardNamespaces(of: name)
+        resetOverview(of: name)
+        syncOverviewPoll()
         guard store.selectedContext?.name == name else { return }
         cancelList()
         clearList(store.listKind)
@@ -48,6 +51,7 @@ public extension AppActions {
         let unchanged = store.sidebarSelection == selection
         store.sidebarSelection = selection
         focus(cluster.context)
+        syncOverviewPoll()
         guard let kind = selection.kind else { return }
         guard !unchanged || store.connection == .idle else { return }
         refreshList(kind)
@@ -86,12 +90,15 @@ extension AppActions {
         clusterTasks.removeValue(forKey: name)
         store.clusters[index].state = failure.map { .failed(reason: Self.connectReason($0)) } ?? .connected
         store.clusters[index].serverVersion = version
+        resetOverview(of: name)
         if failure != nil {
             demoteListSelection(of: name)
             discardNamespaces(of: name)
+            syncOverviewPoll()
             return
         }
         listNamespaces(context, resetting: true)
+        syncOverviewPoll()
     }
 
     /// A reload that drops or redefines a cluster leaves its connect work pointless: the result can no

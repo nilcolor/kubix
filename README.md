@@ -73,6 +73,10 @@ exec paths resolve against the kubeconfig file that supplied the entry.
    Return on the selected row. Connect acquires credentials, which may start
    browser sign-in, and then makes one unnamespaced `GET /version` request.
    It does not list pods. Selecting a cluster row only shows its pane.
+   While a connected cluster's pane is on screen it shows cluster-wide counts —
+   ready nodes, warning events, and pods, Deployments, DaemonSets, StatefulSets,
+   Jobs and CronJobs by state — refreshed every 30 seconds and not at all once
+   you move to a list. A kind you may not list reads "Listing not permitted".
 3. Choose **Pods** or **Deployments** under a connected cluster's **Workload**
    group to list and watch its namespace. Exactly one watch runs at a time, so
    moving between the two kinds — or to another connected cluster — retires the
@@ -255,6 +259,7 @@ Grant only the permissions appropriate to the intended namespace and actions:
 | Interactive shell | `pods/exec` | `get` (GET WebSocket upgrade) |
 | Container logs | `pods/log` | `get` |
 | Delete a pod | `pods` | `delete` |
+| Dashboard counts (optional, each independent) | `nodes`, `events`, `pods`, `deployments`, `daemonsets`, `statefulsets` (`apps/v1`), `jobs`, `cronjobs` (`batch/v1`) | `list` (all namespaces) |
 
 No namespace-list permission is needed; without it the selector simply falls
 back to typed entry and local history. Shell access is powerful even though

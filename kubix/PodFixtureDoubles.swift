@@ -138,4 +138,57 @@ actor PodFixtureMetrics: Transport {
     func stream(for request: APIRequest, purpose: TransportPurpose) throws -> any HTTPByteStream { throw APIError.invalidRequest }
     func webSocket(for request: APIRequest) throws -> any WebSocketConnection { throw APIError.invalidRequest }
 }
+
+/// Synthetic cluster-wide counts for the dashboard. DaemonSets are denied, so the pane shows a
+/// refused row beside populated ones.
+actor PodFixtureOverview: Transport {
+    private(set) var requests = 0
+    static let podPhases = ["Pending": 1, "Running": 6, "Succeeded": 2, "Failed": 1]
+
+    func data(for request: APIRequest) async throws -> Data {
+        requests += 1
+        switch request.path {
+        case ["api", "v1", "nodes"]:
+            return Self.list([Self.node(ready: true), Self.node(ready: true), Self.node(ready: false)])
+        case ["api", "v1", "events"]:
+            return Self.rows(4)
+        case ["api", "v1", "pods"]:
+            let phase = request.query.first { $0.name == "fieldSelector" }?.value?.split(separator: "=").last
+            return Self.rows(phase.flatMap { Self.podPhases[String($0)] } ?? 0)
+        case ["apis", "apps", "v1", "deployments"]:
+            return Self.list([
+                #"{"spec":{"replicas":2},"status":{"readyReplicas":2}}"#,
+                #"{"spec":{"replicas":3},"status":{"readyReplicas":1}}"#,
+            ])
+        case ["apis", "apps", "v1", "daemonsets"]:
+            throw APIError.http(code: 403, resource: "daemonsets")
+        case ["apis", "apps", "v1", "statefulsets"]:
+            return Self.list([#"{"spec":{"replicas":1},"status":{"readyReplicas":1}}"#])
+        case ["apis", "batch", "v1", "jobs"]:
+            return Self.list([
+                #"{"status":{"conditions":[{"type":"Complete","status":"True"}]}}"#, #"{"status":{"active":1}}"#,
+            ])
+        case ["apis", "batch", "v1", "cronjobs"]:
+            return Self.list([#"{"spec":{"suspend":false},"status":{}}"#])
+        default:
+            throw APIError.invalidRequest
+        }
+    }
+
+    func stream(for request: APIRequest, purpose: TransportPurpose) throws -> any HTTPByteStream { throw APIError.invalidRequest }
+    func webSocket(for request: APIRequest) throws -> any WebSocketConnection { throw APIError.invalidRequest }
+
+    private static func node(ready: Bool) -> String {
+        #"{"status":{"conditions":[{"type":"Ready","status":"\#(ready ? "True" : "False")"}]}}"#
+    }
+
+    private static func list(_ items: [String]) -> Data {
+        Data(#"{"kind":"List","apiVersion":"v1","metadata":{},"items":[\#(items.joined(separator: ","))]}"#.utf8)
+    }
+
+    private static func rows(_ count: Int) -> Data {
+        let rows = Array(repeating: #"{"cells":["synthetic"]}"#, count: count).joined(separator: ",")
+        return Data(#"{"apiVersion":"meta.k8s.io/v1","kind":"Table","metadata":{},"rows":[\#(rows)]}"#.utf8)
+    }
+}
 #endif

@@ -5,6 +5,13 @@ shells, except where an entry says otherwise.
 
 ## Unreleased
 
+- **The cluster dashboard shows real numbers.** Once connected, the pane counts
+  ready nodes, warning events the server still retains, and pods, Deployments,
+  DaemonSets, StatefulSets, Jobs and CronJobs by state, across all namespaces.
+  It refreshes when the pane is selected and every 30 seconds while it stays
+  on screen; nothing is polled while a list is open. Each count needs `list` on
+  its kind cluster-wide, and one that is refused says so without affecting the
+  others.
 - **Delete several pods at once.** The pods table takes a multiple selection
   (⌘- or ⇧-click), and **Delete Pod…** joins Shell and Logs in the pane's
   toolbar. The context menu on a selected row acts for the whole selection.

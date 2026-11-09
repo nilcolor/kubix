@@ -78,7 +78,7 @@ final class AppComposition {
             podDeleter: PodDeleteService(transports: transports), logs: LogService(transports: transports),
             probe: Self.clusterProbe(transports: transports),
             namespaces: Self.namespaceListing(transports: transports),
-            metrics: Self.metricsListing(transports: transports)
+            metrics: Self.metricsListing(transports: transports), overview: Self.overviewListing(transports: transports)
         )
         factory.closeSession = { [weak actions] id in actions?.closeShell(id) }
         Self.active = self
@@ -126,6 +126,16 @@ final class AppComposition {
         if ExecLiveValidation.isEnabled || AuthLoginValidation.isEnabled || AWSVaultIsolationValidation.root != nil { return nil }
         #endif
         return PodMetricsService(transports: transports)
+    }
+
+    private static func overviewListing(
+        transports: @escaping ExecService.TransportFactory
+    ) -> (any ClusterOverviewListing)? {
+        #if DEBUG
+        // The constrained exec/auth drivers must not gain cluster-wide polled requests implicitly.
+        if ExecLiveValidation.isEnabled || AuthLoginValidation.isEnabled || AWSVaultIsolationValidation.root != nil { return nil }
+        #endif
+        return ClusterOverviewService(transports: transports)
     }
 
     private static func listWatcher(transports: @escaping ExecService.TransportFactory) -> (any ResourceWatching)? {

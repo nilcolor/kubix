@@ -76,6 +76,8 @@ for ownership, authentication, and streaming contracts.
   explicitly scoped. UUIDs/AppActions reserve a future seam; Debug drivers are
   not a general automation interface. Kubix lists pods and deployments, both
   read-only plus logs; the one write is deleting a pod, confirmed and sent with
-  the row's UID as a server-side precondition. Other writes (scale, rollout
-  restart, deployment delete, edit, force delete) and further kinds stay out.
-  Do not broaden that incidentally.
+  the row's UID as a server-side precondition. The cluster dashboard also polls
+  cluster-wide counts of nodes, warning events, pods and five workload kinds;
+  counts only, never rows, watches or sidebar entries. Other writes (scale,
+  rollout restart, deployment delete, edit, force delete) and further listed
+  kinds stay out. Do not broaden that incidentally.

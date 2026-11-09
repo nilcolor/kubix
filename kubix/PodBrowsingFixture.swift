@@ -9,6 +9,7 @@ import KubixRuntime
     let transport = PodFixtureTransport()
     let authentication = PodFixtureAuth()
     let metrics = PodFixtureMetrics()
+    let overview = PodFixtureOverview()
     let surfaces = PodFixtureSurfaces()
     let actions: AppActions
 
@@ -26,7 +27,10 @@ import KubixRuntime
             // Its own transport: a poll running under every stage would otherwise change the request
             // counts the other stages assert.
             metrics: PodMetricsService(transports: { [metrics] _ in metrics }),
-            metricsInterval: .milliseconds(200)
+            metricsInterval: .milliseconds(200),
+            // Its own transport for the same reason as metrics.
+            overview: ClusterOverviewService(transports: { [overview] _ in overview }),
+            overviewInterval: .milliseconds(200)
         )
     }
 }

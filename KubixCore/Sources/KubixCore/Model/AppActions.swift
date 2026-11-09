@@ -50,6 +50,15 @@ public final class AppActions {
     let podMetricsListing: (any PodMetricsListing)?
     let metricsInterval: Duration
     var podMetricsTask: Task<Void, Never>?
+    let overviewListing: (any ClusterOverviewListing)?
+    let overviewInterval: Duration
+    var overviewTask: Task<Void, Never>?
+    /// The cluster the running dashboard poll is for, so landing on the same pane again leaves it be.
+    var overviewContext: ResolvedContext?
+    var overviewGeneration = UUID()
+    var retiringOverviewTasks: [UUID: Task<Void, Never>] = [:]
+    /// Monotonic time each section last succeeded, per cluster, for the staleness bound.
+    var overviewRefreshedAt: [String: [OverviewSection: TimeInterval]] = [:]
     var retiringListTasks: [UUID: Task<Void, Never>] = [:]
     var listGeneration = UUID()
     var namespaceSelection = NamespaceSelection()
@@ -92,6 +101,8 @@ public final class AppActions {
         // Samples average over a window of roughly fifteen to forty-five seconds; polling faster only
         // re-reads the same numbers.
         metricsInterval: Duration = .seconds(15),
+        overview: (any ClusterOverviewListing)? = nil,
+        overviewInterval: Duration = .seconds(30),
         monotonicNow: @escaping @Sendable () -> TimeInterval = {
             TimeInterval(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000
         }
@@ -107,6 +118,8 @@ public final class AppActions {
         namespaceListing = namespaces
         podMetricsListing = metrics
         self.metricsInterval = metricsInterval
+        overviewListing = overview
+        self.overviewInterval = overviewInterval
         self.monotonicNow = monotonicNow
         self.podDetails = podDetails
         self.deploymentDetails = deploymentDetails
@@ -210,6 +223,8 @@ public final class AppActions {
         for task in tasks.values { task.cancel() }
         listTask?.cancel()
         podMetricsTask?.cancel()
+        overviewTask?.cancel()
+        for task in retiringOverviewTasks.values { task.cancel() }
         for task in retiringListTasks.values { task.cancel() }
         for task in clusterTasks.values { task.cancel() }
         for task in retiringClusterTasks.values { task.cancel() }
@@ -272,6 +287,7 @@ extension AppActions {
         stopped = true
         cancelClusterWork()
         cancelNamespaceWork()
+        cancelOverviewWork()
         cancelList()
         if store.connection != .idle { store.connection = .idle }
         for session in store.execSessions { closeShell(session.id) }
@@ -323,6 +339,7 @@ extension AppActions {
         let podWork = Array(retiringListTasks.values) + [listTask, podMetricsTask].compactMap { $0 }
         let clusterWork = Array(clusterTasks.values) + Array(retiringClusterTasks.values)
             + namespaceFetches.values.compactMap(\.task) + Array(retiringNamespaceTasks.values)
+            + [overviewTask].compactMap { $0 } + Array(retiringOverviewTasks.values)
         let detailWork = Array(podDetailTasks.values)
         let logWork = Array(logTasks.values)
         let deleteWork = Array(podDeleteTasks.values)

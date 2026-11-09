@@ -21,17 +21,21 @@ public struct ClusterStatus: Identifiable, Equatable, Sendable {
     /// Whether this connection serves pod usage. Per cluster rather than per namespace, so the usage
     /// columns stay put while the namespace changes instead of vanishing until the next sample.
     public var metrics: MetricsAvailability
+    /// The dashboard's cluster-wide counts, while this cluster is connected.
+    public var overview: ClusterOverview
     public var id: String { context.name }
 
     public init(
         context: ResolvedContext, state: State = .disconnected, namespaces: NamespaceDiscovery = .unknown,
-        serverVersion: String? = nil, metrics: MetricsAvailability = .unknown
+        serverVersion: String? = nil, metrics: MetricsAvailability = .unknown,
+        overview: ClusterOverview = ClusterOverview()
     ) {
         self.context = context
         self.state = state
         self.namespaces = namespaces
         self.serverVersion = serverVersion
         self.metrics = metrics
+        self.overview = overview
     }
 
     /// A context keeps its state only while its whole snapshot is unchanged: a redefined server, user
@@ -42,7 +46,7 @@ public struct ClusterStatus: Identifiable, Equatable, Sendable {
             return ClusterStatus(
                 context: context, state: carried?.state ?? .disconnected,
                 namespaces: carried?.namespaces ?? .unknown, serverVersion: carried?.serverVersion,
-                metrics: carried?.metrics ?? .unknown
+                metrics: carried?.metrics ?? .unknown, overview: carried?.overview ?? ClusterOverview()
             )
         }
     }

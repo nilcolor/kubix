@@ -19,7 +19,7 @@ struct ClusterPane: View {
                     )
                 }
                 ClusterTiles(cluster: cluster)
-                WorkloadPreview()
+                WorkloadSummary(overview: cluster.overview)
                 ClusterDetails(cluster: cluster)
                 PluginSection(store: store, actions: actions)
                 Spacer(minLength: 0)
@@ -131,12 +131,24 @@ private struct ClusterTiles: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
-            Tile(title: "Nodes", value: nil, unit: "ready", detail: nil)
+            Tile(title: "Nodes", reading: nodes, unit: "ready")
             Divider().frame(height: 54)
             Tile(title: "Namespaces", value: namespaceCount, unit: "listed", detail: namespaceDetail)
             Divider().frame(height: 54)
-            Tile(title: "Events", value: nil, unit: "warnings", detail: nil)
+            Tile(title: "Events", reading: events, unit: "warnings")
         }
+    }
+
+    private var nodes: TileReading {
+        TileReading(cluster.overview.nodes) { counts in
+            let notReady = counts.total - counts.ready
+            return (String(counts.ready), notReady == 0 ? "of \(counts.total)" : "of \(counts.total) · \(notReady) not ready")
+        }
+    }
+
+    /// The apiserver keeps events for its event TTL, an hour by default, so this is not a lifetime total.
+    private var events: TileReading {
+        TileReading(cluster.overview.warningEvents) { (String($0), "Still retained by the server") }
     }
 
     private var namespaceCount: String? {
@@ -153,6 +165,19 @@ private struct ClusterTiles: View {
     }
 }
 
+private struct TileReading {
+    var value: String?
+    var detail: String?
+
+    init<Value: Equatable & Sendable>(_ reading: OverviewValue<Value>, format: (Value) -> (String, String)) {
+        switch reading {
+        case .unknown: break
+        case .value(let value): (self.value, detail) = format(value)
+        default: (value, detail) = ("—", reading.problem)
+        }
+    }
+}
+
 /// A number this app has not asked the server for must not look like one it has, so an unknown value
 /// is a grey bar. The unit word stays: it is what the number will mean, and it reads better than a
 /// sentence explaining the absence.
@@ -161,6 +186,17 @@ private struct Tile: View {
     let value: String?
     let unit: String
     let detail: String?
+
+    init(title: String, value: String?, unit: String, detail: String?) {
+        self.title = title
+        self.value = value
+        self.unit = unit
+        self.detail = detail
+    }
+
+    init(title: String, reading: TileReading, unit: String) {
+        self.init(title: title, value: reading.value, unit: unit, detail: reading.detail)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -184,7 +220,7 @@ private struct Tile: View {
     }
 }
 
-private struct Skeleton: View {
+struct Skeleton: View {
     let width: CGFloat?
     let height: CGFloat
     let shade: Double
@@ -193,68 +229,6 @@ private struct Skeleton: View {
         RoundedRectangle(cornerRadius: height / 2.5)
             .fill(Color.secondary.opacity(shade))
             .frame(width: width, height: height)
-    }
-}
-
-/// Layout preview only, deliberately contentless: pods are the one resource this app models, so
-/// deployment, job and cronjob counts would be invented numbers about a real cluster. The columns and
-/// row rhythm are real so the design can be judged.
-private struct WorkloadPreview: View {
-    private let resources = ["Pods", "Deployments", "DaemonSets", "StatefulSets", "Jobs", "CronJobs"]
-    private let columns = ["Total", "Running", "Succeeded", "Pending", "Failed"]
-    /// Three shades so the bar reads as the stacked proportion it will become.
-    private let segments: [(Double, Double)] = [(0.55, 0.20), (0.25, 0.14), (0.20, 0.09)]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Workloads").font(.title3.weight(.semibold))
-                Spacer(minLength: 8)
-                Text("Design preview — not requested from the cluster")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            .padding(.bottom, 10)
-
-            HStack(spacing: 12) {
-                Text("Resource").font(.callout).foregroundStyle(.secondary)
-                    .frame(width: 130, alignment: .leading)
-                Spacer(minLength: 0)
-                ForEach(columns, id: \.self) { column in
-                    Text(column).font(.callout).foregroundStyle(.secondary)
-                        .frame(width: 76, alignment: .trailing)
-                }
-            }
-            .padding(.bottom, 6)
-
-            ForEach(Array(resources.enumerated()), id: \.element) { index, resource in
-                Divider()
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(resource).fontWeight(.medium)
-                        HStack(spacing: 1) {
-                            ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
-                                Rectangle()
-                                    .fill(Color.secondary.opacity(segment.1))
-                                    .frame(width: 150 * segment.0, height: 4)
-                            }
-                        }
-                        .clipShape(Capsule())
-                    }
-                    .frame(width: 130, alignment: .leading)
-                    Spacer(minLength: 0)
-                    ForEach(columns.indices, id: \.self) { column in
-                        HStack {
-                            Spacer(minLength: 0)
-                            Skeleton(width: column == 0 ? 34 : 26, height: 10, shade: 0.12)
-                        }
-                        .frame(width: 76)
-                    }
-                }
-                .padding(.vertical, 10)
-                .opacity(index == 0 ? 1 : 0.85)
-            }
-            Divider()
-        }
     }
 }
 

@@ -24,6 +24,7 @@ public extension AppActions {
             store.clusters.first { $0.id == current.clusterName }?.context
         }
         resetNamespaceSelection()
+        syncOverviewPoll()
         if settingsVersion == settingsRevision, committedSettingsVersion == committedSettingsRevision,
            let settings = snapshot.settings { store.authSettings = settings }
         store.isLoadingConfiguration = false
